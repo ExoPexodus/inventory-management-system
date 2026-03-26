@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Inventory | The Tactile Archive</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Public+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary-container": "#223d64",
+              "on-surface-variant": "#43474c",
+              "error-container": "#ffdad6",
+              "on-tertiary-fixed-variant": "#5a4300",
+              "on-secondary-container": "#745c00",
+              "primary-fixed-dim": "#adc7f7",
+              "primary-fixed": "#d6e3ff",
+              "background": "#fbf9f4",
+              "tertiary": "#322400",
+              "surface-container-low": "#f5f3ee",
+              "secondary-fixed-dim": "#e9c349",
+              "on-tertiary-container": "#d09f05",
+              "secondary-container": "#fed65b",
+              "on-secondary-fixed": "#241a00",
+              "surface-container": "#f0eee9",
+              "on-error-container": "#93000a",
+              "inverse-surface": "#30312e",
+              "secondary-fixed": "#ffe088",
+              "on-surface": "#1b1c19",
+              "surface": "#fbf9f4",
+              "on-error": "#ffffff",
+              "error": "#ba1a1a",
+              "surface-bright": "#fbf9f4",
+              "on-primary-fixed": "#001b3c",
+              "surface-dim": "#dbdad5",
+              "primary": "#06274d",
+              "on-tertiary-fixed": "#251a00",
+              "surface-variant": "#e4e2dd",
+              "on-secondary": "#ffffff",
+              "on-background": "#1b1c19",
+              "inverse-on-surface": "#f2f1ec",
+              "tertiary-fixed-dim": "#f3bf32",
+              "on-primary": "#ffffff",
+              "secondary": "#735c00",
+              "on-secondary-fixed-variant": "#574500",
+              "on-tertiary": "#ffffff",
+              "on-primary-fixed-variant": "#2d476f",
+              "surface-container-high": "#eae8e3",
+              "tertiary-fixed": "#ffdf99",
+              "surface-container-lowest": "#ffffff",
+              "outline": "#74777d",
+              "tertiary-container": "#4d3900",
+              "surface-tint": "#455f88",
+              "surface-container-highest": "#e4e2dd",
+              "outline-variant": "#c4c6cd",
+              "inverse-primary": "#adc7f7",
+              "on-primary-container": "#8ea8d6"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Public Sans"],
+              "label": ["Public Sans"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+      body { font-family: 'Public Sans', sans-serif; }
+      .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+      .ledger-table th { text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.75rem; }
+      .vignette-overlay { background: linear-gradient(180deg, rgba(251,249,244,0) 0%, rgba(251,249,244,1) 100%); }
+    </style>
+</head>
+<body class="bg-surface text-on-surface antialiased">
+<!-- SideNavBar (Shared Component) -->
+<aside class="fixed left-0 top-0 h-full flex flex-col py-8 h-screen w-64 border-r-0 bg-surface-container transition-all duration-200 ease-in-out font-['Manrope'] tracking-tight z-50">
+<div class="px-8 mb-12">
+<h1 class="text-xl font-bold text-on-surface">The Tactile Archive</h1>
+<p class="text-xs text-on-surface-variant font-medium mt-1">Premium Stationery POS</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center px-8 py-4 text-on-surface-variant font-medium hover:bg-surface-container-lowest/30 transition-colors" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center px-8 py-4 text-primary font-bold border-r-2 border-primary bg-surface-container-lowest/50 transition-colors" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="edit_note">edit_note</span>
+<span>Inventory</span>
+</a>
+<a class="flex items-center px-8 py-4 text-on-surface-variant font-medium hover:bg-surface-container-lowest/30 transition-colors" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="badge">badge</span>
+<span>Staff</span>
+</a>
+<a class="flex items-center px-8 py-4 text-on-surface-variant font-medium hover:bg-surface-container-lowest/30 transition-colors" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="shopping_bag">shopping_bag</span>
+<span>Orders</span>
+</a>
+<a class="flex items-center px-8 py-4 text-on-surface-variant font-medium hover:bg-surface-container-lowest/30 transition-colors" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="analytics">analytics</span>
+<span>Analytics</span>
+</a>
+<a class="flex items-center px-8 py-4 text-on-surface-variant font-medium hover:bg-surface-container-lowest/30 transition-colors" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="inventory_2">inventory_2</span>
+<span>Suppliers</span>
+</a>
+</nav>
+<div class="px-8 mt-auto flex items-center space-x-3 pt-8">
+<div class="w-10 h-10 rounded-xl overflow-hidden bg-primary-fixed">
+<img class="w-full h-full object-cover" data-alt="portrait of a professional store manager in a tailored suit, soft studio lighting, editorial style" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDr13wh8ohdlfieeFxvWCbpBgOdtDA5wB9iDwjYrsmcMR8qJSBFhEOQ3vgDFHo0E9QCXO9PoDcYETr49zREIn8bhm1B5HAPW39pPlxkO-NVTzZQ8iaJ6zmWSM0eWlWEorONrK37GSO1pSsAxatwmdIH36Ko7axrz0pCh3aPZ18PZkGSraF3EbrhjDHd5VDlysT9Jwsis1nDyqOLRK02tKrpzDjMNd4Q4KZuleM3VS0yiKpudjrGV5KY7EKPssqDKbgsCJlIHNpgKtY"/>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Julian Thorne</p>
+<p class="text-[10px] text-on-surface-variant">Chief Curator</p>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen">
+<!-- TopAppBar (Shared Component) -->
+<header class="sticky top-0 z-40 flex items-center justify-between px-8 w-full h-20 bg-surface/80 backdrop-blur-md border-b border-outline-variant/20 font-['Public_Sans']">
+<div class="flex items-center flex-1">
+<div class="relative w-96">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant text-lg" data-icon="search">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-xl pl-12 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary/20 placeholder:text-on-surface-variant/50" placeholder="Search archive by SKU or name..." type="text"/>
+</div>
+</div>
+<div class="flex items-center space-x-6">
+<button class="text-on-surface-variant hover:text-primary transition-all relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-error rounded-full border-2 border-surface"></span>
+</button>
+<button class="text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<div class="h-8 w-px bg-outline-variant/30 mx-2"></div>
+<button class="bg-gradient-to-br from-primary to-primary-container text-on-primary px-6 py-2.5 rounded-xl text-sm font-bold shadow-sm hover:shadow-md transition-all flex items-center">
+<span class="material-symbols-outlined mr-2 text-sm" data-icon="add">add</span>
+                    New Entry
+                </button>
+</div>
+</header>
+<div class="p-8 max-w-7xl mx-auto">
+<!-- Editorial Header -->
+<div class="mb-10 flex justify-between items-end">
+<div>
+<h2 class="text-4xl font-headline font-extrabold text-on-surface tracking-tight">Current Holding</h2>
+<p class="text-on-surface-variant mt-2 font-medium">Archive Summary &amp; Inventory Reconciliation</p>
+</div>
+<div class="flex space-x-3">
+<button class="px-5 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container transition-colors rounded-lg flex items-center">
+<span class="material-symbols-outlined mr-2 text-lg" data-icon="filter_list">filter_list</span>
+                        Filters
+                    </button>
+<button class="px-5 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container transition-colors rounded-lg flex items-center">
+<span class="material-symbols-outlined mr-2 text-lg" data-icon="file_download">file_download</span>
+                        Export Ledger
+                    </button>
+</div>
+</div>
+<!-- Bento Metrics -->
+<div class="grid grid-cols-12 gap-6 mb-12">
+<!-- Total Valuation -->
+<div class="col-span-12 md:col-span-5 bg-surface-container-lowest p-8 rounded-xl relative overflow-hidden flex flex-col justify-between min-h-[180px]">
+<div class="relative z-10">
+<p class="text-xs font-bold text-on-surface-variant/60 uppercase tracking-widest mb-1">Total Valuation</p>
+<h3 class="text-5xl font-headline font-extrabold text-primary tracking-tighter">$142,850.42</h3>
+</div>
+<div class="relative z-10 flex items-center text-sm font-medium text-primary mt-4">
+<span class="material-symbols-outlined text-sm mr-1" data-icon="trending_up">trending_up</span>
+<span>+4.2% from last quarter</span>
+</div>
+<!-- Decorative Element -->
+<div class="absolute -right-10 -bottom-10 w-48 h-48 bg-primary/5 rounded-full blur-3xl"></div>
+</div>
+<!-- Critical Items -->
+<div class="col-span-12 md:col-span-3 bg-error-container/40 p-8 rounded-xl border border-error-container/20 flex flex-col justify-between">
+<div>
+<p class="text-xs font-bold text-on-error-container/60 uppercase tracking-widest mb-1">Critical Reorder</p>
+<h3 class="text-4xl font-headline font-extrabold text-on-error-container">12</h3>
+</div>
+<div class="flex items-center text-sm font-bold text-on-error-container mt-4">
+<span class="w-2 h-2 bg-error rounded-full mr-2"></span>
+<span>Requires Attention</span>
+</div>
+</div>
+<!-- Pending Shipments -->
+<div class="col-span-12 md:col-span-4 bg-secondary-container/30 p-8 rounded-xl border border-secondary-container/20 flex flex-col justify-between">
+<div>
+<p class="text-xs font-bold text-on-secondary-container/60 uppercase tracking-widest mb-1">Pending Shipments</p>
+<h3 class="text-4xl font-headline font-extrabold text-on-secondary-container">08</h3>
+</div>
+<div class="flex -space-x-2">
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-surface-variant overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="portrait of a logistic coordinator, natural light, professional" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBO6L-KvGDCbQFNN29v3b4Lx2EEeZWrGXOedu6HT-XWScRTeygdxfw2iw4_t9o_MIacKTluCvApX9jXtfueRo1O7aDcobjXblgKuW2JFLrQ6OrxDU15DGzMgMfQYvzRTT73gDDnQOoX_wJIrOMtVjEv5y5K9sJKB02CKmNW2MFG-5bwGw-rBpbEsLlZJ1fUYzqTos4PBDW4pxNEPtpIK7Eqt5yUyx7jC9ESiPPO-P1JXIogmY8mvVvQR6AmkF_BeKgXMxPAA64NNMM"/>
+</div>
+<div class="w-8 h-8 rounded-full border-2 border-surface bg-primary text-[10px] text-on-primary flex items-center justify-center font-bold">+5</div>
+</div>
+</div>
+</div>
+<!-- Inventory Ledger (The High Density Table) -->
+<div class="bg-surface-container-lowest rounded-xl overflow-hidden">
+<div class="overflow-x-auto">
+<table class="w-full text-left ledger-table">
+<thead class="bg-surface-container-low text-on-surface-variant font-bold border-b border-outline-variant/10">
+<tr>
+<th class="px-8 py-5">SKU / Item</th>
+<th class="px-6 py-5">Category</th>
+<th class="px-6 py-5">Supplier</th>
+<th class="px-6 py-5 text-right">Unit Value</th>
+<th class="px-6 py-5 text-right">Reorder Pt.</th>
+<th class="px-8 py-5 text-right">Stock Level</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<!-- Item 1 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="px-8 py-5">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded bg-surface-container mr-4 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="close up of a silver fountain pen resting on cream paper, elegant lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBBTJsWplF_j7Y53AqJW7h0C_thpVv7MWTDXEI6kiatDBkmWYGBsczh56cZ4f00CnLcgfxTMJiOaArFx0TTgIumC276QUP_NpYlm_aLFkS_2XY6Htxhb53hwjxKi1M6eSlfzwTspjOT_3l3suaUwED-K84gsOV8-Xq0s8yIIlkbU9waHiA5_rGwx_H67nnJ0OxQRR6ZFmDLbZjSESNKioTiKXbWHQjWkByBSmYpa0ZGkO3ZwiijxitQ89Xfwqb2mKIbD9l92zD1c5A"/>
+</div>
+<div>
+<p class="font-bold text-on-surface text-sm">Lamy 2000 Fountain Pen</p>
+<p class="text-xs text-on-surface-variant font-medium font-mono">SKU: LAM-2000-M</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-xs font-bold px-2 py-1 bg-primary-fixed text-on-primary-fixed-variant rounded-md">Writing</span>
+</td>
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">Lamy GmbH</td>
+<td class="px-6 py-5 text-sm font-bold text-right font-mono">$195.00</td>
+<td class="px-6 py-5 text-sm font-medium text-right text-on-surface-variant">5</td>
+<td class="px-8 py-5">
+<div class="flex flex-col items-end">
+<div class="flex items-center">
+<span class="text-sm font-bold mr-3">12</span>
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+</div>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-2 overflow-hidden">
+<div class="bg-primary h-full w-[60%]"></div>
+</div>
+</div>
+</td>
+</tr>
+<!-- Item 2 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="px-8 py-5">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded bg-surface-container mr-4 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="leather bound notebook with thick artisanal paper, rustic desk setting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1UhYEVK5KRz1_TXtA-zQ4_VgTGgJ3yE_t5D6QDff4NEvxjiQ62bShgxag2ISvJz0cJm1qDyKKuVAPLLUrkgdkDSSqJcG9sGW1dPsQp7CdttjPR6DrJhCEm-6zOXaZJrt368HTVQnmE-za4PHE52siAfHunZ3YFZKRUIs72WCtIzYtSYHZhUayr0_HEF4Cp8T1g9rr95ALUjOE9OnSK6NGL830nl_GzuDbkY_Ema37_FHYMk36AxRDxyGHz0ydljK42CXjiDtLUig"/>
+</div>
+<div>
+<p class="font-bold text-on-surface text-sm">Midori Traveler's Notebook</p>
+<p class="text-xs text-on-surface-variant font-medium font-mono">SKU: MID-TRV-BR</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-xs font-bold px-2 py-1 bg-secondary-container text-on-secondary-container rounded-md">Paper</span>
+</td>
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">Designphil Inc.</td>
+<td class="px-6 py-5 text-sm font-bold text-right font-mono">$54.00</td>
+<td class="px-6 py-5 text-sm font-medium text-right text-on-surface-variant">15</td>
+<td class="px-8 py-5">
+<div class="flex flex-col items-end text-error">
+<div class="flex items-center">
+<span class="text-sm font-bold mr-3">3</span>
+<div class="w-1.5 h-1.5 rounded-full bg-error"></div>
+</div>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-2 overflow-hidden">
+<div class="bg-error h-full w-[15%]"></div>
+</div>
+</div>
+</td>
+</tr>
+<!-- Item 3 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="px-8 py-5">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded bg-surface-container mr-4 flex items-center justify-center overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="vibrant blue ink in a crystal bottle, shallow depth of field, ink wash effect" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAsCAsk5BLuNh46SQWz14qrEFxXrjKhX6i2jPUfK-sh_cMKjHbEGklBH-auEvcDqG8JfT8vygeFM9j9ojisAuOiPqIuD1Bc-zf_0chqJ5WTVUB3OvUpKJLPY4A4XkxqUhkSwl8QXhykj06SdX1stdjDP4z8kOffYampkwa9N2U3B5CtTWvBcMshFgRlmfi2dhJOWJUJQECntfSBof5rNxVvxy-GDGD1-_lOcwitn2Y0svqkhC4Vg4666v8OAhBxs4EiKEKmH-4-pJA"/>
+</div>
+<div>
+<p class="font-bold text-on-surface text-sm">Iroshizuku Kon-peki (50ml)</p>
+<p class="text-xs text-on-surface-variant font-medium font-mono">SKU: PIL-IRO-KP</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-xs font-bold px-2 py-1 bg-tertiary-fixed text-on-tertiary-fixed-variant rounded-md">Ink</span>
+</td>
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">Pilot Corporation</td>
+<td class="px-6 py-5 text-sm font-bold text-right font-mono">$28.00</td>
+<td class="px-6 py-5 text-sm font-medium text-right text-on-surface-variant">10</td>
+<td class="px-8 py-5">
+<div class="flex flex-col items-end text-secondary">
+<div class="flex items-center">
+<span class="text-sm font-bold mr-3">8</span>
+<div class="w-1.5 h-1.5 rounded-full bg-secondary"></div>
+</div>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-2 overflow-hidden">
+<div class="bg-secondary h-full w-[35%]"></div>
+</div>
+</div>
+</td>
+</tr>
+<!-- Item 4 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="px-8 py-5">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded bg-surface-container mr-4 flex items-center justify-center overflow-hidden border border-outline-variant/10">
+<img class="w-full h-full object-cover" data-alt="high quality mechanical pencil, matte black finish, studio product shot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBgqoQT1BOsQqtWnWa8XGShP00hNd3ryaUZdnFkVHuP-V30cI881mu7yAV3-mDCYG-5FI-HwZ44Oo2jIlQUVKcL6qnzexRXYiABlhVOymAUIrfYWJyub9apZUmsyEUXaAlnSVQMPjrUhACOWEPrCTsXP8xYApEwltXB3gQ6801tYLl4tlZ3dpxas2ojE6_JlElAFbuZVDVx0cw32kBXkg7fDaaUcTnP1V7FtqQ9hrF5Pe_2OEPlvHMBNv7IZxvc4z7eXUN8688Q5Co"/>
+</div>
+<div>
+<p class="font-bold text-on-surface text-sm">Rotring 600 Mechanical Pencil</p>
+<p class="text-xs text-on-surface-variant font-medium font-mono">SKU: ROT-600-05</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-xs font-bold px-2 py-1 bg-primary-fixed text-on-primary-fixed-variant rounded-md">Writing</span>
+</td>
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">Newell Brands</td>
+<td class="px-6 py-5 text-sm font-bold text-right font-mono">$35.00</td>
+<td class="px-6 py-5 text-sm font-medium text-right text-on-surface-variant">20</td>
+<td class="px-8 py-5">
+<div class="flex flex-col items-end">
+<div class="flex items-center">
+<span class="text-sm font-bold mr-3">45</span>
+<div class="w-1.5 h-1.5 rounded-full bg-primary"></div>
+</div>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-2 overflow-hidden">
+<div class="bg-primary h-full w-[90%]"></div>
+</div>
+</div>
+</td>
+</tr>
+<!-- Item 5 -->
+<tr class="hover:bg-surface-container-low/50 transition-colors group">
+<td class="px-8 py-5">
+<div class="flex items-center">
+<div class="w-10 h-10 rounded bg-surface-container mr-4 flex items-center justify-center overflow-hidden border border-outline-variant/10">
+<img class="w-full h-full object-cover" data-alt="selection of colorful high-end washi tapes in a neat arrangement" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAh6LVIL7SYbiINpiCdkGZvxIAr4fAxte0Z5PT6s9HVsfryDvV6Mret7-tpApER97WLT7InBUeVoa114TAcNnwZ4qZIb5xuzGdTJEz-dl7tCTsy8nNgzB1sRef33WzkY49B4k0keuLJALmHgqhCcBRaGRxpc1nNEfMBUXzk497LQkdi7fJaHQcO5U_wHK30cJQ5QDhplwUz5kdDHPNcuwgiFb-_RQLVBjEZ77g-YRPAAJiKXKPD06ucEjlAVxmbAZkbxoBI75S0uD0"/>
+</div>
+<div>
+<p class="font-bold text-on-surface text-sm">MT Washi Tape (Assorted Gold)</p>
+<p class="text-xs text-on-surface-variant font-medium font-mono">SKU: MT-WSH-GLD</p>
+</div>
+</div>
+</td>
+<td class="px-6 py-5">
+<span class="text-xs font-bold px-2 py-1 bg-surface-variant text-on-surface-variant rounded-md">Acc.</span>
+</td>
+<td class="px-6 py-5 text-sm font-medium text-on-surface-variant">Kamoi Kakoshi</td>
+<td class="px-6 py-5 text-sm font-bold text-right font-mono">$4.50</td>
+<td class="px-6 py-5 text-sm font-medium text-right text-on-surface-variant">50</td>
+<td class="px-8 py-5">
+<div class="flex flex-col items-end text-error">
+<div class="flex items-center">
+<span class="text-sm font-bold mr-3">0</span>
+<div class="w-1.5 h-1.5 rounded-full bg-error"></div>
+</div>
+<div class="w-24 h-1 bg-surface-container rounded-full mt-2 overflow-hidden">
+<div class="bg-error/20 h-full w-[0%]"></div>
+</div>
+</div>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination & Controls -->
+<div class="px-8 py-6 bg-surface-container-low border-t border-outline-variant/10 flex items-center justify-between">
+<p class="text-xs font-medium text-on-surface-variant">Showing 1 to 5 of 1,248 distinct records</p>
+<div class="flex items-center space-x-2">
+<button class="p-2 rounded-lg hover:bg-surface-container transition-colors disabled:opacity-30">
+<span class="material-symbols-outlined text-sm" data-icon="chevron_left">chevron_left</span>
+</button>
+<div class="flex items-center">
+<button class="w-8 h-8 rounded-lg bg-primary text-on-primary text-xs font-bold">1</button>
+<button class="w-8 h-8 rounded-lg text-on-surface-variant text-xs font-bold hover:bg-surface-container transition-colors">2</button>
+<button class="w-8 h-8 rounded-lg text-on-surface-variant text-xs font-bold hover:bg-surface-container transition-colors">3</button>
+<span class="px-2 text-on-surface-variant/30 text-xs font-bold">...</span>
+<button class="w-8 h-8 rounded-lg text-on-surface-variant text-xs font-bold hover:bg-surface-container transition-colors">250</button>
+</div>
+<button class="p-2 rounded-lg hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Contextual Insight Panel -->
+<div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+<div class="p-8 bg-primary text-on-primary rounded-xl flex items-center justify-between relative overflow-hidden group">
+<div class="relative z-10">
+<h4 class="text-xl font-headline font-bold mb-2">Automate Stock Replenishment</h4>
+<p class="text-sm opacity-80 max-w-xs leading-relaxed">Your critical reorder items have been prepared as a draft purchase order for Designphil Inc.</p>
+<button class="mt-6 bg-on-primary text-primary px-5 py-2.5 rounded-lg text-sm font-bold hover:scale-105 transition-transform">
+                            Review Draft Order
+                        </button>
+</div>
+<span class="material-symbols-outlined text-9xl absolute -right-4 -bottom-4 opacity-10 rotate-12" data-icon="auto_awesome">auto_awesome</span>
+</div>
+<div class="p-8 bg-surface-container-high rounded-xl border border-outline-variant/30">
+<h4 class="text-sm font-bold text-on-surface uppercase tracking-widest mb-6">Recent Inventory Activity</h4>
+<div class="space-y-6">
+<div class="flex items-start">
+<div class="w-2 h-2 mt-1.5 rounded-full bg-primary mr-4 shrink-0"></div>
+<div>
+<p class="text-sm font-bold text-on-surface">Shipment Received: Pilot Iroshizuku Inks</p>
+<p class="text-xs text-on-surface-variant mt-1">Processed by Sarah L. • 2 hours ago</p>
+</div>
+</div>
+<div class="flex items-start">
+<div class="w-2 h-2 mt-1.5 rounded-full bg-secondary mr-4 shrink-0"></div>
+<div>
+<p class="text-sm font-bold text-on-surface">Internal Transfer: Lamy Safari Series</p>
+<p class="text-xs text-on-surface-variant mt-1">Moved to Archive Display • 5 hours ago</p>
+</div>
+</div>
+<div class="flex items-start">
+<div class="w-2 h-2 mt-1.5 rounded-full bg-error mr-4 shrink-0"></div>
+<div>
+<p class="text-sm font-bold text-on-surface">Reorder Warning: MT Washi Tape (Gold)</p>
+<p class="text-xs text-on-surface-variant mt-1">Threshold reached • Yesterday</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Spacer -->
+<div class="h-20"></div>
+</main>
+</body></html>

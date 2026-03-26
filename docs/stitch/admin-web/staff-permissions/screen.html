@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>The Tactile Archive | Staff &amp; Permissions</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Public+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary-container": "#223d64",
+                        "on-surface-variant": "#43474c",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-fixed-variant": "#5a4300",
+                        "on-secondary-container": "#745c00",
+                        "primary-fixed-dim": "#adc7f7",
+                        "primary-fixed": "#d6e3ff",
+                        "background": "#fbf9f4",
+                        "tertiary": "#322400",
+                        "surface-container-low": "#f5f3ee",
+                        "secondary-fixed-dim": "#e9c349",
+                        "on-tertiary-container": "#d09f05",
+                        "secondary-container": "#fed65b",
+                        "on-secondary-fixed": "#241a00",
+                        "surface-container": "#f0eee9",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#30312e",
+                        "secondary-fixed": "#ffe088",
+                        "on-surface": "#1b1c19",
+                        "surface": "#fbf9f4",
+                        "on-error": "#ffffff",
+                        "error": "#ba1a1a",
+                        "surface-bright": "#fbf9f4",
+                        "on-primary-fixed": "#001b3c",
+                        "surface-dim": "#dbdad5",
+                        "primary": "#06274d",
+                        "on-tertiary-fixed": "#251a00",
+                        "surface-variant": "#e4e2dd",
+                        "on-secondary": "#ffffff",
+                        "on-background": "#1b1c19",
+                        "inverse-on-surface": "#f2f1ec",
+                        "tertiary-fixed-dim": "#f3bf32",
+                        "on-primary": "#ffffff",
+                        "secondary": "#735c00",
+                        "on-secondary-fixed-variant": "#574500",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#2d476f",
+                        "surface-container-high": "#eae8e3",
+                        "tertiary-fixed": "#ffdf99",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#74777d",
+                        "tertiary-container": "#4d3900",
+                        "surface-tint": "#455f88",
+                        "surface-container-highest": "#e4e2dd",
+                        "outline-variant": "#c4c6cd",
+                        "inverse-primary": "#adc7f7",
+                        "on-primary-container": "#8ea8d6"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Public Sans"],
+                        "label": ["Public Sans"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .ink-gradient {
+            background: linear-gradient(45deg, #06274d 0%, #223d64 100%);
+        }
+        .vellum-blur {
+            backdrop-filter: blur(20px);
+            background-color: rgba(251, 249, 244, 0.85);
+        }
+        .ledger-line {
+            border-bottom: 1px solid rgba(196, 198, 205, 0.4);
+        }
+        /* Custom Toggle Switch for Vellum Design */
+        .toggle-checkbox:checked {
+            right: 0;
+            background-color: #06274d;
+        }
+        .toggle-checkbox:checked + .toggle-label {
+            background-color: #d6e3ff;
+        }
+    </style>
+</head>
+<body class="bg-background font-body text-on-background selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- SideNavBar (Authority: JSON) -->
+<nav class="fixed left-0 top-0 h-full flex flex-col py-8 h-screen w-64 border-r-0 bg-[#f0eee9] dark:bg-slate-900 font-['Manrope'] tracking-tight z-50">
+<div class="px-8 mb-12">
+<h1 class="text-xl font-bold text-[#1b1c19] dark:text-slate-100">The Tactile Archive</h1>
+<p class="text-xs tracking-widest uppercase opacity-60 mt-1">Premium Stationery POS</p>
+</div>
+<div class="flex flex-col flex-grow">
+<!-- Dashboard -->
+<a class="flex items-center px-8 py-4 transition-colors duration-200 ease-in-out text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<!-- Inventory -->
+<a class="flex items-center px-8 py-4 transition-colors duration-200 ease-in-out text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="edit_note">edit_note</span>
+<span>Inventory</span>
+</a>
+<!-- Staff (ACTIVE) -->
+<a class="flex items-center px-8 py-4 transition-colors duration-200 ease-in-out text-[#06274d] dark:text-blue-300 font-bold border-r-2 border-[#06274d] dark:border-blue-400 bg-[#ffffff]/50 dark:bg-white/5" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="badge">badge</span>
+<span>Staff</span>
+</a>
+<!-- Orders -->
+<a class="flex items-center px-8 py-4 transition-colors duration-200 ease-in-out text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="shopping_bag">shopping_bag</span>
+<span>Orders</span>
+</a>
+<!-- Analytics -->
+<a class="flex items-center px-8 py-4 transition-colors duration-200 ease-in-out text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="analytics">analytics</span>
+<span>Analytics</span>
+</a>
+<!-- Suppliers -->
+<a class="flex items-center px-8 py-4 transition-colors duration-200 ease-in-out text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="inventory_2">inventory_2</span>
+<span>Suppliers</span>
+</a>
+</div>
+<div class="px-8 mt-auto pt-8 border-t border-black/5">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center overflow-hidden">
+<img alt="Manager Profile" class="w-full h-full object-cover" data-alt="portrait of a mature store manager with a professional and friendly expression in a modern boutique environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAhWh8961eQZI1mtZFomkeaO2B9fMcjyR8dj2p83QlEi3hFFLQ6d2FOp66LJDDrqiGhWcV7SiQkFg7Hr-HvE5vhOvNURmGUnpR7bG27100BCyJypBuIvGGx9zUXqZasEeBcXuFPFHB4b43SJGHl7sh2SxEvEcgtJxJ24CqBmUDOstdE3eszCX-LnQisPvfTbIAgwTNCSy_Rfjj3YbxgBFoTh1cwGKTDghHUyHRFb2pTnQhqf7Tz-r_wl1tJ9Xm_i_7ThL-qh45i7Ek"/>
+</div>
+<div>
+<p class="text-sm font-bold text-on-background">Store Manager</p>
+<p class="text-xs text-on-surface-variant">Admin access</p>
+</div>
+</div>
+</div>
+</nav>
+<!-- TopAppBar (Authority: JSON) -->
+<header class="sticky top-0 z-40 flex items-center justify-between px-8 ml-64 w-full h-20 bg-[#fbf9f4]/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-[#c4c6cd]/20 dark:border-slate-800/40">
+<div class="flex items-center gap-6 flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline" data-icon="search">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-lg py-2 pl-10 pr-4 focus:ring-1 focus:ring-primary text-sm font-body" placeholder="Search staff or roles..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-[#43474c] hover:text-[#06274d] transition-all duration-300">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="text-[#43474c] hover:text-[#06274d] transition-all duration-300">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<!-- Main Content -->
+<main class="ml-64 p-8 min-h-screen">
+<div class="max-w-7xl mx-auto">
+<!-- Header Section -->
+<div class="mb-10">
+<h2 class="font-headline text-4xl font-extrabold text-on-background tracking-tight mb-2">Staff &amp; Governance</h2>
+<p class="text-on-surface-variant font-body">Manage the curators and specialists of your archive, defining their access to the ledger and inventory.</p>
+</div>
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- Staff List Column -->
+<div class="lg:col-span-4 flex flex-col gap-6">
+<h3 class="font-headline text-xl font-bold px-2">Personnel</h3>
+<!-- Staff Card 1: Evelyn -->
+<div class="group cursor-pointer bg-surface-container-lowest rounded-xl p-6 transition-all duration-300 hover:shadow-xl hover:shadow-on-surface/5 border border-transparent hover:border-outline-variant/30">
+<div class="flex items-center gap-4 mb-4">
+<div class="w-14 h-14 rounded-xl overflow-hidden shadow-sm">
+<img alt="Evelyn" class="w-full h-full object-cover" data-alt="portrait of a young woman with a creative and attentive look, soft studio lighting on a neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAMbTWmEBsjZa9H3wMOSAabAbUtT0LQUdz97dUAh0ook6druTh9mB8Szh8rcfA7tNGc-TtBKm2mZWkRPYL1EPXAvUGe3N1ua_oJXV99WiH1xzHsJS4YSSTfWTuGT0yLUwqsdJ9PEW1jDJXYGJ54mqs1xTbc3pkri1GNqI2icDd5mOXs-XCs09YYYsFzkPaJ9gtzc1YHllRn5_rwfgBClPVSCgM5W3a1VDODZ6DzWWQOpLpNf-alc_rgAlyM7yOTbh_x9nOh4VPKNvQ"/>
+</div>
+<div>
+<h4 class="font-headline font-bold text-lg">Evelyn Reed</h4>
+<p class="text-secondary font-medium text-sm">Lead Curator</p>
+</div>
+<div class="ml-auto">
+<span class="w-2 h-2 rounded-full bg-[#ffdf99] inline-block" title="Active Shift"></span>
+</div>
+</div>
+<div class="space-y-2 text-sm text-on-surface-variant">
+<div class="flex justify-between items-center">
+<span>Shift</span>
+<span class="font-medium text-on-surface">09:00 - 17:00</span>
+</div>
+<div class="flex justify-between items-center">
+<span>Station</span>
+<span class="font-medium text-on-surface">Main Gallery</span>
+</div>
+</div>
+</div>
+<!-- Staff Card 2: Julian -->
+<div class="group cursor-pointer bg-surface-container-lowest rounded-xl p-6 transition-all duration-300 hover:shadow-xl hover:shadow-on-surface/5 border border-transparent hover:border-outline-variant/30">
+<div class="flex items-center gap-4 mb-4">
+<div class="w-14 h-14 rounded-xl overflow-hidden shadow-sm">
+<img alt="Julian" class="w-full h-full object-cover" data-alt="portrait of a man with spectacles looking focused and professional, warm indoor lighting with bokeh background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBJVgbr0Nw_CsjQubjpL8xdRJfMCCCRPKCqPa0pzNOd4NAuJLcNr_KiTL4KSPtyECv6b_iLTvd2qRqkvlsfwzQAfi-mozKMihwuoSP1naWEiiD89pYDhd_4qpO8S9Ea_nm3N-CFpKfry3CKclJqR2W93eZUEucVGawH8wsHAhtKE1d-M2pBCg5xNWAa75AGHLfuhjpl9PnGn4pZwfQXwjKy_Qrot9YX-9OIxZMTPs-gqSCtLk4v2nuyp4mZGaZN5w41orxFXx1Hynk"/>
+</div>
+<div>
+<h4 class="font-headline font-bold text-lg">Julian Vance</h4>
+<p class="text-secondary font-medium text-sm">Archival Specialist</p>
+</div>
+</div>
+<div class="space-y-2 text-sm text-on-surface-variant">
+<div class="flex justify-between items-center">
+<span>Shift</span>
+<span class="font-medium text-on-surface">11:00 - 19:00</span>
+</div>
+<div class="flex justify-between items-center">
+<span>Station</span>
+<span class="font-medium text-on-surface">Fountain Pen Desk</span>
+</div>
+</div>
+</div>
+<!-- Staff Card 3: Clara -->
+<div class="group cursor-pointer bg-surface-container-lowest rounded-xl p-6 transition-all duration-300 hover:shadow-xl hover:shadow-on-surface/5 border border-transparent hover:border-outline-variant/30">
+<div class="flex items-center gap-4 mb-4">
+<div class="w-14 h-14 rounded-xl overflow-hidden shadow-sm">
+<img alt="Clara" class="w-full h-full object-cover" data-alt="portrait of a woman with an artistic vibe, gentle sunlight through a window, soft textures" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCNnCV4gFic301tSc4hz3b83GilpUTqhyC6p8ErnbGQCRfNbgHi8qIvW8JYNyyJuWjdaew7tUkdrPLqcCgGKDMc97lm-QJdBanJ8GbfH3kx13IqqbpbKjlwmBcYQLGjD_RprziHqmqVeNoEgIjuS6LG2u82f0Dto2pDB5S-H8CfL0ksUrH4kmb9V1O4DQDmuhFPtLXGN2YEwxhaP5x7MJjI3JKlOg4KuuynOgHTqV7h9xGK5CQtWx5Sj1V2YRYpy9eedVZSILarWdk"/>
+</div>
+<div>
+<h4 class="font-headline font-bold text-lg">Clara Thorne</h4>
+<p class="text-secondary font-medium text-sm">Junior Curator</p>
+</div>
+</div>
+<div class="space-y-2 text-sm text-on-surface-variant">
+<div class="flex justify-between items-center">
+<span>Shift</span>
+<span class="font-medium text-on-surface">14:00 - 22:00</span>
+</div>
+<div class="flex justify-between items-center">
+<span>Station</span>
+<span class="font-medium text-on-surface">Journal Section</span>
+</div>
+</div>
+</div>
+<button class="mt-2 w-full h-14 ink-gradient text-on-primary rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined" data-icon="person_add">person_add</span>
+                        Onboard New Staff
+                    </button>
+</div>
+<!-- Permissions Matrix Column -->
+<div class="lg:col-span-8">
+<div class="bg-surface-container-lowest rounded-xl p-8 shadow-sm">
+<div class="flex items-center justify-between mb-8 border-b border-outline-variant/20 pb-6">
+<div>
+<h3 class="font-headline text-2xl font-bold text-on-background">Governance Matrix</h3>
+<p class="text-on-surface-variant text-sm mt-1">Editing permissions for <span class="font-bold text-primary">Evelyn Reed</span></p>
+</div>
+<div class="flex gap-3">
+<button class="px-6 py-2 rounded-lg text-sm font-bold text-on-surface-variant hover:bg-surface-container transition-colors">Discard</button>
+<button class="px-6 py-2 rounded-lg text-sm font-bold bg-secondary-container text-on-secondary-container hover:opacity-90 transition-opacity">Apply Changes</button>
+</div>
+</div>
+<!-- Permission Groups -->
+<div class="space-y-10">
+<!-- Group 1: Operational -->
+<section>
+<div class="flex items-center gap-2 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="inventory">inventory</span>
+<h4 class="font-headline font-bold text-sm tracking-widest uppercase text-outline">Operational Authority</h4>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+<!-- Permission Item -->
+<div class="flex items-start justify-between ledger-line pb-4">
+<div class="max-w-[80%]">
+<p class="font-bold text-on-background mb-1">Inventory Adjustments</p>
+<p class="text-xs text-on-surface-variant">Grant power to modify stock levels, adjust SKU details, and perform manual write-offs.</p>
+</div>
+<div class="relative inline-block w-12 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-surface-variant border-4 appearance-none cursor-pointer focus:outline-none" id="toggle1" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-surface-container cursor-pointer" for="toggle1"></label>
+</div>
+</div>
+<!-- Permission Item -->
+<div class="flex items-start justify-between ledger-line pb-4">
+<div class="max-w-[80%]">
+<p class="font-bold text-on-background mb-1">Staff Scheduling</p>
+<p class="text-xs text-on-surface-variant">Authorize access to the weekly roster and shift assignment module.</p>
+</div>
+<div class="relative inline-block w-12 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-surface-variant border-4 appearance-none cursor-pointer focus:outline-none" id="toggle2" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-surface-container cursor-pointer" for="toggle2"></label>
+</div>
+</div>
+</div>
+</section>
+<!-- Group 2: Financial -->
+<section>
+<div class="flex items-center gap-2 mb-6">
+<span class="material-symbols-outlined text-primary" data-icon="payments">payments</span>
+<h4 class="font-headline font-bold text-sm tracking-widest uppercase text-outline">Financial Governance</h4>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
+<!-- Permission Item -->
+<div class="flex items-start justify-between ledger-line pb-4">
+<div class="max-w-[80%]">
+<p class="font-bold text-on-background mb-1">Financial Reporting</p>
+<p class="text-xs text-on-surface-variant">Allow viewing of end-of-day ledgers, revenue charts, and profit margins.</p>
+</div>
+<div class="relative inline-block w-12 align-middle select-none transition duration-200 ease-in">
+<input class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-surface-variant border-4 appearance-none cursor-pointer focus:outline-none" id="toggle3" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-surface-container cursor-pointer" for="toggle3"></label>
+</div>
+</div>
+<!-- Permission Item -->
+<div class="flex items-start justify-between ledger-line pb-4">
+<div class="max-w-[80%]">
+<p class="font-bold text-on-background mb-1">Customer Refunds</p>
+<p class="text-xs text-on-surface-variant">Approve the processing of high-value returns and cash disbursements.</p>
+</div>
+<div class="relative inline-block w-12 align-middle select-none transition duration-200 ease-in">
+<input checked="" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-surface-variant border-4 appearance-none cursor-pointer focus:outline-none" id="toggle4" name="toggle" type="checkbox"/>
+<label class="toggle-label block overflow-hidden h-6 rounded-full bg-surface-container cursor-pointer" for="toggle4"></label>
+</div>
+</div>
+</div>
+</section>
+<!-- Special Permissions -->
+<div class="bg-surface-container-low rounded-lg p-6 border border-primary/5">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 rounded-full bg-primary-fixed flex items-center justify-center text-primary">
+<span class="material-symbols-outlined" data-icon="lock_open">lock_open</span>
+</div>
+<div>
+<h5 class="font-bold text-on-background">System Override Access</h5>
+<p class="text-xs text-on-surface-variant">Evelyn currently holds "Key-Holder" status. This bypasses point-of-sale locks during maintenance.</p>
+</div>
+<button class="ml-auto text-sm font-bold text-error">Revoke Access</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Shift Overview (Bento Piece) -->
+<div class="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="bg-secondary-fixed text-on-secondary-fixed p-6 rounded-xl flex flex-col justify-between h-40">
+<span class="material-symbols-outlined text-3xl" data-icon="event_available">event_available</span>
+<div>
+<p class="text-3xl font-headline font-extrabold tracking-tight">12</p>
+<p class="text-sm font-medium uppercase tracking-wider opacity-80">Scheduled Curators</p>
+</div>
+</div>
+<div class="bg-primary-fixed text-on-primary-fixed p-6 rounded-xl flex flex-col justify-between h-40">
+<span class="material-symbols-outlined text-3xl" data-icon="hourglass_empty">hourglass_empty</span>
+<div>
+<p class="text-3xl font-headline font-extrabold tracking-tight">168h</p>
+<p class="text-sm font-medium uppercase tracking-wider opacity-80">Weekly Coverage</p>
+</div>
+</div>
+<div class="bg-surface-container-high p-6 rounded-xl flex flex-col justify-between h-40">
+<span class="material-symbols-outlined text-3xl text-primary" data-icon="security">security</span>
+<div>
+<p class="text-3xl font-headline font-extrabold tracking-tight text-on-background">Tier 2</p>
+<p class="text-sm font-medium uppercase tracking-wider text-on-surface-variant">Security Protocol</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Floating Action Button (As per suppression rules, only on Home/Dashboard, but we'll include a subtle helper for Staff view) -->
+<!-- Not rendered as per instructions to suppress on Details/Focused screens -->
+</body></html>

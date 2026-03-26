@@ -1,0 +1,72 @@
+[
+  {
+    "slug": "executive-overview",
+    "screen_id": "c41290bb6b3c49daaf584818fbec282f",
+    "stitch_name": "projects/2327673696871788694/screens/c41290bb6b3c49daaf584818fbec282f",
+    "title": "Executive Overview",
+    "local_files": {
+      "screenshot": "executive-overview\\screenshot.webp",
+      "html": "executive-overview\\screen.html"
+    }
+  },
+  {
+    "slug": "order-audit-ledger",
+    "screen_id": "bd729c55e4944488bb465b9cc44e19ee",
+    "stitch_name": "projects/2327673696871788694/screens/bd729c55e4944488bb465b9cc44e19ee",
+    "title": "Order Audit Ledger (Synced)",
+    "local_files": {
+      "screenshot": "order-audit-ledger\\screenshot.webp",
+      "html": "order-audit-ledger\\screen.html"
+    }
+  },
+  {
+    "slug": "supplier-hub",
+    "screen_id": "46aa7e73c37a46998ef3899377ae7aaf",
+    "stitch_name": "projects/2327673696871788694/screens/46aa7e73c37a46998ef3899377ae7aaf",
+    "title": "Supplier Hub (Synced)",
+    "local_files": {
+      "screenshot": "supplier-hub\\screenshot.webp",
+      "html": "supplier-hub\\screen.html"
+    }
+  },
+  {
+    "slug": "analytics-insights",
+    "screen_id": "e0ae24d061944017a964a1a4fbc82817",
+    "stitch_name": "projects/2327673696871788694/screens/e0ae24d061944017a964a1a4fbc82817",
+    "title": "Analytics & Insights (Synced)",
+    "local_files": {
+      "screenshot": "analytics-insights\\screenshot.webp",
+      "html": "analytics-insights\\screen.html"
+    }
+  },
+  {
+    "slug": "new-entry-hub",
+    "screen_id": "376fb70716e64c8c9de7af90b98df7cc",
+    "stitch_name": "projects/2327673696871788694/screens/376fb70716e64c8c9de7af90b98df7cc",
+    "title": "New Entry Hub (Synced)",
+    "local_files": {
+      "screenshot": "new-entry-hub\\screenshot.webp",
+      "html": "new-entry-hub\\screen.html"
+    }
+  },
+  {
+    "slug": "inventory-ledger",
+    "screen_id": "f98f213ca4bf42ba888b56a17d6ea2cf",
+    "stitch_name": "projects/2327673696871788694/screens/f98f213ca4bf42ba888b56a17d6ea2cf",
+    "title": "Inventory Ledger (Synced)",
+    "local_files": {
+      "screenshot": "inventory-ledger\\screenshot.webp",
+      "html": "inventory-ledger\\screen.html"
+    }
+  },
+  {
+    "slug": "staff-permissions",
+    "screen_id": "4a460c16c35841d59faef891a5a12127",
+    "stitch_name": "projects/2327673696871788694/screens/4a460c16c35841d59faef891a5a12127",
+    "title": "Staff & Permissions (Synced)",
+    "local_files": {
+      "screenshot": "staff-permissions\\screenshot.webp",
+      "html": "staff-permissions\\screen.html"
+    }
+  }
+]

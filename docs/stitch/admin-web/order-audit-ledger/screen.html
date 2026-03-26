@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Order Audit Ledger | The Tactile Archive</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Public+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary-container": "#223d64",
+                        "on-surface-variant": "#43474c",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-fixed-variant": "#5a4300",
+                        "on-secondary-container": "#745c00",
+                        "primary-fixed-dim": "#adc7f7",
+                        "primary-fixed": "#d6e3ff",
+                        "background": "#fbf9f4",
+                        "tertiary": "#322400",
+                        "surface-container-low": "#f5f3ee",
+                        "secondary-fixed-dim": "#e9c349",
+                        "on-tertiary-container": "#d09f05",
+                        "secondary-container": "#fed65b",
+                        "on-secondary-fixed": "#241a00",
+                        "surface-container": "#f0eee9",
+                        "on-error-container": "#93000a",
+                        "inverse-surface": "#30312e",
+                        "secondary-fixed": "#ffe088",
+                        "on-surface": "#1b1c19",
+                        "surface": "#fbf9f4",
+                        "on-error": "#ffffff",
+                        "error": "#ba1a1a",
+                        "surface-bright": "#fbf9f4",
+                        "on-primary-fixed": "#001b3c",
+                        "surface-dim": "#dbdad5",
+                        "primary": "#06274d",
+                        "on-tertiary-fixed": "#251a00",
+                        "surface-variant": "#e4e2dd",
+                        "on-secondary": "#ffffff",
+                        "on-background": "#1b1c19",
+                        "inverse-on-surface": "#f2f1ec",
+                        "tertiary-fixed-dim": "#f3bf32",
+                        "on-primary": "#ffffff",
+                        "secondary": "#735c00",
+                        "on-secondary-fixed-variant": "#574500",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-fixed-variant": "#2d476f",
+                        "surface-container-high": "#eae8e3",
+                        "tertiary-fixed": "#ffdf99",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#74777d",
+                        "tertiary-container": "#4d3900",
+                        "surface-tint": "#455f88",
+                        "surface-container-highest": "#e4e2dd",
+                        "outline-variant": "#c4c6cd",
+                        "inverse-primary": "#adc7f7",
+                        "on-primary-container": "#8ea8d6"
+                    },
+                    fontFamily: {
+                        "headline": ["Manrope"],
+                        "body": ["Public Sans"],
+                        "label": ["Public Sans"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .ink-gradient {
+            background: linear-gradient(45deg, #06274d 0%, #223d64 100%);
+        }
+        .ledger-row:hover {
+            background-color: rgba(255, 255, 255, 0.6);
+        }
+        .vellum-blur {
+            backdrop-filter: blur(20px);
+            background-color: rgba(251, 249, 244, 0.85);
+        }
+    </style>
+</head>
+<body class="bg-background font-body text-on-background min-h-screen">
+<!-- SideNavBar (Rail Implementation) -->
+<aside class="fixed left-0 top-0 h-full flex flex-col py-8 h-screen w-64 bg-[#f0eee9] dark:bg-slate-900 font-['Manrope'] tracking-tight">
+<div class="px-6 mb-12">
+<h1 class="text-xl font-bold text-[#1b1c19] dark:text-slate-100">The Tactile Archive</h1>
+<p class="text-xs uppercase tracking-widest text-on-surface-variant opacity-70 mt-1">Premium Stationery POS</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center px-6 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
+<span>Dashboard</span>
+</a>
+<a class="flex items-center px-6 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="edit_note">edit_note</span>
+<span>Inventory</span>
+</a>
+<a class="flex items-center px-6 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="badge">badge</span>
+<span>Staff</span>
+</a>
+<a class="flex items-center px-6 py-4 text-[#06274d] dark:text-blue-300 font-bold border-r-2 border-[#06274d] dark:border-blue-400 bg-[#ffffff]/50 dark:bg-white/5 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="shopping_bag">shopping_bag</span>
+<span>Orders</span>
+</a>
+<a class="flex items-center px-6 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="analytics">analytics</span>
+<span>Analytics</span>
+</a>
+<a class="flex items-center px-6 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="inventory_2">inventory_2</span>
+<span>Suppliers</span>
+</a>
+</nav>
+<div class="px-6 pt-8 border-t border-outline-variant/20">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full bg-surface-dim overflow-hidden">
+<img alt="Manager Profile" data-alt="Manager profile portrait with a professional and friendly expression in soft studio lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAf4pzdTTcjl0_aIAr2jvpeRNV6W8Ujeaatcr534Hlf3Jac7HGD0QzKXW3ScB5NZ-Of5gOsax9ezWxCXTIFVWdILjLQQldarE_au5D5EoJA7SjgfC3ANWi9B2ZNcfbXEl0ZAahINBZvrItTrxUgT9jbya8BzKhQ6-z1ThaXheAlzhuaAj9LjFmiUvpgNfyY3YXgkj0LdueeFYsg_abuemBqznT1GAetNM6AXG8zaZNQEcd9DPRmkU2NkDa2m_dzSf--pUQ7gApQKzc"/>
+</div>
+<div>
+<p class="text-sm font-bold text-on-surface">Julian Thorne</p>
+<p class="text-xs text-on-surface-variant">Archivist</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="ml-64 min-h-screen">
+<!-- TopAppBar -->
+<header class="sticky top-0 z-40 flex items-center justify-between px-8 w-full h-20 bg-[#fbf9f4]/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-[#c4c6cd]/20 dark:border-slate-800/40">
+<div class="flex items-center gap-6">
+<h2 class="font-headline text-2xl font-bold tracking-tight text-primary">Order Audit Ledger</h2>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm" data-icon="search">search</span>
+<input class="bg-surface-container-low border-none rounded-lg pl-10 pr-4 py-2 text-sm w-80 focus:ring-1 focus:ring-primary transition-all" placeholder="Search ID, Cashier, or Amount..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+<button class="ink-gradient text-on-primary px-6 py-2 rounded-lg text-sm font-semibold shadow-sm hover:opacity-90 transition-all">
+                    Export Audit Report
+                </button>
+</div>
+</header>
+<div class="p-8 space-y-8">
+<!-- Shift Health Bento Summary -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Shift Totals -->
+<div class="col-span-1 bg-surface-container-lowest p-6 rounded-xl border border-outline-variant/10">
+<p class="text-xs uppercase tracking-widest text-on-surface-variant mb-4">Shift Health Summary</p>
+<div class="space-y-4">
+<div class="flex justify-between items-end">
+<div>
+<p class="text-xs text-on-surface-variant">Expected Cash</p>
+<p class="font-headline text-2xl font-bold text-on-surface">$4,280.50</p>
+</div>
+<div class="text-right">
+<p class="text-xs text-on-surface-variant">Reported Cash</p>
+<p class="font-headline text-2xl font-bold text-primary">$4,272.00</p>
+</div>
+</div>
+<div class="pt-4 border-t border-outline-variant/20 flex justify-between items-center">
+<span class="text-sm font-medium text-error flex items-center gap-1">
+<span class="material-symbols-outlined text-sm" data-icon="trending_down">trending_down</span>
+                                -$8.50 Discrepancy
+                            </span>
+<span class="text-xs text-on-surface-variant italic">Shift #1402 • Open</span>
+</div>
+</div>
+</div>
+<!-- Flagged Transactions Counter -->
+<div class="col-span-1 bg-error-container/30 p-6 rounded-xl border border-error/10 relative overflow-hidden">
+<div class="absolute -right-4 -bottom-4 opacity-5">
+<span class="material-symbols-outlined text-9xl text-error" data-icon="flag">flag</span>
+</div>
+<p class="text-xs uppercase tracking-widest text-on-error-container mb-4">Pending Flags</p>
+<div class="flex items-baseline gap-2">
+<p class="font-headline text-5xl font-extrabold text-on-error-container">04</p>
+<p class="text-sm font-medium text-on-error-container/70">Requires Attention</p>
+</div>
+<button class="mt-6 text-xs font-bold text-on-error-container flex items-center gap-1 hover:underline">
+                        Review Flags <span class="material-symbols-outlined text-xs" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+<!-- Real-time Status Card -->
+<div class="col-span-1 bg-surface-container p-6 rounded-xl flex flex-col justify-between">
+<div>
+<p class="text-xs uppercase tracking-widest text-on-surface-variant mb-4">Terminal Status</p>
+<div class="flex items-center gap-3">
+<div class="flex gap-1">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+<span class="w-2 h-2 rounded-full bg-primary"></span>
+<span class="w-2 h-2 rounded-full bg-primary opacity-30"></span>
+</div>
+<p class="text-sm font-medium">3 Registers Active</p>
+</div>
+</div>
+<div class="mt-4 flex gap-2 overflow-x-auto pb-2">
+<div class="bg-surface-container-lowest px-3 py-2 rounded-lg border border-outline-variant/10 shrink-0">
+<p class="text-[10px] uppercase text-on-surface-variant">Reg 01</p>
+<p class="text-xs font-bold">$1,240.00</p>
+</div>
+<div class="bg-surface-container-lowest px-3 py-2 rounded-lg border border-outline-variant/10 shrink-0">
+<p class="text-[10px] uppercase text-on-surface-variant">Reg 02</p>
+<p class="text-xs font-bold">$985.50</p>
+</div>
+<div class="bg-surface-container-lowest px-3 py-2 rounded-lg border border-outline-variant/10 shrink-0">
+<p class="text-[10px] uppercase text-on-surface-variant">Reg 03</p>
+<p class="text-xs font-bold">$2,046.50</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Ledger Table Section -->
+<section class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/10 overflow-hidden">
+<div class="p-6 border-b border-outline-variant/10 flex justify-between items-center">
+<h3 class="font-headline text-lg font-bold">Transaction Ledger</h3>
+<div class="flex items-center gap-3">
+<button class="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-outline-variant/30 rounded-lg hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="filter_list">filter_list</span>
+                            Filters
+                        </button>
+<button class="flex items-center gap-2 px-3 py-1.5 text-xs font-medium border border-outline-variant/30 rounded-lg hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="calendar_month">calendar_month</span>
+                            Nov 14, 2023
+                        </button>
+</div>
+</div>
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-surface-container-low/50">
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Order ID</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Cashier</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Timestamp</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Status</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant text-right">Amount</th>
+<th class="px-6 py-4 text-[10px] uppercase tracking-widest font-bold text-on-surface-variant text-center">Action</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<!-- Ledger Entry 1 -->
+<tr class="ledger-row transition-colors group">
+<td class="px-6 py-5">
+<span class="font-mono text-xs font-bold text-primary">#ARC-99321</span>
+</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded-full bg-secondary-container/40 flex items-center justify-center text-[10px] font-bold text-on-secondary-container">EA</div>
+<span class="text-sm font-medium">Eleanor Ashby</span>
+</div>
+</td>
+<td class="px-6 py-5 text-xs text-on-surface-variant">14:22:10</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-tertiary-fixed text-on-tertiary-fixed-variant">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+                                    COMPLETED
+                                </span>
+</td>
+<td class="px-6 py-5 text-sm font-headline font-bold text-right">$145.20</td>
+<td class="px-6 py-5 text-center">
+<button class="opacity-0 group-hover:opacity-100 p-1.5 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg" data-icon="receipt_long">receipt_long</span>
+</button>
+</td>
+</tr>
+<!-- Ledger Entry 2 (Flagged) -->
+<tr class="ledger-row transition-colors group bg-error-container/5">
+<td class="px-6 py-5">
+<span class="font-mono text-xs font-bold text-error">#ARC-99320</span>
+</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded-full bg-secondary-container/40 flex items-center justify-center text-[10px] font-bold text-on-secondary-container">MW</div>
+<span class="text-sm font-medium">Marcus Webb</span>
+</div>
+</td>
+<td class="px-6 py-5 text-xs text-on-surface-variant">14:18:45</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-error-container text-on-error-container">
+<span class="material-symbols-outlined text-[10px]" data-icon="flag" data-weight="fill" style="font-variation-settings: 'FILL' 1;">flag</span>
+                                    FLAGGED
+                                </span>
+</td>
+<td class="px-6 py-5 text-sm font-headline font-bold text-right text-error">$1,200.00</td>
+<td class="px-6 py-5 text-center">
+<button class="p-1.5 text-error hover:scale-110 transition-all">
+<span class="material-symbols-outlined text-lg" data-icon="gavel">gavel</span>
+</button>
+</td>
+</tr>
+<!-- Ledger Entry 3 -->
+<tr class="ledger-row transition-colors group">
+<td class="px-6 py-5">
+<span class="font-mono text-xs font-bold text-primary">#ARC-99319</span>
+</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded-full bg-secondary-container/40 flex items-center justify-center text-[10px] font-bold text-on-secondary-container">EA</div>
+<span class="text-sm font-medium">Eleanor Ashby</span>
+</div>
+</td>
+<td class="px-6 py-5 text-xs text-on-surface-variant">14:05:12</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-tertiary-fixed text-on-tertiary-fixed-variant">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+                                    COMPLETED
+                                </span>
+</td>
+<td class="px-6 py-5 text-sm font-headline font-bold text-right">$42.00</td>
+<td class="px-6 py-5 text-center">
+<button class="opacity-0 group-hover:opacity-100 p-1.5 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg" data-icon="receipt_long">receipt_long</span>
+</button>
+</td>
+</tr>
+<!-- Ledger Entry 4 (Refunded) -->
+<tr class="ledger-row transition-colors group">
+<td class="px-6 py-5">
+<span class="font-mono text-xs font-bold text-on-surface-variant">#ARC-99318</span>
+</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded-full bg-secondary-container/40 flex items-center justify-center text-[10px] font-bold text-on-secondary-container">LW</div>
+<span class="text-sm font-medium">Lydia Wells</span>
+</div>
+</td>
+<td class="px-6 py-5 text-xs text-on-surface-variant">13:50:30</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-surface-container-highest text-on-surface-variant">
+<span class="material-symbols-outlined text-[10px]" data-icon="history">history</span>
+                                    REFUNDED
+                                </span>
+</td>
+<td class="px-6 py-5 text-sm font-headline font-bold text-right line-through text-on-surface-variant">$88.40</td>
+<td class="px-6 py-5 text-center">
+<button class="opacity-0 group-hover:opacity-100 p-1.5 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg" data-icon="info">info</span>
+</button>
+</td>
+</tr>
+<!-- Ledger Entry 5 -->
+<tr class="ledger-row transition-colors group">
+<td class="px-6 py-5">
+<span class="font-mono text-xs font-bold text-primary">#ARC-99317</span>
+</td>
+<td class="px-6 py-5">
+<div class="flex items-center gap-3">
+<div class="w-6 h-6 rounded-full bg-secondary-container/40 flex items-center justify-center text-[10px] font-bold text-on-secondary-container">LW</div>
+<span class="text-sm font-medium">Lydia Wells</span>
+</div>
+</td>
+<td class="px-6 py-5 text-xs text-on-surface-variant">13:42:00</td>
+<td class="px-6 py-5">
+<span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-tertiary-fixed text-on-tertiary-fixed-variant">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+                                    COMPLETED
+                                </span>
+</td>
+<td class="px-6 py-5 text-sm font-headline font-bold text-right">$210.15</td>
+<td class="px-6 py-5 text-center">
+<button class="opacity-0 group-hover:opacity-100 p-1.5 text-on-surface-variant hover:text-primary transition-all">
+<span class="material-symbols-outlined text-lg" data-icon="receipt_long">receipt_long</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+<div class="p-4 bg-surface-container-low/30 flex justify-between items-center text-xs text-on-surface-variant font-medium">
+<p>Showing 1-5 of 142 transactions</p>
+<div class="flex gap-1">
+<button class="w-8 h-8 rounded flex items-center justify-center hover:bg-surface-container transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="chevron_left">chevron_left</span>
+</button>
+<button class="w-8 h-8 rounded bg-primary text-on-primary flex items-center justify-center shadow-sm">1</button>
+<button class="w-8 h-8 rounded flex items-center justify-center hover:bg-surface-container transition-all">2</button>
+<button class="w-8 h-8 rounded flex items-center justify-center hover:bg-surface-container transition-all">3</button>
+<button class="w-8 h-8 rounded flex items-center justify-center hover:bg-surface-container transition-all">
+<span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</section>
+</div>
+</main>
+<!-- Contextual FAB (Only for high-level audit tasks) -->
+<button class="fixed bottom-8 right-8 ink-gradient w-16 h-16 rounded-full flex items-center justify-center text-on-primary shadow-xl hover:scale-105 transition-all z-50">
+<span class="material-symbols-outlined text-2xl" data-icon="print">print</span>
+</button>
+</body></html>

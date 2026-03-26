@@ -1,0 +1,1248 @@
+openapi: 3.1.0
+info:
+  title: Inventory Platform API
+  version: 0.1.0
+  description: |
+    Multi-tenant inventory ledger + sync. **Card tenders require an active connection to the central API**
+    by default; offline checkout is allowed for cash (and other offline-capable tenders) per tenant policy.
+
+servers:
+  - url: http://localhost:8000
+    description: Local
+
+tags:
+  - name: Health
+  - name: Devices
+  - name: Sync
+  - name: Admin
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Liveness
+      operationId: healthCheck
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /v1/devices/enroll:
+    post:
+      tags: [Devices]
+      summary: Exchange enrollment token for device credentials
+      operationId: enrollDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EnrollRequest"
+      responses:
+        "200":
+          description: Device enrolled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnrollResponse"
+        "401":
+          description: Invalid or expired token
+
+  /v1/sync/pull:
+    get:
+      tags: [Sync]
+      summary: Pull server changes since cursor
+      operationId: syncPull
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            nullable: true
+        - name: shop_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Delta bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncPullResponse"
+
+  /v1/sync/push:
+    post:
+      tags: [Sync]
+      summary: Push pending client events (idempotent batches)
+      operationId: syncPush
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushBatchRequest"
+      responses:
+        "200":
+          description: Applied + conflicts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PushBatchResponse"
+        "409":
+          description: Reconciliation required
+
+  /v1/admin/dashboard-summary:
+    get:
+      tags: [Admin]
+      summary: Executive overview KPIs and recent activity
+      operationId: adminDashboardSummary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: stock_alert_threshold
+          in: query
+          schema:
+            type: integer
+            default: 5
+        - name: activity_limit
+          in: query
+          schema:
+            type: integer
+            default: 12
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /v1/admin/transactions:
+    get:
+      tags: [Admin]
+      summary: List transactions across shops (operator)
+      operationId: adminListTransactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: shop_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+
+  /v1/admin/analytics/sales-series:
+    get:
+      tags: [Admin]
+      summary: Daily posted sales aggregates for charts
+      operationId: adminSalesSeries
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesSeriesResponse"
+
+  /v1/admin/suppliers:
+    get:
+      tags: [Admin]
+      summary: List suppliers
+      operationId: adminListSuppliers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SupplierRecord"
+    post:
+      tags: [Admin]
+      summary: Create supplier
+      operationId: adminCreateSupplier
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSupplierRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierRecord"
+
+  /v1/admin/suppliers/{supplier_id}:
+    patch:
+      tags: [Admin]
+      summary: Update supplier
+      operationId: adminPatchSupplier
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: supplier_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchSupplierRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierRecord"
+
+  /v1/admin/inventory/movements:
+    get:
+      tags: [Admin]
+      summary: Stock movement journal (keyset pagination)
+      operationId: adminListStockMovements
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: shop_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: movement_type
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockMovementListResponse"
+
+  /v1/admin/operators:
+    get:
+      tags: [Admin]
+      summary: List operator accounts
+      operationId: adminListOperators
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/OperatorRecord"
+
+  /v1/admin/operators/{operator_id}:
+    patch:
+      tags: [Admin]
+      summary: Update operator role / active flag
+      operationId: adminPatchOperator
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: operator_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchOperatorRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperatorRecord"
+
+  /v1/admin/shops:
+    post:
+      tags: [Admin]
+      summary: Create shop
+      operationId: adminCreateShop
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, name]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  tenant_id: { type: string, format: uuid }
+                  name: { type: string }
+
+  /v1/admin/products:
+    post:
+      tags: [Admin]
+      summary: Create catalog product
+      operationId: adminCreateProduct
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id, sku, name, unit_price_cents]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+                sku:
+                  type: string
+                name:
+                  type: string
+                unit_price_cents:
+                  type: integer
+                category:
+                  type: string
+                  nullable: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  tenant_id: { type: string, format: uuid }
+                  sku: { type: string }
+                  name: { type: string }
+                  unit_price_cents: { type: integer }
+                  category: { type: string, nullable: true }
+        "409":
+          description: Duplicate SKU for tenant
+
+  /v1/admin/auth/login:
+    post:
+      tags: [Admin]
+      summary: Operator login (JWT for admin routes)
+      operationId: adminLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Bearer access token
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [access_token, token_type, expires_in]
+                properties:
+                  access_token:
+                    type: string
+                  token_type:
+                    type: string
+                    example: bearer
+                  expires_in:
+                    type: integer
+
+  /v1/transactions:
+    get:
+      tags: [Sync]
+      summary: List recent transactions for this device and shop (keyset pagination)
+      operationId: listDeviceTransactions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: shop_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque cursor from a prior response next_cursor.
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Comma-separated posted,refunded,pending.
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Substring match on line product name or SKU.
+      responses:
+        "200":
+          description: Newest first; includes next_cursor when more rows exist.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+
+  /v1/transactions/shift-summary:
+    get:
+      tags: [Sync]
+      summary: Aggregate sales for this device and shop since a timestamp
+      operationId: shiftSummary
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: shop_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Defaults to start of current UTC day.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShiftSummary"
+
+  /v1/admin/shops/{shop_id}/default-tax:
+    patch:
+      tags: [Admin]
+      summary: Set shop default tax rate (basis points)
+      operationId: adminPatchShopDefaultTax
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: shop_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [default_tax_rate_bps]
+              properties:
+                default_tax_rate_bps:
+                  type: integer
+                  minimum: 0
+                  maximum: 100000
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shop_id:
+                    type: string
+                    format: uuid
+                  default_tax_rate_bps:
+                    type: integer
+
+  /v1/admin/shops/{shop_id}/product-taxes:
+    get:
+      tags: [Admin]
+      summary: List per-product tax overrides for a shop
+      operationId: adminListShopProductTaxes
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: shop_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ShopProductTaxRecord"
+
+  /v1/admin/shops/{shop_id}/product-taxes/{product_id}:
+    put:
+      tags: [Admin]
+      summary: Upsert per-product tax override
+      operationId: adminUpsertShopProductTax
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: shop_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tax_exempt]
+              properties:
+                tax_exempt:
+                  type: boolean
+                effective_tax_rate_bps:
+                  type: integer
+                  nullable: true
+                  minimum: 0
+                  maximum: 100000
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ShopProductTaxRecord"
+
+    delete:
+      tags: [Admin]
+      summary: Remove per-product tax override
+      operationId: adminDeleteShopProductTax
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: shop_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: product_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Removed
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    EnrollRequest:
+      type: object
+      required: [enrollment_token, device_fingerprint, platform]
+      properties:
+        enrollment_token:
+          type: string
+        device_fingerprint:
+          type: string
+          description: Best-effort device id from app
+        platform:
+          type: string
+          example: android
+
+    EnrollResponse:
+      type: object
+      required: [access_token, refresh_token, tenant_id, shop_ids, expires_in]
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        tenant_id:
+          type: string
+          format: uuid
+        shop_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        expires_in:
+          type: integer
+          description: Access token TTL in seconds
+
+    TenderType:
+      type: string
+      enum: [cash, card, gateway]
+
+    PaymentAllocation:
+      type: object
+      required: [tender_type, amount_cents]
+      properties:
+        tender_type:
+          $ref: "#/components/schemas/TenderType"
+        amount_cents:
+          type: integer
+        gateway_provider:
+          type: string
+          nullable: true
+        external_ref:
+          type: string
+          nullable: true
+        metadata:
+          type: object
+          additionalProperties: true
+
+    SaleLine:
+      type: object
+      required: [product_id, quantity, unit_price_cents]
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 1
+        unit_price_cents:
+          type: integer
+          minimum: 0
+
+    SaleCompletedEvent:
+      type: object
+      required: [type, shop_id, client_mutation_id, lines, payments, occurred_at]
+      description: |
+        Payment `amount_cents` must sum to **subtotal + tax** (grand total). The server recomputes tax from
+        shop defaults and per-product overrides; client totals should match server rules.
+      properties:
+        type:
+          type: string
+          const: sale_completed
+        shop_id:
+          type: string
+          format: uuid
+        client_mutation_id:
+          type: string
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/SaleLine"
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentAllocation"
+        occurred_at:
+          type: string
+          format: date-time
+        note:
+          type: string
+          nullable: true
+      description: |
+        **Connectivity:** If any `payment` uses `tender_type: card`, the client MUST submit this event
+        while online; the server rejects offline-queued card sales unless a future tenant policy explicitly
+        allows otherwise.
+
+    LedgerAdjustmentEvent:
+      type: object
+      required: [type, shop_id, client_mutation_id, product_id, quantity_delta]
+      properties:
+        type:
+          type: string
+          const: ledger_adjustment
+        shop_id:
+          type: string
+          format: uuid
+        client_mutation_id:
+          type: string
+        product_id:
+          type: string
+          format: uuid
+        quantity_delta:
+          type: integer
+          description: Positive to add stock, negative to remove (cannot drive on-hand below zero).
+        reason:
+          type: string
+          nullable: true
+          description: Stored as movement_type (truncated to 32 chars); default adjustment.
+
+    ClientEvent:
+      oneOf:
+        - $ref: "#/components/schemas/SaleCompletedEvent"
+        - $ref: "#/components/schemas/LedgerAdjustmentEvent"
+      discriminator:
+        propertyName: type
+        mapping:
+          sale_completed: "#/components/schemas/SaleCompletedEvent"
+          ledger_adjustment: "#/components/schemas/LedgerAdjustmentEvent"
+
+    PushBatchRequest:
+      type: object
+      required: [device_id, idempotency_key, events]
+      properties:
+        device_id:
+          type: string
+          format: uuid
+        idempotency_key:
+          type: string
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClientEvent"
+
+    AppliedEventResult:
+      type: object
+      properties:
+        client_mutation_id:
+          type: string
+        server_transaction_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          type: string
+          enum: [accepted, duplicate, rejected]
+        detail:
+          type: string
+          nullable: true
+        conflict:
+          type: object
+          nullable: true
+          description: |
+            When status is rejected, machine-readable context (code + fields).
+            Clients should prefer conflict.code over parsing detail.
+          additionalProperties: true
+
+    TransactionLineRecord:
+      type: object
+      properties:
+        product_id:
+          type: string
+          format: uuid
+        product_sku:
+          type: string
+          nullable: true
+        product_name:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+        unit_price_cents:
+          type: integer
+
+    PaymentRecord:
+      type: object
+      properties:
+        tender_type:
+          type: string
+        amount_cents:
+          type: integer
+
+    TransactionRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        shop_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+        status:
+          type: string
+        total_cents:
+          type: integer
+          description: Grand total including tax.
+        tax_cents:
+          type: integer
+        client_mutation_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        lines:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransactionLineRecord"
+        payments:
+          type: array
+          items:
+            $ref: "#/components/schemas/PaymentRecord"
+
+    TransactionListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/TransactionRecord"
+        next_cursor:
+          type: string
+          nullable: true
+
+    ShiftSummary:
+      type: object
+      required: [transaction_count, total_cents, since]
+      properties:
+        transaction_count:
+          type: integer
+        total_cents:
+          type: integer
+        since:
+          type: string
+          format: date-time
+
+    ShopProductTaxRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        shop_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        tax_exempt:
+          type: boolean
+        effective_tax_rate_bps:
+          type: integer
+          nullable: true
+
+    PushBatchResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppliedEventResult"
+        new_cursor:
+          type: string
+
+    SyncPullResponse:
+      type: object
+      properties:
+        cursor:
+          type: string
+        products:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductDTO"
+        stock_snapshots:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockSnapshotDTO"
+        policy:
+          $ref: "#/components/schemas/TenantOfflinePolicy"
+        currency:
+          $ref: "#/components/schemas/TenantCurrency"
+        shop_default_tax_rate_bps:
+          type: integer
+
+    ProductDTO:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sku:
+          type: string
+        name:
+          type: string
+        category:
+          type: string
+          nullable: true
+        unit_price_cents:
+          type: integer
+        active:
+          type: boolean
+        effective_tax_rate_bps:
+          type: integer
+          description: Applicable rate for this shop after overrides (0 if exempt).
+        tax_exempt:
+          type: boolean
+
+    StockSnapshotDTO:
+      type: object
+      properties:
+        shop_id:
+          type: string
+          format: uuid
+        product_id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          description: Derived from ledger
+
+    TenantOfflinePolicy:
+      type: object
+      properties:
+        tier:
+          type: string
+          enum: [strict, soft, emergency]
+        max_offline_minutes:
+          type: integer
+          example: 60
+
+    TenantCurrency:
+      type: object
+      required: [code, exponent]
+      properties:
+        code:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO-4217 code (e.g. USD, EUR, JPY).
+        exponent:
+          type: integer
+          description: Minor units exponent (2 for USD, 0 for JPY).
+        symbol_override:
+          type: string
+          nullable: true
+
+    RecentActivityItem:
+      type: object
+      required: [kind, ref_id, created_at, detail]
+      properties:
+        kind:
+          type: string
+        ref_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+        detail:
+          type: string
+
+    DashboardSummary:
+      type: object
+      required:
+        - posted_transaction_count
+        - gross_sales_cents
+        - stock_alert_count
+        - supplier_count
+        - shop_count
+        - product_count
+        - tenant_count
+        - recent_activity
+      properties:
+        posted_transaction_count:
+          type: integer
+        gross_sales_cents:
+          type: integer
+        stock_alert_count:
+          type: integer
+        supplier_count:
+          type: integer
+        shop_count:
+          type: integer
+        product_count:
+          type: integer
+        tenant_count:
+          type: integer
+        recent_activity:
+          type: array
+          items:
+            $ref: "#/components/schemas/RecentActivityItem"
+
+    SalesSeriesPoint:
+      type: object
+      required: [day, gross_cents, transaction_count]
+      properties:
+        day:
+          type: string
+        gross_cents:
+          type: integer
+        transaction_count:
+          type: integer
+
+    SalesSeriesResponse:
+      type: object
+      required: [points]
+      properties:
+        points:
+          type: array
+          items:
+            $ref: "#/components/schemas/SalesSeriesPoint"
+
+    SupplierRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+        contact_email:
+          type: string
+          nullable: true
+        contact_phone:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateSupplierRequest:
+      type: object
+      required: [tenant_id, name]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        status:
+          type: string
+        contact_email:
+          type: string
+          format: email
+          nullable: true
+        contact_phone:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    PatchSupplierRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        contact_email:
+          type: string
+          format: email
+          nullable: true
+        contact_phone:
+          type: string
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+
+    StockMovementRow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        shop_id:
+          type: string
+          format: uuid
+        shop_name:
+          type: string
+          nullable: true
+        product_id:
+          type: string
+          format: uuid
+        product_sku:
+          type: string
+          nullable: true
+        product_name:
+          type: string
+          nullable: true
+        quantity_delta:
+          type: integer
+        movement_type:
+          type: string
+        transaction_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    StockMovementListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockMovementRow"
+        next_cursor:
+          type: string
+          nullable: true
+
+    OperatorRecord:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        role:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    PatchOperatorRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          nullable: true
+        is_active:
+          type: boolean
+          nullable: true

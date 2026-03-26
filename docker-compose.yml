@@ -1,0 +1,76 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ims}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ims_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-ims}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ims_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ims} -d ${POSTGRES_DB:-ims}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-ims}:${POSTGRES_PASSWORD:-ims_dev_change_me}@postgres:5432/${POSTGRES_DB:-ims}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-dev-api-token}
+      ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-dev@gmail.com}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-123}
+    ports:
+      # Default 8001 avoids clashing with other stacks on :8000 (override with API_PUBLISH_PORT).
+      - "${API_PUBLISH_PORT:-8001}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    command: python -m app.worker
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-ims}:${POSTGRES_PASSWORD:-ims_dev_change_me}@postgres:5432/${POSTGRES_DB:-ims}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  admin-web:
+    build:
+      context: ./apps/admin-web
+      dockerfile: Dockerfile
+    environment:
+      API_INTERNAL_URL: http://api:8000
+      # Plain HTTP on LAN / localhost: keep "false". Set "true" only behind HTTPS.
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+    ports:
+      - "${ADMIN_WEB_PUBLISH_PORT:-3000}:3000"
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  ims_pgdata:

@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Supplier Hub | The Tactile Archive</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&amp;family=Public+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary-container": "#223d64",
+              "on-surface-variant": "#43474c",
+              "error-container": "#ffdad6",
+              "on-tertiary-fixed-variant": "#5a4300",
+              "on-secondary-container": "#745c00",
+              "primary-fixed-dim": "#adc7f7",
+              "primary-fixed": "#d6e3ff",
+              "background": "#fbf9f4",
+              "tertiary": "#322400",
+              "surface-container-low": "#f5f3ee",
+              "secondary-fixed-dim": "#e9c349",
+              "on-tertiary-container": "#d09f05",
+              "secondary-container": "#fed65b",
+              "on-secondary-fixed": "#241a00",
+              "surface-container": "#f0eee9",
+              "on-error-container": "#93000a",
+              "inverse-surface": "#30312e",
+              "secondary-fixed": "#ffe088",
+              "on-surface": "#1b1c19",
+              "surface": "#fbf9f4",
+              "on-error": "#ffffff",
+              "error": "#ba1a1a",
+              "surface-bright": "#fbf9f4",
+              "on-primary-fixed": "#001b3c",
+              "surface-dim": "#dbdad5",
+              "primary": "#06274d",
+              "on-tertiary-fixed": "#251a00",
+              "surface-variant": "#e4e2dd",
+              "on-secondary": "#ffffff",
+              "on-background": "#1b1c19",
+              "inverse-on-surface": "#f2f1ec",
+              "tertiary-fixed-dim": "#f3bf32",
+              "on-primary": "#ffffff",
+              "secondary": "#735c00",
+              "on-secondary-fixed-variant": "#574500",
+              "on-tertiary": "#ffffff",
+              "on-primary-fixed-variant": "#2d476f",
+              "surface-container-high": "#eae8e3",
+              "tertiary-fixed": "#ffdf99",
+              "surface-container-lowest": "#ffffff",
+              "outline": "#74777d",
+              "tertiary-container": "#4d3900",
+              "surface-tint": "#455f88",
+              "surface-container-highest": "#e4e2dd",
+              "outline-variant": "#c4c6cd",
+              "inverse-primary": "#adc7f7",
+              "on-primary-container": "#8ea8d6"
+            },
+            fontFamily: {
+              "headline": ["Manrope"],
+              "body": ["Public Sans"],
+              "label": ["Public Sans"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .ink-gradient {
+            background: linear-gradient(45deg, #06274d, #223d64);
+        }
+        .vellum-shadow {
+            box-shadow: 0 8px 24px rgba(27, 28, 25, 0.04);
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #fbf9f4; }
+        ::-webkit-scrollbar-thumb { background: #c4c6cd; border-radius: 10px; }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- SideNavBar (Rail Execution from JSON) -->
+<aside class="fixed left-0 top-0 h-full flex flex-col py-8 bg-[#f0eee9] dark:bg-slate-900 h-screen w-64 border-r-0 font-['Manrope'] tracking-tight z-50">
+<div class="px-8 mb-12">
+<h1 class="text-xl font-bold text-[#1b1c19] dark:text-slate-100">The Tactile Archive</h1>
+<p class="text-xs text-on-surface-variant/70 uppercase tracking-widest mt-1">Premium Stationery POS</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center px-8 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="dashboard">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center px-8 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="edit_note">edit_note</span>
+                Inventory
+            </a>
+<a class="flex items-center px-8 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="badge">badge</span>
+                Staff
+            </a>
+<a class="flex items-center px-8 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="shopping_bag">shopping_bag</span>
+                Orders
+            </a>
+<a class="flex items-center px-8 py-4 text-[#43474c] dark:text-slate-400 font-medium hover:bg-[#ffffff]/30 dark:hover:bg-white/10 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="analytics">analytics</span>
+                Analytics
+            </a>
+<!-- Active State: Suppliers -->
+<a class="flex items-center px-8 py-4 text-[#06274d] dark:text-blue-300 font-bold border-r-2 border-[#06274d] dark:border-blue-400 bg-[#ffffff]/50 dark:bg-white/5 transition-colors duration-200 ease-in-out" href="#">
+<span class="material-symbols-outlined mr-4" data-icon="inventory_2">inventory_2</span>
+                Suppliers
+            </a>
+</nav>
+<div class="px-8 mt-auto pt-8 border-t border-outline-variant/10">
+<div class="flex items-center gap-3">
+<img alt="Manager Profile" class="w-10 h-10 rounded-full grayscale hover:grayscale-0 transition-all duration-500" data-alt="professional headshot of a mature store manager in a minimalist studio setting with soft natural light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAVBqrSoGRtb1UukbBtfAdDZzy-06m7sKlxJRe8dDWBcJjzOhR_0WpbpGT3seeU4wlCWq7GdbRyZe1x1MA4j2xsA5sneb5TOx0Xr-EK9ppnM95AspHpZR-uwlkbgFzUlt5ka1KuZEK8x3rJPizB-iiwZ2brv8p3EK74fGT66CN4W_LNRR_c85m5TA66spuUqJ0y1jWdd9pZ383kS7j4KvFfiCmBcSSYizpbTM8k_jbKOZRiIflzuHH10gQ5L1bZvXNot4OBuuhzYa4"/>
+<div class="overflow-hidden">
+<p class="text-sm font-bold text-on-surface truncate">Elias Thorne</p>
+<p class="text-[10px] text-on-surface-variant truncate uppercase tracking-tighter">Archivist General</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen pb-12">
+<!-- TopAppBar (Execution from JSON) -->
+<header class="sticky top-0 z-40 flex items-center justify-between px-8 ml-0 w-full h-20 bg-[#fbf9f4]/80 dark:bg-slate-950/80 backdrop-blur-md border-b border-[#c4c6cd]/20 dark:border-slate-800/40 transition-all duration-300">
+<div class="flex items-center flex-1 max-w-xl">
+<span class="material-symbols-outlined text-[#43474c] absolute ml-4 pointer-events-none" data-icon="search">search</span>
+<input class="w-full bg-surface-container-low border-none rounded-lg pl-12 pr-4 py-2.5 text-sm focus:ring-1 focus:ring-primary focus:bg-surface-container-lowest transition-all" placeholder="Search artisanal partners..." type="text"/>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-[#43474c] hover:text-[#06274d] transition-colors relative">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-0 right-0 w-2 h-2 bg-error rounded-full border-2 border-surface"></span>
+</button>
+<button class="text-[#43474c] hover:text-[#06274d] transition-colors">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+</button>
+</div>
+</header>
+<!-- Page Content -->
+<div class="p-8 max-w-7xl mx-auto space-y-8">
+<!-- Header Section -->
+<div class="flex items-end justify-between">
+<div>
+<h2 class="text-4xl font-headline font-extrabold text-on-surface tracking-tight">Supplier Hub</h2>
+<p class="text-on-surface-variant mt-2 font-light">Managing global artisanal partnerships and supply chain integrity.</p>
+</div>
+<button class="ink-gradient text-on-primary px-6 py-3 rounded-lg font-medium flex items-center gap-2 vellum-shadow hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                    Onboard New Partner
+                </button>
+</div>
+<!-- Dashboard Summary Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<!-- Active Shipments Card -->
+<div class="bg-surface-container p-6 rounded-xl flex flex-col justify-between h-48 border-none">
+<div class="flex justify-between items-start">
+<span class="material-symbols-outlined text-primary-container" data-icon="local_shipping">local_shipping</span>
+<span class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Active Shipments</span>
+</div>
+<div>
+<div class="text-3xl font-headline font-bold text-on-surface">12</div>
+<p class="text-xs text-on-surface-variant mt-1">4 arriving by Friday</p>
+</div>
+<div class="w-full bg-surface-container-high h-1.5 rounded-full overflow-hidden">
+<div class="bg-primary h-full w-[65%] rounded-full"></div>
+</div>
+</div>
+<!-- Global Procurement Map Overlay (Visual Representation) -->
+<div class="md:col-span-2 relative bg-surface-container h-48 rounded-xl overflow-hidden group">
+<div class="absolute inset-0 grayscale opacity-40 group-hover:opacity-60 transition-opacity duration-700 bg-[url('https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?auto=format&amp;fit=crop&amp;q=80&amp;w=1200')] bg-cover bg-center" data-alt="vintage style world map with subtle terrain textures in sepia and charcoal tones" data-location="London" style=""></div>
+<div class="absolute inset-0 bg-gradient-to-r from-surface-container via-transparent to-transparent"></div>
+<div class="relative z-10 p-6 flex flex-col justify-between h-full">
+<div class="flex justify-between items-start">
+<span class="material-symbols-outlined text-primary" data-icon="public">public</span>
+<span class="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Supply Chain Overview</span>
+</div>
+<div class="flex gap-8">
+<div>
+<p class="text-[10px] uppercase font-bold text-on-surface-variant mb-1">Top Hub</p>
+<p class="text-sm font-bold">Fabriano, Italy</p>
+</div>
+<div>
+<p class="text-[10px] uppercase font-bold text-on-surface-variant mb-1">Avg. Lead Time</p>
+<p class="text-sm font-bold">14.2 Days</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Partners List: The "Vellum & Ink" Ledger Style -->
+<section class="space-y-6">
+<div class="flex items-center justify-between border-b border-outline-variant/20 pb-4">
+<h3 class="text-lg font-headline font-bold">Artisanal Partners</h3>
+<div class="flex gap-4">
+<button class="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors">Sort by Rating</button>
+<button class="text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors">Filter Status</button>
+</div>
+</div>
+<!-- Table Container -->
+<div class="space-y-4">
+<!-- Supplier Row 1 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-container transition-colors duration-300 rounded-xl p-6 flex items-center justify-between">
+<div class="flex items-center gap-6 w-1/3">
+<div class="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center border border-outline-variant/10">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="factory">factory</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-on-surface">Fabriano Mill</h4>
+<p class="text-xs text-on-surface-variant font-medium">Ancona, Italy • Est. 1264</p>
+</div>
+</div>
+<div class="flex flex-col items-center gap-1">
+<div class="flex text-secondary">
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star_half" style="font-variation-settings: 'FILL' 1;">star_half</span>
+</div>
+<span class="text-[10px] font-bold uppercase text-on-surface-variant/60">Reliability</span>
+</div>
+<div class="text-center">
+<p class="text-sm font-bold font-headline">18 Days</p>
+<p class="text-[10px] font-bold uppercase text-on-surface-variant/60">Avg. Lead Time</p>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 bg-tertiary-fixed text-on-tertiary-fixed-variant px-3 py-1 rounded-full text-[10px] font-bold uppercase">
+<span class="w-1.5 h-1.5 rounded-full bg-on-tertiary-container"></span>
+                                Procurement Open
+                            </div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Supplier Row 2 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-container transition-colors duration-300 rounded-xl p-6 flex items-center justify-between">
+<div class="flex items-center gap-6 w-1/3">
+<div class="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center border border-outline-variant/10">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="brush">brush</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-on-surface">Kuretake Craft Labs</h4>
+<p class="text-xs text-on-surface-variant font-medium">Nara, Japan • Special Ink Foundry</p>
+</div>
+</div>
+<div class="flex flex-col items-center gap-1">
+<div class="flex text-secondary">
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+</div>
+<span class="text-[10px] font-bold uppercase text-on-surface-variant/60">Reliability</span>
+</div>
+<div class="text-center">
+<p class="text-sm font-bold font-headline">7 Days</p>
+<p class="text-[10px] font-bold uppercase text-on-surface-variant/60">Avg. Lead Time</p>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 bg-error-container text-on-error-container px-3 py-1 rounded-full text-[10px] font-bold uppercase">
+<span class="w-1.5 h-1.5 rounded-full bg-error"></span>
+                                Backordered
+                            </div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</div>
+<!-- Supplier Row 3 -->
+<div class="group bg-surface-container-lowest hover:bg-surface-container transition-colors duration-300 rounded-xl p-6 flex items-center justify-between">
+<div class="flex items-center gap-6 w-1/3">
+<div class="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center border border-outline-variant/10">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="book_5">book_5</span>
+</div>
+<div>
+<h4 class="font-headline font-bold text-on-surface">Sienna Bound Goods</h4>
+<p class="text-xs text-on-surface-variant font-medium">Florence, Italy • Hand-stitched Leather</p>
+</div>
+</div>
+<div class="flex flex-col items-center gap-1">
+<div class="flex text-secondary">
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star" style="font-variation-settings: 'FILL' 1;">star</span>
+<span class="material-symbols-outlined text-sm" data-icon="star_outline">star_outline</span>
+<span class="material-symbols-outlined text-sm" data-icon="star_outline">star_outline</span>
+</div>
+<span class="text-[10px] font-bold uppercase text-on-surface-variant/60">Reliability</span>
+</div>
+<div class="text-center">
+<p class="text-sm font-bold font-headline">32 Days</p>
+<p class="text-[10px] font-bold uppercase text-on-surface-variant/60">Avg. Lead Time</p>
+</div>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2 bg-surface-variant text-on-surface-variant px-3 py-1 rounded-full text-[10px] font-bold uppercase">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span>
+                                Restocked
+                            </div>
+<button class="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-variant transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="more_vert">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Bottom Action Cards / Insights -->
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8">
+<div class="bg-surface-container-low p-8 rounded-2xl border border-outline-variant/10 relative overflow-hidden group">
+<div class="relative z-10">
+<h4 class="text-lg font-headline font-bold mb-2">Replenishment Audit</h4>
+<p class="text-sm text-on-surface-variant mb-6 leading-relaxed">System analysis suggests 3 active restocks could be consolidated with Sienna Bound Goods to reduce shipping overhead by 14%.</p>
+<button class="text-primary font-bold text-sm flex items-center gap-2 group-hover:gap-4 transition-all">
+                            Review Consolidation Options
+                            <span class="material-symbols-outlined text-base" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+<span class="material-symbols-outlined absolute -bottom-6 -right-6 text-9xl text-on-surface-variant/5 rotate-12" data-icon="balance">balance</span>
+</div>
+<div class="bg-primary-container text-on-primary-container p-8 rounded-2xl vellum-shadow relative overflow-hidden">
+<div class="relative z-10">
+<h4 class="text-lg font-headline font-bold mb-2 text-on-primary">Inventory Risk Alert</h4>
+<p class="text-sm text-on-primary/70 mb-6 leading-relaxed">Seasonal delays at Japanese ports may impact Kuretake deliveries by +12 days. Consider pulling forward Q3 orders.</p>
+<button class="bg-secondary text-on-secondary-fixed px-6 py-2 rounded-lg font-bold text-sm hover:opacity-90 transition-opacity">
+                            Mitigate Risks
+                        </button>
+</div>
+<div class="absolute top-0 right-0 p-4">
+<span class="material-symbols-outlined text-secondary text-3xl animate-pulse" data-icon="warning" style="font-variation-settings: 'FILL' 1;">warning</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

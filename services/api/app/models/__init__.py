@@ -1,0 +1,33 @@
+from app.models.tables import (
+    AdminUser,
+    Base,
+    Device,
+    EnrollmentToken,
+    PaymentAllocation,
+    Product,
+    ProductGroup,
+    Shop,
+    ShopProductTax,
+    StockMovement,
+    Supplier,
+    Tenant,
+    Transaction,
+    TransactionLine,
+)
+
+__all__ = [
+    "AdminUser",
+    "Base",
+    "Device",
+    "EnrollmentToken",
+    "PaymentAllocation",
+    "Product",
+    "ProductGroup",
+    "Shop",
+    "ShopProductTax",
+    "StockMovement",
+    "Supplier",
+    "Tenant",
+    "Transaction",
+    "TransactionLine",
+]

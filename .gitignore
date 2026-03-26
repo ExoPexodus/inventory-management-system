@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod*$]
+.venv/
+venv/
+.env
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+out/
+.turbo/
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local tooling (Flutter SDK clone)
+tools/flutter/
+tools/android-sdk/
+
+# Flutter
+apps/cashier/.dart_tool/
+apps/cashier/build/
+apps/admin_mobile/.dart_tool/
+apps/admin_mobile/build/
