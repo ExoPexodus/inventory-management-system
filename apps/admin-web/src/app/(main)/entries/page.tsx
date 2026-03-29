@@ -3,30 +3,34 @@
 import { FormEvent, useEffect, useState } from "react";
 import {
   Badge,
+  Breadcrumbs,
+  DropZone,
   PageHeader,
-  Panel,
   PrimaryButton,
   SecondaryButton,
-  SelectInput,
+  Tabs,
   TextInput,
 } from "@/components/ui/primitives";
+import { formatMoneyUSD } from "@/lib/format";
 
 type Tenant = { id: string; name: string; slug: string };
 
 type ProductGroup = { id: string; title: string };
 
 export default function EntriesPage() {
+  const [tab, setTab] = useState("details");
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState("");
   const [shopName, setShopName] = useState("");
   const [sku, setSku] = useState("");
   const [pname, setPname] = useState("");
-  const [price, setPrice] = useState("299");
+  const [price, setPrice] = useState("29.99");
   const [category, setCategory] = useState("");
   const [productGroups, setProductGroups] = useState<ProductGroup[]>([]);
   const [productGroupId, setProductGroupId] = useState("");
   const [variantLabel, setVariantLabel] = useState("");
   const [newGroupTitle, setNewGroupTitle] = useState("");
+  const [assetHint, setAssetHint] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -44,12 +48,13 @@ export default function EntriesPage() {
     if (!tenantId) return;
     void (async () => {
       const r = await fetch(`/api/ims/v1/admin/product-groups?tenant_id=${encodeURIComponent(tenantId)}`);
-      if (r.ok) {
-        const list = (await r.json()) as ProductGroup[];
-        setProductGroups(list);
-      }
+      if (r.ok) setProductGroups((await r.json()) as ProductGroup[]);
     })();
   }, [tenantId]);
+
+  const selectedGroupTitle = productGroups.find((g) => g.id === productGroupId)?.title ?? null;
+  const previewPriceCents = Math.round(parseFloat(price) * 100);
+  const priceOk = !Number.isNaN(previewPriceCents);
 
   async function addShop(e: FormEvent) {
     e.preventDefault();
@@ -119,148 +124,183 @@ export default function EntriesPage() {
   }
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-8">
+      <Breadcrumbs
+        items={[
+          { label: "Catalog", href: "/products" },
+          { label: "New entry hub" },
+        ]}
+      />
       <PageHeader
         kicker="New entry hub"
-        title="Quick create"
-        subtitle="Create shops, products, groups, and variants used by cashier and admin views."
+        title="Create shops & SKUs"
+        subtitle="One surface for structural catalog changes — preview before you commit."
       />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="New shop">
-          <form onSubmit={addShop}>
-          <label className="mt-3 block text-xs font-medium text-primary/60">
-            Tenant
-            <SelectInput
-              className="mt-1 w-full"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-            >
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </SelectInput>
-          </label>
-          <label className="mt-3 block text-xs font-medium text-primary/60">
-            Shop name
-            <TextInput
-              required
-              className="mt-1 w-full"
-              value={shopName}
-              onChange={(e) => setShopName(e.target.value)}
-            />
-          </label>
-          <div className="mt-4">
-            <PrimaryButton type="submit">Create shop</PrimaryButton>
-          </div>
-          </form>
-        </Panel>
-        <Panel title="New product">
-          <form onSubmit={addProduct}>
-          <label className="mt-3 block text-xs font-medium text-primary/60">
-            Tenant
-            <SelectInput
-              className="mt-1 w-full"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-            >
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </SelectInput>
-          </label>
-          <label className="mt-3 block text-xs font-medium text-primary/60">
-            SKU
-            <TextInput
-              required
-              className="mt-1 w-full"
-              value={sku}
-              onChange={(e) => setSku(e.target.value)}
-            />
-          </label>
-          <label className="mt-3 block text-xs font-medium text-primary/60">
-            Name
-            <TextInput
-              required
-              className="mt-1 w-full"
-              value={pname}
-              onChange={(e) => setPname(e.target.value)}
-            />
-          </label>
-          <label className="mt-3 block text-xs font-medium text-primary/60">
-            Price (USD)
-            <TextInput
-              required
-              className="mt-1 w-full"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-            />
-          </label>
-          <label className="mt-3 block text-xs font-medium text-primary/60">
-            Category
-            <TextInput
-              className="mt-1 w-full"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            />
-          </label>
-          <details className="mt-4 rounded-lg border border-primary/15 bg-primary/[0.02] px-3 py-2">
-            <summary className="cursor-pointer text-xs font-semibold text-primary/70">Variants (optional)</summary>
-            <p className="mt-2 text-xs text-primary/55">
-              Group related SKUs for clearer cashier lookup. Each row stays a separate product with its own stock.
-            </p>
-            <label className="mt-3 block text-xs font-medium text-primary/60">
-              Product group
-              <SelectInput
-                className="mt-1 w-full"
-                value={productGroupId}
-                onChange={(e) => setProductGroupId(e.target.value)}
-              >
-                <option value="">None</option>
-                {productGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {g.title}
-                  </option>
-                ))}
-              </SelectInput>
-            </label>
-            <label className="mt-2 block text-xs font-medium text-primary/60">
-              Variant label (cashier subtitle)
-              <TextInput
-                className="mt-1 w-full"
-                placeholder='e.g. A5 · recycled'
-                value={variantLabel}
-                onChange={(e) => setVariantLabel(e.target.value)}
-              />
-            </label>
-            <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-primary/10 pt-3">
-              <label className="min-w-[12rem] flex-1 text-xs font-medium text-primary/60">
-                New group title
-                <TextInput
-                  className="mt-1 w-full"
-                  value={newGroupTitle}
-                  onChange={(e) => setNewGroupTitle(e.target.value)}
-                />
+
+      <Tabs
+        tabs={[
+          { id: "details", label: "Details" },
+          { id: "provenance", label: "Provenance" },
+          { id: "logistics", label: "Logistics" },
+        ]}
+        active={tab}
+        onChange={setTab}
+      />
+
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-12 space-y-6 lg:col-span-7">
+          {msg ? (
+            <Badge tone={msg.includes("failed") ? "danger" : "good"}>{msg}</Badge>
+          ) : null}
+
+          {tab === "details" ? (
+            <div className="space-y-6 rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Product details</p>
+              <label className="block text-sm font-medium text-on-surface">
+                Tenant
+                <select
+                  className="ledger-input mt-1 w-full py-2 text-sm"
+                  value={tenantId}
+                  onChange={(e) => setTenantId(e.target.value)}
+                >
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
               </label>
-              <SecondaryButton
-                type="button"
-                className="px-3 py-2"
-                onClick={() => void createGroup()}
-              >
-                Save group
-              </SecondaryButton>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-on-surface">
+                  SKU
+                  <TextInput required className="mt-1 font-mono" value={sku} onChange={(e) => setSku(e.target.value)} />
+                </label>
+                <label className="block text-sm font-medium text-on-surface">
+                  Category
+                  <TextInput className="mt-1" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="e.g. Beverages" />
+                </label>
+              </div>
+              <label className="block text-sm font-medium text-on-surface">
+                Display name
+                <TextInput required className="mt-1" value={pname} onChange={(e) => setPname(e.target.value)} />
+              </label>
+              <label className="block text-sm font-medium text-on-surface">
+                Price (USD)
+                <TextInput required className="mt-1 tabular-nums" value={price} onChange={(e) => setPrice(e.target.value)} />
+              </label>
             </div>
-          </details>
-          <div className="mt-4">
-            <PrimaryButton type="submit">Create product</PrimaryButton>
-          </div>
+          ) : null}
+
+          {tab === "provenance" ? (
+            <div className="space-y-6 rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Visual provenance</p>
+              <DropZone
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  setAssetHint(f ? `Queued: ${f.name}` : null);
+                }}
+              />
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Variant grouping</p>
+                <select
+                  className="ledger-input mt-2 w-full py-2 text-sm"
+                  value={productGroupId}
+                  onChange={(e) => setProductGroupId(e.target.value)}
+                >
+                  <option value="">None</option>
+                  {productGroups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.title}
+                    </option>
+                  ))}
+                </select>
+                <label className="mt-3 block text-sm font-medium text-on-surface">
+                  Variant label
+                  <TextInput
+                    className="mt-1"
+                    placeholder="e.g. 12oz · cold"
+                    value={variantLabel}
+                    onChange={(e) => setVariantLabel(e.target.value)}
+                  />
+                </label>
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-outline-variant/10 pt-4">
+                  <TextInput
+                    className="min-w-[12rem] flex-1"
+                    placeholder="New group title"
+                    value={newGroupTitle}
+                    onChange={(e) => setNewGroupTitle(e.target.value)}
+                  />
+                  <SecondaryButton type="button" onClick={() => void createGroup()}>
+                    Save group
+                  </SecondaryButton>
+                </div>
+              </div>
+              {assetHint ? <p className="text-xs text-on-surface-variant">{assetHint}</p> : null}
+            </div>
+          ) : null}
+
+          {tab === "logistics" ? (
+            <div className="space-y-4 rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Logistics confirmation</p>
+              <ul className="space-y-2 text-sm text-on-surface">
+                <li>
+                  <span className="text-on-surface-variant">SKU · </span>
+                  <span className="font-mono font-semibold">{sku || "—"}</span>
+                </li>
+                <li>
+                  <span className="text-on-surface-variant">Category · </span>
+                  <span>{category || "Uncategorized"}</span>
+                </li>
+                <li>
+                  <span className="text-on-surface-variant">Variant · </span>
+                  <span>{variantLabel || "Standard"}</span>
+                </li>
+                <li>
+                  <span className="text-on-surface-variant">Group · </span>
+                  <span>{selectedGroupTitle ?? "Ungrouped"}</span>
+                </li>
+              </ul>
+              <PrimaryButton type="button" onClick={() => setTab("details")}>
+                Back to edit
+              </PrimaryButton>
+            </div>
+          ) : null}
+
+          <form onSubmit={addShop} className="space-y-4 rounded-xl border border-outline-variant/10 bg-surface-container-low p-6 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Create shop</p>
+            <label className="block text-sm font-medium text-on-surface">
+              Shop name
+              <TextInput required className="mt-1" value={shopName} onChange={(e) => setShopName(e.target.value)} />
+            </label>
+            <PrimaryButton type="submit">Create shop</PrimaryButton>
           </form>
-        </Panel>
+
+          <form onSubmit={addProduct} className="space-y-4 rounded-xl border border-outline-variant/10 bg-surface-container-low p-6 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Create product</p>
+            <PrimaryButton type="submit">Commit product</PrimaryButton>
+          </form>
+        </div>
+
+        <div className="col-span-12 lg:col-span-5">
+          <div className="sticky top-6 overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-sm">
+            <div className="ink-gradient px-6 py-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-on-primary/90">Live preview</p>
+              <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">{pname || "Product name"}</p>
+            </div>
+            <div className="space-y-3 p-6">
+              <p className="font-headline text-3xl font-extrabold text-primary">{priceOk ? formatMoneyUSD(previewPriceCents) : "—"}</p>
+              <div className="flex flex-wrap gap-2 text-sm">
+                <Badge tone="default">SKU {sku || "—"}</Badge>
+                <Badge tone="good">{category || "Category"}</Badge>
+                {variantLabel ? <Badge tone="warn">{variantLabel}</Badge> : null}
+              </div>
+              <p className="text-xs text-on-surface-variant">
+                Tenant <span className="font-semibold text-on-surface">{tenants.find((t) => t.id === tenantId)?.name ?? "—"}</span>
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
-      {msg ? <Badge tone="good">{msg}</Badge> : null}
     </div>
   );
 }

@@ -1,17 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Badge,
-  EmptyState,
+  ErrorState,
   LoadingRow,
   PageHeader,
+  Pagination,
   Panel,
-  SecondaryButton,
   SelectInput,
+  Timeline,
 } from "@/components/ui/primitives";
+import { formatMoneyUSD } from "@/lib/format";
 
-type Row = {
+type MovementRow = {
   id: string;
   shop_name: string | null;
   product_sku: string | null;
@@ -21,7 +24,7 @@ type Row = {
   created_at: string;
 };
 
-type Page = { items: Row[]; next_cursor: string | null };
+type MovementPage = { items: MovementRow[]; next_cursor: string | null };
 
 type Tenant = { id: string; name: string };
 
@@ -33,16 +36,33 @@ type StockRow = {
   name: string;
   unit_price_cents: number;
   quantity: number;
-  product_group_id?: string | null;
   group_title?: string | null;
   variant_label?: string | null;
 };
 
+const MOV_PAGE = 12;
+
+function qtyClass(q: number): string {
+  if (q <= 5) return "font-bold text-error";
+  if (q <= 10) return "font-semibold text-secondary";
+  return "font-medium text-primary";
+}
+
+function stockBadge(q: number): "good" | "warn" | "danger" {
+  if (q <= 5) return "danger";
+  if (q <= 10) return "warn";
+  return "good";
+}
+
+function movementIcon(t: string): string {
+  const s = t.toLowerCase();
+  if (s === "sale") return "point_of_sale";
+  if (s === "adjustment") return "tune";
+  if (s === "transfer") return "swap_horiz";
+  return "inventory";
+}
+
 export default function InventoryPage() {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [next, setNext] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [mtype, setMtype] = useState("");
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [tenantId, setTenantId] = useState("");
   const [shops, setShops] = useState<ShopRow[]>([]);
@@ -50,28 +70,56 @@ export default function InventoryPage() {
   const [stockRows, setStockRows] = useState<StockRow[]>([]);
   const [stockLoading, setStockLoading] = useState(false);
 
-  const load = useCallback(
-    async (cursor: string | null, append: boolean) => {
-      setLoading(true);
+  const [mtype, setMtype] = useState("");
+  const [mPage, setMPage] = useState(1);
+  const [mCache, setMCache] = useState<Record<number, MovementRow[]>>({});
+  const [mNext, setMNext] = useState<Record<number, string | null>>({});
+  const mNextRef = useRef(mNext);
+  mNextRef.current = mNext;
+  const [mLoading, setMLoading] = useState(true);
+  const [mErr, setMErr] = useState<string | null>(null);
+
+  const fetchMovements = useCallback(
+    async (targetPage: number) => {
+      setMLoading(true);
+      setMErr(null);
       try {
-        const sp = new URLSearchParams({ limit: "40" });
+        const sp = new URLSearchParams({ limit: String(MOV_PAGE) });
         if (mtype) sp.set("movement_type", mtype);
+        const cursor = targetPage <= 1 ? null : mNextRef.current[targetPage - 1] ?? null;
+        if (targetPage > 1 && !cursor) {
+          setMErr("Missing cursor for that page.");
+          setMLoading(false);
+          return;
+        }
         if (cursor) sp.set("cursor", cursor);
         const r = await fetch(`/api/ims/v1/admin/inventory/movements?${sp}`);
-        if (!r.ok) return;
-        const data = (await r.json()) as Page;
-        setRows((p) => (append ? [...p, ...data.items] : data.items));
-        setNext(data.next_cursor);
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const data = (await r.json()) as MovementPage;
+        setMCache((p) => ({ ...p, [targetPage]: data.items }));
+        setMNext((p) => ({ ...p, [targetPage]: data.next_cursor }));
+      } catch (e) {
+        setMErr(e instanceof Error ? e.message : "Movements failed");
       } finally {
-        setLoading(false);
+        setMLoading(false);
       }
     },
     [mtype],
   );
 
   useEffect(() => {
-    void load(null, false);
-  }, [load]);
+    setMPage(1);
+    setMCache({});
+    setMNext({});
+  }, [mtype]);
+
+  useEffect(() => {
+    if (mCache[mPage]) {
+      setMLoading(false);
+      return;
+    }
+    void fetchMovements(mPage);
+  }, [mPage, mCache, fetchMovements, mtype]);
 
   useEffect(() => {
     void (async () => {
@@ -116,128 +164,232 @@ export default function InventoryPage() {
     })();
   }, [shopId]);
 
+  const valuation = useMemo(() => {
+    const totalValuation = stockRows.reduce((a, s) => a + s.quantity * s.unit_price_cents, 0);
+    const critical = stockRows.filter((s) => s.quantity <= 5).length;
+    return {
+      totalValuation,
+      critical,
+      skus: stockRows.length,
+    };
+  }, [stockRows]);
+
+  const movementRows = useMemo(() => mCache[mPage] ?? [], [mCache, mPage]);
+  const mTotalPages = mNext[mPage] ? mPage + 1 : Math.max(mPage, 1);
+
+  const timelineItems = useMemo(
+    () =>
+      movementRows.slice(0, 6).map((r) => ({
+        title: `${r.movement_type} · ${r.product_sku ?? "SKU"}`,
+        detail: `${r.shop_name ?? "Shop"} · ${r.created_at}`,
+        tone: r.quantity_delta < 0 ? ("warn" as const) : ("default" as const),
+      })),
+    [movementRows],
+  );
+
   return (
-    <div className="space-y-7">
+    <div className="space-y-8">
       <PageHeader
         kicker="Inventory ledger"
-        title="Stock movements"
-        subtitle="Cross-shop journal and on-hand snapshots sourced from ledger totals."
+        title="Holdings & movements"
+        subtitle="Valuation is derived from on-hand × unit cost for the selected shop."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/purchase-orders"
+              className="inline-flex items-center gap-2 rounded-lg border border-outline-variant/40 px-6 py-2.5 text-sm font-semibold text-on-surface transition hover:bg-surface-container"
+            >
+              Transfer order
+            </Link>
+            <Link
+              href="/purchase-orders"
+              className="inline-flex items-center gap-2 rounded-lg border border-outline-variant/40 px-6 py-2.5 text-sm font-semibold text-on-surface transition hover:bg-surface-container"
+            >
+              Draft PO
+            </Link>
+          </div>
+        }
       />
-      <Panel
-        title="Stock by shop"
-        subtitle="On-hand quantity per SKU with group and variant context."
-      >
-        <div className="mt-3 flex flex-wrap gap-3">
-          <label className="text-xs font-medium text-primary/60">
-            Tenant
-            <SelectInput
-              className="mt-1 block"
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-            >
-              {tenants.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </SelectInput>
-          </label>
-          <label className="text-xs font-medium text-primary/60">
-            Shop
-            <SelectInput
-              className="mt-1 block min-w-[12rem]"
-              value={shopId}
-              onChange={(e) => setShopId(e.target.value)}
-            >
-              {shops.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </SelectInput>
-          </label>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Total valuation</p>
+          <p className="mt-4 font-headline text-3xl font-extrabold text-primary">{formatMoneyUSD(valuation.totalValuation)}</p>
+          <p className="mt-1 text-xs text-on-surface-variant">Shop scope: current selector</p>
         </div>
-        <div className="mt-4 overflow-x-auto rounded-lg border border-primary/10">
+        <div className="rounded-xl border border-secondary/25 bg-secondary-container/20 p-6 shadow-sm">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Critical reorder</p>
+          <p className="mt-4 font-headline text-3xl font-extrabold text-secondary">{valuation.critical}</p>
+          <p className="mt-1 text-xs text-on-surface-variant">SKUs at ≤5 units</p>
+        </div>
+        <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Tracked SKUs</p>
+          <p className="mt-4 font-headline text-3xl font-extrabold text-primary">{valuation.skus}</p>
+        </div>
+      </div>
+
+      <Panel title="Holdings" subtitle="On-hand from the live inventory service" noPad>
+        <div className="border-b border-outline-variant/10 px-6 py-4">
+          <div className="flex flex-wrap gap-4">
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+              Tenant
+              <SelectInput className="mt-1 min-w-[10rem]" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
+                {tenants.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </SelectInput>
+            </label>
+            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+              Shop
+              <SelectInput className="mt-1 min-w-[12rem]" value={shopId} onChange={(e) => setShopId(e.target.value)}>
+                {shops.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </SelectInput>
+            </label>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-primary/10 text-xs uppercase tracking-wide text-primary/50">
-                <th className="px-3 py-2">Group</th>
-                <th className="px-3 py-2">Variant</th>
-                <th className="px-3 py-2">SKU</th>
-                <th className="px-3 py-2">Name</th>
-                <th className="px-3 py-2 text-right">Qty</th>
+              <tr className="border-b border-outline-variant/10">
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">SKU</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Product</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Category</th>
+                <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">On hand</th>
+                <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Unit price</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-primary/5">
-              {stockLoading ? <LoadingRow colSpan={5} /> : null}
-              {!stockLoading && stockRows.length > 0 ? (
+            <tbody className="divide-y divide-outline-variant/10">
+              {stockLoading ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-on-surface-variant">
+                    Loading holdings…
+                  </td>
+                </tr>
+              ) : stockRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-on-surface-variant">
+                    No rows — pick a shop with catalog.
+                  </td>
+                </tr>
+              ) : (
                 stockRows.map((s) => (
-                  <tr key={s.product_id}>
-                    <td className="px-3 py-2 text-primary/80">{s.group_title ?? "—"}</td>
-                    <td className="px-3 py-2 text-primary/70">{s.variant_label ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{s.sku}</td>
-                    <td className="px-3 py-2">{s.name}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-medium">{s.quantity}</td>
+                  <tr key={s.product_id} className="hover:bg-surface-container-low/50">
+                    <td className="px-6 py-3 font-mono text-xs text-on-surface">{s.sku}</td>
+                    <td className="px-6 py-3">
+                      <span className="font-medium text-on-surface">{s.name}</span>
+                      {s.variant_label ? (
+                        <span className="mt-0.5 block text-xs text-on-surface-variant">{s.variant_label}</span>
+                      ) : null}
+                    </td>
+                    <td className="px-6 py-3 text-on-surface-variant">{s.group_title ?? "—"}</td>
+                    <td className={`px-6 py-3 text-right tabular-nums ${qtyClass(s.quantity)}`}>{s.quantity}</td>
+                    <td className="px-6 py-3 text-right tabular-nums text-on-surface">{formatMoneyUSD(s.unit_price_cents)}</td>
+                    <td className="px-6 py-3">
+                      <Badge tone={stockBadge(s.quantity)}>{s.quantity <= 5 ? "critical" : s.quantity <= 10 ? "low" : "ok"}</Badge>
+                    </td>
                   </tr>
                 ))
-              ) : null}
+              )}
             </tbody>
           </table>
         </div>
-        {!stockLoading && stockRows.length === 0 ? <EmptyState title="No stock rows" detail="Select a tenant/shop with products." /> : null}
       </Panel>
-      <Panel
-        title="Movement journal"
-        subtitle="Chronological ledger deltas with cursor pagination."
-        right={
-          <SelectInput value={mtype} onChange={(e) => setMtype(e.target.value)}>
-            <option value="">All types</option>
-            <option value="adjustment">adjustment</option>
-            <option value="sale">sale</option>
-            <option value="sale_out">sale_out</option>
-            <option value="receipt">receipt</option>
-            <option value="shrink">shrink</option>
-          </SelectInput>
-        }
-      >
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-primary/10 text-xs uppercase tracking-wide text-primary/50">
-              <th className="px-4 py-3">When</th>
-              <th className="px-4 py-3">Shop</th>
-              <th className="px-4 py-3">SKU</th>
-              <th className="px-4 py-3">Δ</th>
-              <th className="px-4 py-3">Type</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-primary/5">
-            {loading ? <LoadingRow colSpan={5} /> : null}
-            {rows.map((r) => (
-              <tr key={r.id}>
-                <td className="px-4 py-3 font-mono text-xs">{r.created_at}</td>
-                <td className="px-4 py-3">{r.shop_name ?? "—"}</td>
-                <td className="px-4 py-3 text-primary/80">{r.product_sku}</td>
-                <td className="px-4 py-3 tabular-nums font-medium">{r.quantity_delta}</td>
-                <td className="px-4 py-3">
-                  <Badge>{r.movement_type}</Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-          </table>
+
+      <div className="grid gap-6 lg:grid-cols-12">
+        <section className="overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-sm lg:col-span-8">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-outline-variant/10 px-6 py-4">
+            <div>
+              <h3 className="font-headline text-lg font-bold text-on-surface">Movement journal</h3>
+              <p className="text-sm text-on-surface-variant">Ledger deltas with type semantics</p>
+            </div>
+            <SelectInput className="max-w-[12rem]" value={mtype} onChange={(e) => setMtype(e.target.value)}>
+              <option value="">All types</option>
+              <option value="adjustment">adjustment</option>
+              <option value="sale">sale</option>
+            </SelectInput>
+          </div>
+          {mErr ? (
+            <div className="px-6 py-3">
+              <ErrorState detail={mErr} />
+            </div>
+          ) : null}
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant/10">
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Type</th>
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">SKU</th>
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Product</th>
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Shop</th>
+                  <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Delta</th>
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">When</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {mLoading && movementRows.length === 0 ? <LoadingRow colSpan={6} /> : null}
+                {movementRows.map((r) => (
+                  <tr key={r.id} className="hover:bg-surface-container-low/40">
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="material-symbols-outlined text-lg text-on-surface-variant">{movementIcon(r.movement_type)}</span>
+                        <Badge tone="default">{r.movement_type}</Badge>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 font-mono text-xs text-on-surface">{r.product_sku}</td>
+                    <td className="px-6 py-3 text-on-surface">{r.product_name}</td>
+                    <td className="px-6 py-3 text-on-surface-variant">{r.shop_name}</td>
+                    <td
+                      className={`px-6 py-3 text-right tabular-nums font-bold ${
+                        r.quantity_delta >= 0 ? "text-primary" : "text-error"
+                      }`}
+                    >
+                      {r.quantity_delta > 0 ? `+${r.quantity_delta}` : r.quantity_delta}
+                    </td>
+                    <td className="px-6 py-3 font-mono text-xs text-on-surface-variant">{r.created_at}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Pagination page={mPage} totalPages={mTotalPages} onChange={setMPage} />
+        </section>
+
+        <div className="space-y-6 lg:col-span-4">
+          <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm lg:sticky lg:top-6">
+            <h3 className="font-headline text-lg font-bold text-on-surface">Recent activity</h3>
+            <p className="mt-1 text-sm text-on-surface-variant">Last six movements on this journal page</p>
+            <div className="mt-6">
+              <Timeline items={timelineItems} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-6 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Ready to restock?</p>
+            <p className="mt-2 font-headline text-xl font-bold text-on-surface">Line up vendors & POs</p>
+            <p className="mt-2 text-sm text-on-surface-variant">Draft purchase orders and notify suppliers in one pass.</p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Link
+                href="/purchase-orders"
+                className="ink-gradient inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-center text-sm font-semibold text-on-primary"
+              >
+                Open purchase orders
+              </Link>
+              <Link
+                href="/suppliers"
+                className="inline-flex items-center justify-center rounded-lg border border-outline-variant/40 px-4 py-2.5 text-sm font-semibold text-on-surface transition hover:bg-surface-container"
+              >
+                Supplier hub
+              </Link>
+            </div>
+          </div>
         </div>
-        {rows.length === 0 && !loading ? <EmptyState title="No movement rows" detail="Try changing movement type or refreshing demo data." /> : null}
-      </Panel>
-      {next ? (
-        <SecondaryButton
-          type="button"
-          disabled={loading}
-          onClick={() => void load(next, true)}
-        >
-          {loading ? "Loading…" : "Load more"}
-        </SecondaryButton>
-      ) : null}
+      </div>
     </div>
   );
 }

@@ -10,12 +10,14 @@ from app.config import settings
 def create_operator_access_token(
     *,
     operator_id: UUID,
+    tenant_id: UUID,
 ) -> tuple[str, int]:
     now = int(time.time())
     ttl_sec = settings.jwt_access_expire_minutes * 60
     exp = now + ttl_sec
     payload: dict[str, Any] = {
         "sub": str(operator_id),
+        "tenant_id": str(tenant_id),
         "typ": "operator",
         "iat": now,
         "exp": exp,

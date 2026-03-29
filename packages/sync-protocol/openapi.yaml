@@ -108,7 +108,7 @@ paths:
   /v1/admin/dashboard-summary:
     get:
       tags: [Admin]
-      summary: Executive overview KPIs and recent activity
+      summary: Executive overview KPIs and recent activity (tenant-scoped)
       operationId: adminDashboardSummary
       security:
         - bearerAuth: []
@@ -119,6 +119,7 @@ paths:
           schema:
             type: string
             format: uuid
+          description: Optional and must match the authenticated operator tenant.
         - name: stock_alert_threshold
           in: query
           schema:
@@ -139,7 +140,7 @@ paths:
   /v1/admin/transactions:
     get:
       tags: [Admin]
-      summary: List transactions across shops (operator)
+      summary: List transactions across shops (tenant-scoped operator)
       operationId: adminListTransactions
       security:
         - bearerAuth: []
@@ -149,16 +150,7 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: status
-          in: query
-          schema:
-            type: string
-          description: Optional supplier status filter (e.g. active, inactive).
-        - name: q
-          in: query
-          schema:
-            type: string
-          description: Optional substring match on supplier name/email/phone.
+          description: Optional and must match the authenticated operator tenant.
         - name: shop_id
           in: query
           schema:
@@ -177,10 +169,12 @@ paths:
           in: query
           schema:
             type: string
+          description: Comma-separated transaction statuses (posted, refunded, pending).
         - name: q
           in: query
           schema:
             type: string
+          description: Optional substring match on product name/SKU in transaction lines.
       responses:
         "200":
           content:
@@ -216,7 +210,7 @@ paths:
   /v1/admin/suppliers:
     get:
       tags: [Admin]
-      summary: List suppliers
+      summary: List suppliers (tenant-scoped)
       operationId: adminListSuppliers
       security:
         - bearerAuth: []
@@ -226,6 +220,15 @@ paths:
           schema:
             type: string
             format: uuid
+          description: Optional and must match the authenticated operator tenant.
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
       responses:
         "200":
           content:
@@ -283,7 +286,7 @@ paths:
   /v1/admin/inventory/movements:
     get:
       tags: [Admin]
-      summary: Stock movement journal (keyset pagination)
+      summary: Stock movement journal (tenant-scoped, keyset pagination)
       operationId: adminListStockMovements
       security:
         - bearerAuth: []
@@ -293,6 +296,7 @@ paths:
           schema:
             type: string
             format: uuid
+          description: Optional and must match the authenticated operator tenant.
         - name: shop_id
           in: query
           schema:
@@ -326,7 +330,7 @@ paths:
   /v1/admin/operators:
     get:
       tags: [Admin]
-      summary: List operator accounts
+      summary: List operator accounts for the authenticated tenant
       operationId: adminListOperators
       security:
         - bearerAuth: []
@@ -378,9 +382,34 @@ paths:
                 $ref: "#/components/schemas/OperatorRecord"
 
   /v1/admin/shops:
+    get:
+      tags: [Admin]
+      summary: List shops for authenticated tenant
+      operationId: adminListShops
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Optional and must match the authenticated operator tenant.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    tenant_id: { type: string, format: uuid }
+                    name: { type: string }
     post:
       tags: [Admin]
-      summary: Create shop
+      summary: Create shop in authenticated tenant
       operationId: adminCreateShop
       security:
         - bearerAuth: []
@@ -411,7 +440,7 @@ paths:
   /v1/admin/products:
     post:
       tags: [Admin]
-      summary: Create catalog product
+      summary: Create catalog product in authenticated tenant
       operationId: adminCreateProduct
       security:
         - bearerAuth: []

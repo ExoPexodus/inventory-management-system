@@ -47,7 +47,12 @@ def admin_login(
         ok = False
     if not ok:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    access, ttl = create_operator_access_token(operator_id=user.id)
+    if user.tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator is not assigned to a tenant",
+        )
+    access, ttl = create_operator_access_token(operator_id=user.id, tenant_id=user.tenant_id)
     return AdminLoginResponse(access_token=access, expires_in=ttl)
 
 
@@ -68,10 +73,13 @@ class AdminOverviewResponse(BaseModel):
 
 @router.get("/overview", response_model=AdminOverviewResponse)
 def admin_overview(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> AdminOverviewResponse:
-    tenants = db.execute(select(Tenant).order_by(Tenant.created_at)).scalars().all()
+    if ctx.tenant_id is not None:
+        tenants = db.execute(select(Tenant).where(Tenant.id == ctx.tenant_id).order_by(Tenant.created_at)).scalars().all()
+    else:
+        tenants = db.execute(select(Tenant).order_by(Tenant.created_at)).scalars().all()
     out: list[TenantOverview] = []
     for t in tenants:
         shop_count = db.execute(

@@ -17,8 +17,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=optional"
+        />
+      </head>
       <body
-        className={`${publicSans.variable} ${manrope.variable} min-h-screen bg-background font-sans text-primary antialiased`}
+        className={`${publicSans.variable} ${manrope.variable} min-h-screen bg-background font-sans text-on-surface antialiased`}
       >
         {children}
       </body>

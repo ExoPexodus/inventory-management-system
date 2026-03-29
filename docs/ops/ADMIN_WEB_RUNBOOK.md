@@ -26,8 +26,11 @@ docker compose up -d --build
 - API: `http://localhost:8001` (or `API_PUBLISH_PORT`)
 - Admin web: `http://localhost:3000` (or `ADMIN_WEB_PUBLISH_PORT`)
 - Operator JWT is stored in an HttpOnly cookie (`ims_operator_jwt`) after POST to Next `/api/auth/login` (server forwards to `/v1/admin/auth/login`).
+- Admin-web routes are strictly tenant-scoped by authenticated operator assignment (`admin_users.tenant_id`). Cross-tenant reads/writes are rejected.
 - **HTTP + production Node:** If login returns 200 but every page stays on `/login` or API calls fail with 401, the cookie may have been set with `Secure` while you use plain `http://`. Compose sets `COOKIE_SECURE` (default `false`). With HTTPS or a reverse proxy, set `COOKIE_SECURE=true` or ensure `X-Forwarded-Proto: https`.
 - Passwords are stored with **bcrypt** (one-way hash), not reversible encryption. Login failures are almost always wrong password, inactive user, or accidental whitespace / quoted `.env` values when seeding.
+- If login fails with `Operator is not assigned to a tenant`, run the showcase reset to recreate tenant-scoped demo data and assign operators:
+  - `docker compose exec -e IMS_DEMO_RESET_OK=1 api python -m app.scripts.reset_demo_showcase`
 
 ## Parity QA (Stitch)
 

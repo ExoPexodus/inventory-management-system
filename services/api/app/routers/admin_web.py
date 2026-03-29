@@ -323,23 +323,10 @@ def list_suppliers(
     _: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
-    status: str | None = Query(default=None, description="Filter by supplier status (active/inactive)."),
-    q: str | None = Query(default=None, description="Substring match on supplier name/email/phone."),
 ) -> list[SupplierOut]:
     stmt = select(Supplier).order_by(Supplier.created_at.desc())
     if tenant_id is not None:
         stmt = stmt.where(Supplier.tenant_id == tenant_id)
-    if status and status.strip():
-        stmt = stmt.where(Supplier.status == status.strip().lower())
-    if q and q.strip():
-        needle = f"%{q.strip()}%"
-        stmt = stmt.where(
-            or_(
-                Supplier.name.ilike(needle),
-                Supplier.contact_email.ilike(needle),
-                Supplier.contact_phone.ilike(needle),
-            )
-        )
     rows = db.execute(stmt).scalars().all()
     return [
         SupplierOut(
@@ -533,15 +520,8 @@ class PatchOperatorBody(BaseModel):
 def list_operators(
     _: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
-    role: str | None = Query(default=None, description="Filter by operator role."),
-    q: str | None = Query(default=None, description="Substring match on email."),
 ) -> list[OperatorOut]:
-    stmt = select(AdminUser).order_by(AdminUser.created_at.desc())
-    if role and role.strip():
-        stmt = stmt.where(AdminUser.role == role.strip().lower())
-    if q and q.strip():
-        stmt = stmt.where(AdminUser.email.ilike(f"%{q.strip()}%"))
-    rows = db.execute(stmt).scalars().all()
+    rows = db.execute(select(AdminUser).order_by(AdminUser.created_at.desc())).scalars().all()
     return [
         OperatorOut(id=r.id, email=r.email, role=r.role, is_active=r.is_active, created_at=r.created_at)
         for r in rows
@@ -648,6 +628,51 @@ def _resolve_product_group(
             detail="product_group_not_found",
         )
     return g
+
+
+class ProductListItem(BaseModel):
+    id: UUID
+    sku: str
+    name: str
+    status: str
+    category: str | None
+    unit_price_cents: int
+    reorder_point: int
+    variant_label: str | None = None
+    group_title: str | None = None
+
+
+@router.get("/products", response_model=list[ProductListItem])
+def admin_list_products(
+    _: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+    q: str | None = None,
+    status_filter: str | None = Query(None, alias="status"),
+    category: str | None = None,
+) -> list[ProductListItem]:
+    stmt = select(Product).options(selectinload(Product.product_group)).order_by(Product.name.asc())
+    if q and q.strip():
+        like = f"%{q.strip()}%"
+        stmt = stmt.where(or_(Product.name.ilike(like), Product.sku.ilike(like)))
+    if status_filter:
+        stmt = stmt.where(Product.status == status_filter)
+    if category and category.strip():
+        stmt = stmt.where(Product.category == category.strip())
+    rows = db.execute(stmt).scalars().all()
+    return [
+        ProductListItem(
+            id=r.id,
+            sku=r.sku,
+            name=r.name,
+            status=r.status,
+            category=r.category,
+            unit_price_cents=r.unit_price_cents,
+            reorder_point=r.reorder_point,
+            variant_label=r.variant_label,
+            group_title=r.product_group.title if r.product_group else None,
+        )
+        for r in rows
+    ]
 
 
 @router.post("/products", response_model=CreateProductResponse)

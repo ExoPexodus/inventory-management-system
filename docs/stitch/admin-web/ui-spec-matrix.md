@@ -40,6 +40,12 @@ Derived from the seven Stitch exports (light desktop, primary `#2C3E50`, warm ba
 | Inventory ledger | `GET /v1/admin/inventory/movements` |
 | Staff & permissions | `GET/PATCH /v1/admin/operators` (+ `role`,`q` filters) |
 
+## Tenant scope policy
+
+- All admin-web screens are tenant-implicit from operator JWT context.
+- Tenant selectors are intentionally removed from UI.
+- API rejects cross-tenant requests even when a different `tenant_id` is provided.
+
 ## Desktop parity QA checklist (latest pass)
 
 | Route | Block order parity | Data parity | State parity | Notes |

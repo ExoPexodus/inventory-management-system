@@ -17,21 +17,27 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.db.rls import set_rls_context
 from app.db.session import SessionLocal
 from app.models import (
+    AdminUser,
     EnrollmentToken,
     PaymentAllocation,
     Product,
     ProductGroup,
+    PurchaseOrder,
+    PurchaseOrderLine,
     Shop,
     ShopProductTax,
+    StockAdjustment,
     StockMovement,
     Supplier,
     Tenant,
+    TransferOrder,
+    TransferOrderLine,
     Transaction,
     TransactionLine,
 )
@@ -204,6 +210,10 @@ def main() -> None:
                 sku=sku,
                 name=name,
                 category=category,
+                status="archived" if sku == "APP-HAT-S" else "active",
+                description=f"Showcase item for {category.lower()} merchandising",
+                image_url=f"https://picsum.photos/seed/{sku.lower()}/640/640",
+                reorder_point=8 if sku in {"LOW-STK", "OFF-PEN"} else 20,
                 unit_price_cents=price,
                 variant_label=vlabel,
                 active=True,
@@ -220,17 +230,19 @@ def main() -> None:
             ("QuickShip Logistics", "active", "ops@quickship.test", None, "Outbound freight"),
             ("Old Harbor Wholesale", "inactive", "archive@oldharbor.test", None, "Paused — seasonal only"),
         ]
+        suppliers: list[Supplier] = []
         for name, st, em, ph, notes in suppliers_data:
-            db.add(
-                Supplier(
-                    tenant_id=tenant.id,
-                    name=name,
-                    status=st,
-                    contact_email=em,
-                    contact_phone=ph,
-                    notes=notes,
-                )
+            supplier = Supplier(
+                tenant_id=tenant.id,
+                name=name,
+                status=st,
+                contact_email=em,
+                contact_phone=ph,
+                notes=notes,
             )
+            db.add(supplier)
+            suppliers.append(supplier)
+        db.flush()
 
         # Downtown: americano tax-exempt for demo overrides
         tax_exempt = ShopProductTax(
@@ -361,6 +373,143 @@ def main() -> None:
                 shop_id=shop_downtown.id,
                 token_hash=hash_token(raw_enrollment),
                 expires_at=datetime.now(UTC) + timedelta(days=14),
+            )
+        )
+
+        # Strict admin-web scope: bind all existing operators to the showcase tenant.
+        admins = db.execute(select(AdminUser)).scalars().all()
+        for admin in admins:
+            admin.tenant_id = tenant.id
+            admin.is_active = True
+            if not admin.display_name:
+                admin.display_name = admin.email.split("@", 1)[0].replace(".", " ").title()
+            if not admin.avatar_url:
+                admin.avatar_url = f"https://api.dicebear.com/9.x/identicon/svg?seed={admin.email}"
+
+        owner_admin_id = admins[0].id if admins else None
+
+        # Procurement + stock control showcase data
+        main_supplier = suppliers[0] if suppliers else None
+        if main_supplier is not None:
+            po_draft = PurchaseOrder(
+                tenant_id=tenant.id,
+                supplier_id=main_supplier.id,
+                status="draft",
+                expected_delivery_date=now + timedelta(days=3),
+                notes="Weekly replenishment draft",
+                created_by=owner_admin_id,
+            )
+            po_ordered = PurchaseOrder(
+                tenant_id=tenant.id,
+                supplier_id=main_supplier.id,
+                status="ordered",
+                expected_delivery_date=now + timedelta(days=1),
+                notes="Urgent beverage restock",
+                created_by=owner_admin_id,
+            )
+            po_received = PurchaseOrder(
+                tenant_id=tenant.id,
+                supplier_id=main_supplier.id,
+                status="received",
+                expected_delivery_date=now - timedelta(days=1),
+                notes="Received and stocked",
+                created_by=owner_admin_id,
+            )
+            db.add_all([po_draft, po_ordered, po_received])
+            db.flush()
+
+            db.add_all(
+                [
+                    PurchaseOrderLine(
+                        purchase_order_id=po_draft.id,
+                        product_id=product_by_sku["OFF-PEN"].id,
+                        quantity_ordered=60,
+                        quantity_received=0,
+                        unit_cost_cents=180,
+                    ),
+                    PurchaseOrderLine(
+                        purchase_order_id=po_ordered.id,
+                        product_id=product_by_sku["SFT-LATTE"].id,
+                        quantity_ordered=80,
+                        quantity_received=0,
+                        unit_cost_cents=270,
+                    ),
+                    PurchaseOrderLine(
+                        purchase_order_id=po_received.id,
+                        product_id=product_by_sku["LOW-STK"].id,
+                        quantity_ordered=120,
+                        quantity_received=120,
+                        unit_cost_cents=45,
+                    ),
+                ]
+            )
+
+            db.add(
+                StockMovement(
+                    tenant_id=tenant.id,
+                    shop_id=shop_downtown.id,
+                    product_id=product_by_sku["LOW-STK"].id,
+                    quantity_delta=120,
+                    movement_type="receipt",
+                    transaction_id=None,
+                    idempotency_key="showcase:po-receive:low-stk",
+                    created_at=now - timedelta(hours=28),
+                )
+            )
+
+        adj_pending = StockAdjustment(
+            tenant_id=tenant.id,
+            shop_id=shop_west.id,
+            product_id=product_by_sku["GEN-BAR"].id,
+            quantity_delta=-5,
+            reason_code="damage",
+            notes="Shelf damage discovered during cycle count",
+            status="pending",
+            created_by=owner_admin_id,
+            approved_by=None,
+        )
+        adj_approved = StockAdjustment(
+            tenant_id=tenant.id,
+            shop_id=shop_downtown.id,
+            product_id=product_by_sku["OFF-NOTE"].id,
+            quantity_delta=12,
+            reason_code="recount",
+            notes="Variance confirmed and corrected",
+            status="approved",
+            created_by=owner_admin_id,
+            approved_by=owner_admin_id,
+        )
+        db.add_all([adj_pending, adj_approved])
+        db.add(
+            StockMovement(
+                tenant_id=tenant.id,
+                shop_id=shop_downtown.id,
+                product_id=product_by_sku["OFF-NOTE"].id,
+                quantity_delta=12,
+                movement_type="adjustment",
+                transaction_id=None,
+                idempotency_key="showcase:adjustment:approved-off-note",
+                created_at=now - timedelta(hours=12),
+            )
+        )
+
+        transfer = TransferOrder(
+            tenant_id=tenant.id,
+            from_shop_id=shop_downtown.id,
+            to_shop_id=shop_west.id,
+            status="in_transit",
+            created_by=owner_admin_id,
+            completed_at=None,
+        )
+        db.add(transfer)
+        db.flush()
+        db.add(
+            TransferOrderLine(
+                transfer_order_id=transfer.id,
+                product_id=product_by_sku["GEN-WATER"].id,
+                quantity_requested=24,
+                quantity_shipped=20,
+                quantity_received=0,
             )
         )
 

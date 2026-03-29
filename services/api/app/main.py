@@ -3,6 +3,13 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
     admin,
+    admin_analytics,
+    admin_catalog,
+    admin_inventory,
+    admin_orders,
+    admin_platform,
+    admin_staff,
+    admin_suppliers,
     admin_web,
     audit,
     devices,
@@ -37,6 +44,13 @@ app.include_router(sync.router)
 app.include_router(transactions.router)
 app.include_router(admin.router)
 app.include_router(admin_web.router)
+app.include_router(admin_catalog.router)
+app.include_router(admin_inventory.router)
+app.include_router(admin_orders.router)
+app.include_router(admin_suppliers.router)
+app.include_router(admin_staff.router)
+app.include_router(admin_analytics.router)
+app.include_router(admin_platform.router)
 app.include_router(tenants.router)
 app.include_router(shops.router)
 app.include_router(inventory.router)

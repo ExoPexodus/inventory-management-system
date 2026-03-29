@@ -41,52 +41,60 @@ export function LoginClient() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-4">
-      <div className="w-full max-w-sm rounded-xl border border-primary/15 bg-white/90 p-8 shadow-sm">
-        <h1 className="font-display text-2xl font-semibold tracking-tight text-primary">Inventory admin</h1>
-        <p className="mt-1 text-sm text-primary/70">Sign in with your operator account.</p>
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wide text-primary/60" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="username"
-              required
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm outline-none ring-primary/20 focus:ring-2"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wide text-primary/60" htmlFor="password">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm outline-none ring-primary/20 focus:ring-2"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-          {error ? (
-            <p className="text-sm text-red-700" role="alert">
-              {error}
-            </p>
-          ) : null}
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow hover:bg-primary/90 disabled:opacity-60"
-          >
-            {busy ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+    <main className="flex min-h-screen items-center justify-center bg-surface px-4">
+      <div className="w-full max-w-md">
+        <div className="mb-8 text-center">
+          <h1 className="font-headline text-3xl font-extrabold tracking-tight text-on-surface">The Tactile Archive</h1>
+          <p className="mt-1 text-[10px] uppercase tracking-widest text-on-surface-variant">Management Suite</p>
+        </div>
+        <div className="rounded-2xl border border-outline-variant/15 bg-surface-container-lowest p-8 shadow-sm">
+          <h2 className="font-headline text-xl font-bold text-on-surface">Sign in</h2>
+          <p className="mt-1 text-sm text-on-surface-variant">Enter your operator credentials to continue.</p>
+          <form onSubmit={onSubmit} className="mt-6 space-y-5">
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant" htmlFor="email">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                autoComplete="username"
+                required
+                className="ledger-input mt-2 w-full py-2.5 font-headline text-base text-on-surface placeholder:text-outline-variant/50"
+                placeholder="operator@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant" htmlFor="password">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                className="ledger-input mt-2 w-full py-2.5 font-headline text-base text-on-surface placeholder:text-outline-variant/50"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            {error ? (
+              <div className="rounded-lg border border-error/20 bg-error-container/30 px-3 py-2 text-sm text-on-error-container" role="alert">
+                {error}
+              </div>
+            ) : null}
+            <button
+              type="submit"
+              disabled={busy}
+              className="ink-gradient w-full rounded-lg py-3 text-sm font-bold text-on-primary shadow-md transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {busy ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+        </div>
       </div>
     </main>
   );
