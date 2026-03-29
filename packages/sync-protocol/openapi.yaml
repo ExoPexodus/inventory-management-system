@@ -149,6 +149,16 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: Optional supplier status filter (e.g. active, inactive).
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Optional substring match on supplier name/email/phone.
         - name: shop_id
           in: query
           schema:
@@ -320,6 +330,17 @@ paths:
       operationId: adminListOperators
       security:
         - bearerAuth: []
+      parameters:
+        - name: role
+          in: query
+          schema:
+            type: string
+          description: Optional operator role filter.
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Optional substring match on operator email.
       responses:
         "200":
           content:

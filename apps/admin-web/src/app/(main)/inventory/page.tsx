@@ -1,6 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  Badge,
+  EmptyState,
+  LoadingRow,
+  PageHeader,
+  Panel,
+  SecondaryButton,
+  SelectInput,
+} from "@/components/ui/primitives";
 
 type Row = {
   id: string;
@@ -108,21 +117,21 @@ export default function InventoryPage() {
   }, [shopId]);
 
   return (
-    <div className="space-y-6">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-wider text-primary/50">Inventory ledger</p>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-primary">Stock movements</h1>
-      </header>
-      <section className="rounded-xl border border-primary/10 bg-white/90 p-5 shadow-sm">
-        <h2 className="font-display text-sm font-semibold text-primary">Stock by shop</h2>
-        <p className="mt-1 text-xs text-primary/55">
-          Current on-hand from the ledger, with product group for restocking related SKUs together.
-        </p>
+    <div className="space-y-7">
+      <PageHeader
+        kicker="Inventory ledger"
+        title="Stock movements"
+        subtitle="Cross-shop journal and on-hand snapshots sourced from ledger totals."
+      />
+      <Panel
+        title="Stock by shop"
+        subtitle="On-hand quantity per SKU with group and variant context."
+      >
         <div className="mt-3 flex flex-wrap gap-3">
           <label className="text-xs font-medium text-primary/60">
             Tenant
-            <select
-              className="mt-1 block rounded-lg border border-primary/15 px-3 py-2 text-sm"
+            <SelectInput
+              className="mt-1 block"
               value={tenantId}
               onChange={(e) => setTenantId(e.target.value)}
             >
@@ -131,12 +140,12 @@ export default function InventoryPage() {
                   {t.name}
                 </option>
               ))}
-            </select>
+            </SelectInput>
           </label>
           <label className="text-xs font-medium text-primary/60">
             Shop
-            <select
-              className="mt-1 block min-w-[12rem] rounded-lg border border-primary/15 px-3 py-2 text-sm"
+            <SelectInput
+              className="mt-1 block min-w-[12rem]"
               value={shopId}
               onChange={(e) => setShopId(e.target.value)}
             >
@@ -145,7 +154,7 @@ export default function InventoryPage() {
                   {s.name}
                 </option>
               ))}
-            </select>
+            </SelectInput>
           </label>
         </div>
         <div className="mt-4 overflow-x-auto rounded-lg border border-primary/10">
@@ -160,19 +169,8 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-primary/5">
-              {stockLoading ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-4 text-primary/60">
-                    Loading…
-                  </td>
-                </tr>
-              ) : stockRows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-4 text-primary/60">
-                    No products or select a shop.
-                  </td>
-                </tr>
-              ) : (
+              {stockLoading ? <LoadingRow colSpan={5} /> : null}
+              {!stockLoading && stockRows.length > 0 ? (
                 stockRows.map((s) => (
                   <tr key={s.product_id}>
                     <td className="px-3 py-2 text-primary/80">{s.group_title ?? "—"}</td>
@@ -182,22 +180,28 @@ export default function InventoryPage() {
                     <td className="px-3 py-2 text-right tabular-nums font-medium">{s.quantity}</td>
                   </tr>
                 ))
-              )}
+              ) : null}
             </tbody>
           </table>
         </div>
-      </section>
-      <select
-        className="rounded-lg border border-primary/15 px-3 py-2 text-sm"
-        value={mtype}
-        onChange={(e) => setMtype(e.target.value)}
+        {!stockLoading && stockRows.length === 0 ? <EmptyState title="No stock rows" detail="Select a tenant/shop with products." /> : null}
+      </Panel>
+      <Panel
+        title="Movement journal"
+        subtitle="Chronological ledger deltas with cursor pagination."
+        right={
+          <SelectInput value={mtype} onChange={(e) => setMtype(e.target.value)}>
+            <option value="">All types</option>
+            <option value="adjustment">adjustment</option>
+            <option value="sale">sale</option>
+            <option value="sale_out">sale_out</option>
+            <option value="receipt">receipt</option>
+            <option value="shrink">shrink</option>
+          </SelectInput>
+        }
       >
-        <option value="">All types</option>
-        <option value="adjustment">adjustment</option>
-        <option value="sale">sale</option>
-      </select>
-      <div className="overflow-x-auto rounded-xl border border-primary/10 bg-white/90 shadow-sm">
-        <table className="min-w-full text-left text-sm">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
           <thead>
             <tr className="border-b border-primary/10 text-xs uppercase tracking-wide text-primary/50">
               <th className="px-4 py-3">When</th>
@@ -208,6 +212,7 @@ export default function InventoryPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-primary/5">
+            {loading ? <LoadingRow colSpan={5} /> : null}
             {rows.map((r) => (
               <tr key={r.id}>
                 <td className="px-4 py-3 font-mono text-xs">{r.created_at}</td>
@@ -215,22 +220,23 @@ export default function InventoryPage() {
                 <td className="px-4 py-3 text-primary/80">{r.product_sku}</td>
                 <td className="px-4 py-3 tabular-nums font-medium">{r.quantity_delta}</td>
                 <td className="px-4 py-3">
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs">{r.movement_type}</span>
+                  <Badge>{r.movement_type}</Badge>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+          </table>
+        </div>
+        {rows.length === 0 && !loading ? <EmptyState title="No movement rows" detail="Try changing movement type or refreshing demo data." /> : null}
+      </Panel>
       {next ? (
-        <button
+        <SecondaryButton
           type="button"
           disabled={loading}
-          className="rounded-lg border border-primary/20 px-4 py-2 text-sm font-medium text-primary"
           onClick={() => void load(next, true)}
         >
           {loading ? "Loading…" : "Load more"}
-        </button>
+        </SecondaryButton>
       ) : null}
     </div>
   );

@@ -1,6 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import {
+  Badge,
+  EmptyState,
+  ErrorState,
+  LoadingRow,
+  PageHeader,
+  Panel,
+  SecondaryButton,
+  SelectInput,
+  TextInput,
+} from "@/components/ui/primitives";
 import { formatMoneyUSD } from "@/lib/format";
 
 type TxLine = {
@@ -57,32 +68,38 @@ export default function OrdersPage() {
   }, [fetchPage]);
 
   return (
-    <div className="space-y-6">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-wider text-primary/50">Order audit ledger</p>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-primary">Synced transactions</h1>
-      </header>
-      <div className="flex flex-wrap gap-3">
-        <input
-          placeholder="Search SKU / name…"
-          className="min-w-[12rem] rounded-lg border border-primary/15 px-3 py-2 text-sm"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <select
-          className="rounded-lg border border-primary/15 px-3 py-2 text-sm"
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
+    <div className="space-y-7">
+      <PageHeader
+        kicker="Order audit ledger"
+        title="Synced transactions"
+        subtitle="Filter by status or SKU/name to inspect posted, pending, and refunded activity."
+      />
+      <Panel
+        title="Filters"
+        subtitle="All filters apply server-side with keyset pagination."
+      >
+        <div className="flex flex-wrap gap-3">
+          <TextInput
+            placeholder="Search SKU / name…"
+            className="min-w-[16rem]"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <SelectInput value={status} onChange={(e) => setStatus(e.target.value)}>
           <option value="">All statuses</option>
           <option value="posted">Posted</option>
           <option value="pending">Pending</option>
           <option value="refunded">Refunded</option>
-        </select>
-      </div>
-      {err ? <p className="text-sm text-red-700">{err}</p> : null}
-      <div className="overflow-x-auto rounded-xl border border-primary/10 bg-white/90 shadow-sm">
-        <table className="min-w-full text-left text-sm">
+          </SelectInput>
+        </div>
+      </Panel>
+      {err ? <ErrorState detail={err} /> : null}
+      <Panel
+        title="Transactions"
+        subtitle="Newest first. Includes tax-inclusive totals and line snapshots."
+      >
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
           <thead>
             <tr className="border-b border-primary/10 text-xs uppercase tracking-wide text-primary/50">
               <th className="px-4 py-3">When</th>
@@ -92,11 +109,14 @@ export default function OrdersPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-primary/5">
+            {loading ? <LoadingRow colSpan={4} /> : null}
             {rows.map((t) => (
               <tr key={t.id}>
                 <td className="px-4 py-3 font-mono text-xs text-primary/80">{t.created_at}</td>
                 <td className="px-4 py-3">
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium">{t.status}</span>
+                  <Badge tone={t.status === "posted" ? "good" : t.status === "refunded" ? "warn" : "default"}>
+                    {t.status}
+                  </Badge>
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums font-medium">
                   {formatMoneyUSD(t.total_cents)}
@@ -110,20 +130,18 @@ export default function OrdersPage() {
               </tr>
             ))}
           </tbody>
-        </table>
-        {rows.length === 0 && !loading ? (
-          <p className="p-6 text-center text-sm text-primary/60">No transactions match.</p>
-        ) : null}
-      </div>
+          </table>
+        </div>
+        {rows.length === 0 && !loading ? <EmptyState title="No matching transactions" detail="Try clearing status/search filters." /> : null}
+      </Panel>
       {nextCursor ? (
-        <button
+        <SecondaryButton
           type="button"
-          className="rounded-lg border border-primary/20 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5"
           disabled={loading}
           onClick={() => void fetchPage(nextCursor, true)}
         >
           {loading ? "Loading…" : "Load more"}
-        </button>
+        </SecondaryButton>
       ) : null}
     </div>
   );

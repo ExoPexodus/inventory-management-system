@@ -1,6 +1,15 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import {
+  Badge,
+  PageHeader,
+  Panel,
+  PrimaryButton,
+  SecondaryButton,
+  SelectInput,
+  TextInput,
+} from "@/components/ui/primitives";
 
 type Tenant = { id: string; name: string; slug: string };
 
@@ -110,18 +119,19 @@ export default function EntriesPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-wider text-primary/50">New entry hub</p>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-primary">Quick create</h1>
-      </header>
+    <div className="space-y-7">
+      <PageHeader
+        kicker="New entry hub"
+        title="Quick create"
+        subtitle="Create shops, products, groups, and variants used by cashier and admin views."
+      />
       <div className="grid gap-6 lg:grid-cols-2">
-        <form onSubmit={addShop} className="rounded-xl border border-primary/10 bg-white/90 p-5 shadow-sm">
-          <h2 className="font-display text-sm font-semibold text-primary">New shop</h2>
+        <Panel title="New shop">
+          <form onSubmit={addShop}>
           <label className="mt-3 block text-xs font-medium text-primary/60">
             Tenant
-            <select
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm"
+            <SelectInput
+              className="mt-1 w-full"
               value={tenantId}
               onChange={(e) => setTenantId(e.target.value)}
             >
@@ -130,30 +140,28 @@ export default function EntriesPage() {
                   {t.name}
                 </option>
               ))}
-            </select>
+            </SelectInput>
           </label>
           <label className="mt-3 block text-xs font-medium text-primary/60">
             Shop name
-            <input
+            <TextInput
               required
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm"
+              className="mt-1 w-full"
               value={shopName}
               onChange={(e) => setShopName(e.target.value)}
             />
           </label>
-          <button
-            type="submit"
-            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
-          >
-            Create shop
-          </button>
-        </form>
-        <form onSubmit={addProduct} className="rounded-xl border border-primary/10 bg-white/90 p-5 shadow-sm">
-          <h2 className="font-display text-sm font-semibold text-primary">New product</h2>
+          <div className="mt-4">
+            <PrimaryButton type="submit">Create shop</PrimaryButton>
+          </div>
+          </form>
+        </Panel>
+        <Panel title="New product">
+          <form onSubmit={addProduct}>
           <label className="mt-3 block text-xs font-medium text-primary/60">
             Tenant
-            <select
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm"
+            <SelectInput
+              className="mt-1 w-full"
               value={tenantId}
               onChange={(e) => setTenantId(e.target.value)}
             >
@@ -162,39 +170,39 @@ export default function EntriesPage() {
                   {t.name}
                 </option>
               ))}
-            </select>
+            </SelectInput>
           </label>
           <label className="mt-3 block text-xs font-medium text-primary/60">
             SKU
-            <input
+            <TextInput
               required
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm"
+              className="mt-1 w-full"
               value={sku}
               onChange={(e) => setSku(e.target.value)}
             />
           </label>
           <label className="mt-3 block text-xs font-medium text-primary/60">
             Name
-            <input
+            <TextInput
               required
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm"
+              className="mt-1 w-full"
               value={pname}
               onChange={(e) => setPname(e.target.value)}
             />
           </label>
           <label className="mt-3 block text-xs font-medium text-primary/60">
             Price (USD)
-            <input
+            <TextInput
               required
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm"
+              className="mt-1 w-full"
               value={price}
               onChange={(e) => setPrice(e.target.value)}
             />
           </label>
           <label className="mt-3 block text-xs font-medium text-primary/60">
             Category
-            <input
-              className="mt-1 w-full rounded-lg border border-primary/15 px-3 py-2 text-sm"
+            <TextInput
+              className="mt-1 w-full"
               value={category}
               onChange={(e) => setCategory(e.target.value)}
             />
@@ -206,8 +214,8 @@ export default function EntriesPage() {
             </p>
             <label className="mt-3 block text-xs font-medium text-primary/60">
               Product group
-              <select
-                className="mt-1 w-full rounded-lg border border-primary/15 bg-white px-3 py-2 text-sm"
+              <SelectInput
+                className="mt-1 w-full"
                 value={productGroupId}
                 onChange={(e) => setProductGroupId(e.target.value)}
               >
@@ -217,12 +225,12 @@ export default function EntriesPage() {
                     {g.title}
                   </option>
                 ))}
-              </select>
+              </SelectInput>
             </label>
             <label className="mt-2 block text-xs font-medium text-primary/60">
               Variant label (cashier subtitle)
-              <input
-                className="mt-1 w-full rounded-lg border border-primary/15 bg-white px-3 py-2 text-sm"
+              <TextInput
+                className="mt-1 w-full"
                 placeholder='e.g. A5 · recycled'
                 value={variantLabel}
                 onChange={(e) => setVariantLabel(e.target.value)}
@@ -231,30 +239,28 @@ export default function EntriesPage() {
             <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-primary/10 pt-3">
               <label className="min-w-[12rem] flex-1 text-xs font-medium text-primary/60">
                 New group title
-                <input
-                  className="mt-1 w-full rounded-lg border border-primary/15 bg-white px-3 py-2 text-sm"
+                <TextInput
+                  className="mt-1 w-full"
                   value={newGroupTitle}
                   onChange={(e) => setNewGroupTitle(e.target.value)}
                 />
               </label>
-              <button
+              <SecondaryButton
                 type="button"
-                className="rounded-lg border border-primary/25 px-3 py-2 text-sm font-medium text-primary hover:bg-primary/5"
+                className="px-3 py-2"
                 onClick={() => void createGroup()}
               >
                 Save group
-              </button>
+              </SecondaryButton>
             </div>
           </details>
-          <button
-            type="submit"
-            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90"
-          >
-            Create product
-          </button>
-        </form>
+          <div className="mt-4">
+            <PrimaryButton type="submit">Create product</PrimaryButton>
+          </div>
+          </form>
+        </Panel>
       </div>
-      {msg ? <p className="text-sm text-primary/80">{msg}</p> : null}
+      {msg ? <Badge tone="good">{msg}</Badge> : null}
     </div>
   );
 }

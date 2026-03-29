@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { EmptyState, ErrorState, PageHeader, Panel } from "@/components/ui/primitives";
 import { formatMoneyUSD } from "@/lib/format";
 
 type Point = { day: string; gross_cents: number; transaction_count: number };
@@ -22,17 +23,17 @@ export default function AnalyticsPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <header>
-        <p className="text-xs font-semibold uppercase tracking-wider text-primary/50">Analytics & insights</p>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-primary">Sales trend</h1>
-        <p className="mt-1 text-sm text-primary/70">Posted transactions, last 30 days · all tenants</p>
-      </header>
-      {err ? <p className="text-sm text-red-700">{err}</p> : null}
-      <div className="rounded-xl border border-primary/10 bg-white/90 p-6 shadow-sm">
+    <div className="space-y-7">
+      <PageHeader
+        kicker="Analytics & insights"
+        title="Sales trend"
+        subtitle="Posted transactions, last 30 days."
+      />
+      {err ? <ErrorState detail={err} /> : null}
+      <Panel title="Gross sales chart" subtitle="Daily bars, relative scale">
         <div className="flex h-56 items-end gap-1">
           {points.length === 0 ? (
-            <p className="w-full text-center text-sm text-primary/60">No data yet.</p>
+            <EmptyState title="No data yet" detail="Seed demo transactions to populate analytics." />
           ) : (
             points.map((p) => (
               <div key={p.day} className="flex flex-1 flex-col items-center justify-end gap-1">
@@ -46,9 +47,10 @@ export default function AnalyticsPage() {
             ))
           )}
         </div>
-      </div>
-      <div className="overflow-x-auto rounded-xl border border-primary/10 bg-white/90 shadow-sm">
-        <table className="min-w-full text-left text-sm">
+      </Panel>
+      <Panel title="Daily breakdown">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
           <thead>
             <tr className="border-b border-primary/10 text-xs uppercase tracking-wide text-primary/50">
               <th className="px-4 py-3">Day</th>
@@ -65,8 +67,9 @@ export default function AnalyticsPage() {
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }

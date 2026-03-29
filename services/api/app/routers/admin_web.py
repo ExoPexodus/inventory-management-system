@@ -323,10 +323,23 @@ def list_suppliers(
     _: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
+    status: str | None = Query(default=None, description="Filter by supplier status (active/inactive)."),
+    q: str | None = Query(default=None, description="Substring match on supplier name/email/phone."),
 ) -> list[SupplierOut]:
     stmt = select(Supplier).order_by(Supplier.created_at.desc())
     if tenant_id is not None:
         stmt = stmt.where(Supplier.tenant_id == tenant_id)
+    if status and status.strip():
+        stmt = stmt.where(Supplier.status == status.strip().lower())
+    if q and q.strip():
+        needle = f"%{q.strip()}%"
+        stmt = stmt.where(
+            or_(
+                Supplier.name.ilike(needle),
+                Supplier.contact_email.ilike(needle),
+                Supplier.contact_phone.ilike(needle),
+            )
+        )
     rows = db.execute(stmt).scalars().all()
     return [
         SupplierOut(
@@ -520,8 +533,15 @@ class PatchOperatorBody(BaseModel):
 def list_operators(
     _: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
+    role: str | None = Query(default=None, description="Filter by operator role."),
+    q: str | None = Query(default=None, description="Substring match on email."),
 ) -> list[OperatorOut]:
-    rows = db.execute(select(AdminUser).order_by(AdminUser.created_at.desc())).scalars().all()
+    stmt = select(AdminUser).order_by(AdminUser.created_at.desc())
+    if role and role.strip():
+        stmt = stmt.where(AdminUser.role == role.strip().lower())
+    if q and q.strip():
+        stmt = stmt.where(AdminUser.email.ilike(f"%{q.strip()}%"))
+    rows = db.execute(stmt).scalars().all()
     return [
         OperatorOut(id=r.id, email=r.email, role=r.role, is_active=r.is_active, created_at=r.created_at)
         for r in rows

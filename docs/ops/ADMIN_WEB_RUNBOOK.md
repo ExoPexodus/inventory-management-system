@@ -47,4 +47,6 @@ Design references: `docs/stitch/admin-web/` (HTML + `screenshot.webp` per screen
 
 - Login / logout; protected route redirect when cookie cleared.
 - Overview KPI load; Orders pagination; Suppliers create; Inventory movements load; Staff role PATCH.
+- Supplier list filtering: status + text search should query `/v1/admin/suppliers?status=&q=`.
+- Staff filtering: role + email search should query `/v1/admin/operators?role=&q=`.
 - `pytest services/api/tests -q` including `test_admin_console_contracts.py`.
