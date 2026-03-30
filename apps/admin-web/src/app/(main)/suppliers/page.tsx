@@ -12,8 +12,6 @@ import {
   TextInput,
 } from "@/components/ui/primitives";
 
-type Tenant = { id: string; name: string; slug: string };
-
 type Supplier = {
   id: string;
   name: string;
@@ -64,8 +62,6 @@ function SupplierCard({ s }: { s: Supplier }) {
 }
 
 export default function SuppliersPage() {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [tenantId, setTenantId] = useState("");
   const [rows, setRows] = useState<Supplier[]>([]);
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -83,17 +79,6 @@ export default function SuppliersPage() {
     else setErr(`Suppliers failed (${r.status})`);
     setLoading(false);
   }
-
-  useEffect(() => {
-    void (async () => {
-      const o = await fetch("/api/ims/v1/admin/overview");
-      if (o.ok) {
-        const j = (await o.json()) as { tenants: Tenant[] };
-        setTenants(j.tenants);
-        if (j.tenants[0]) setTenantId(j.tenants[0].id);
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     void refresh();
@@ -121,15 +106,10 @@ export default function SuppliersPage() {
   async function onAddSupplier(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
-    if (!tenantId) {
-      setMsg("Select a tenant first");
-      return;
-    }
     const r = await fetch("/api/ims/v1/admin/suppliers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        tenant_id: tenantId,
         name: name.trim(),
         status: "active",
         contact_email: email.trim() || null,
@@ -171,21 +151,6 @@ export default function SuppliersPage() {
         >
           <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">New supplier</p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-medium text-on-surface">
-              Tenant
-              <select
-                className="ledger-input mt-1 w-full py-2 text-sm text-on-surface"
-                value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
-              >
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div />
             <label className="block text-sm font-medium text-on-surface">
               Name
               <TextInput required className="mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" />

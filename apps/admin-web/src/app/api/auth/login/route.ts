@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
-import { OPERATOR_JWT_COOKIE } from "@/lib/auth/constants";
+import { OPERATOR_JWT_COOKIE, OPERATOR_TENANT_SLUG_COOKIE } from "@/lib/auth/constants";
 import { shouldUseSecureCookie } from "@/lib/auth/cookie-secure";
 import { internalApiUrl } from "@/lib/api/internal-url";
 
 export async function POST(req: Request) {
-  let body: { email?: string; password?: string };
+  let body: { email?: string; password?: string; tenant_slug?: string };
   try {
-    body = (await req.json()) as { email?: string; password?: string };
+    body = (await req.json()) as { email?: string; password?: string; tenant_slug?: string };
   } catch {
     return NextResponse.json({ detail: "invalid_json" }, { status: 400 });
   }
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
   const password = typeof body.password === "string" ? body.password : "";
+  const expectedTenantSlug =
+    typeof body.tenant_slug === "string" && body.tenant_slug.trim() ? body.tenant_slug.trim().toLowerCase() : "";
   const base = internalApiUrl();
   const r = await fetch(`${base}/v1/admin/auth/login`, {
     method: "POST",
@@ -22,15 +24,32 @@ export async function POST(req: Request) {
   if (!r.ok) {
     return new NextResponse(text, { status: r.status, headers: { "content-type": "application/json" } });
   }
-  let json: { access_token: string; expires_in?: number };
+  let json: { access_token: string; expires_in?: number; tenant_slug?: string };
   try {
-    json = JSON.parse(text) as { access_token: string; expires_in?: number };
+    json = JSON.parse(text) as { access_token: string; expires_in?: number; tenant_slug?: string };
   } catch {
     return NextResponse.json({ detail: "bad_upstream" }, { status: 502 });
+  }
+  const tenantSlug = typeof json.tenant_slug === "string" ? json.tenant_slug.trim().toLowerCase() : "";
+  if (expectedTenantSlug && tenantSlug && tenantSlug !== expectedTenantSlug) {
+    return NextResponse.json(
+      { detail: "Your account does not belong to this organization." },
+      { status: 403 },
+    );
+  }
+  if (!tenantSlug) {
+    return NextResponse.json({ detail: "bad_upstream_tenant" }, { status: 502 });
   }
   const res = NextResponse.json({ ok: true });
   const maxAge = json.expires_in ?? 3600;
   res.cookies.set(OPERATOR_JWT_COOKIE, json.access_token, {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+    secure: shouldUseSecureCookie(req),
+  });
+  res.cookies.set(OPERATOR_TENANT_SLUG_COOKIE, tenantSlug, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",

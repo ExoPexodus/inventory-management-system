@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { SecondaryButton, TextInput } from "@/components/ui/primitives";
+import { SecondaryButton } from "@/components/ui/primitives";
+import { DateInput } from "@/components/ui/DateInput";
 
 const REPORTS = [
   {
@@ -65,11 +66,11 @@ export default function ReportsPage() {
       <div className="flex flex-wrap items-end gap-4 rounded-xl border border-outline-variant/10 bg-surface-container-low p-4 shadow-sm">
         <label className="flex min-w-[10rem] flex-col gap-1">
           <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">From</span>
-          <TextInput type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-3" />
+          <DateInput value={from} onChange={setFrom} />
         </label>
         <label className="flex min-w-[10rem] flex-col gap-1">
           <span className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">To</span>
-          <TextInput type="date" value={to} onChange={(e) => setTo(e.target.value)} className="rounded-lg border border-outline-variant/20 bg-surface-container-lowest px-3" />
+          <DateInput value={to} onChange={setTo} />
         </label>
       </div>
 

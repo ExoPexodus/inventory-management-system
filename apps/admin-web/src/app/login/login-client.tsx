@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export function LoginClient() {
+export function LoginClient({ tenantSlug }: { tenantSlug?: string }) {
   const router = useRouter();
   const qs = useSearchParams();
   const [email, setEmail] = useState("");
@@ -19,7 +19,7 @@ export function LoginClient() {
       const r = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, tenant_slug: tenantSlug ?? null }),
       });
       if (!r.ok) {
         let msg = `Login failed (${r.status})`;
@@ -32,8 +32,9 @@ export function LoginClient() {
         setError(msg);
         return;
       }
-      const dest = qs.get("from") || "/overview";
-      router.push(dest.startsWith("/") ? dest : "/overview");
+      const fallback = tenantSlug ? `/${tenantSlug}/overview` : "/overview";
+      const dest = qs.get("from") || fallback;
+      router.push(dest.startsWith("/") ? dest : fallback);
       router.refresh();
     } finally {
       setBusy(false);
@@ -49,7 +50,10 @@ export function LoginClient() {
         </div>
         <div className="rounded-2xl border border-outline-variant/15 bg-surface-container-lowest p-8 shadow-sm">
           <h2 className="font-headline text-xl font-bold text-on-surface">Sign in</h2>
-          <p className="mt-1 text-sm text-on-surface-variant">Enter your operator credentials to continue.</p>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Enter your operator credentials to continue.
+            {tenantSlug ? ` Organization: ${tenantSlug}` : ""}
+          </p>
           <form onSubmit={onSubmit} className="mt-6 space-y-5">
             <div>
               <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant" htmlFor="email">

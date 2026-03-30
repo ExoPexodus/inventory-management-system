@@ -5,6 +5,25 @@ import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/dashboard/LogoutButton";
 
+const ROOT_ROUTES = new Set([
+  "overview",
+  "inventory",
+  "staff",
+  "orders",
+  "analytics",
+  "suppliers",
+  "products",
+  "purchase-orders",
+  "shifts",
+  "reconciliation",
+  "audit",
+  "reports",
+  "integrations",
+  "settings",
+  "entries",
+  "login",
+]);
+
 const NAV = [
   { href: "/overview", label: "Dashboard", icon: "dashboard" },
   { href: "/inventory", label: "Inventory", icon: "inventory_2" },
@@ -24,7 +43,12 @@ const NAV = [
 
 export function AppShell({ children, current }: { children: ReactNode; current?: string }) {
   const pathname = usePathname();
-  const activePath = current ?? pathname;
+  const activePathRaw = current ?? pathname;
+  const segments = activePathRaw.split("/").filter(Boolean);
+  const tenantPrefix = segments.length > 0 && !ROOT_ROUTES.has(segments[0]) ? `/${segments[0]}` : "";
+  const activePath = tenantPrefix && activePathRaw.startsWith(tenantPrefix)
+    ? activePathRaw.slice(tenantPrefix.length) || "/"
+    : activePathRaw;
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -40,7 +64,7 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={`${tenantPrefix}${item.href}`}
                 className={`flex items-center gap-3 rounded-lg px-4 py-2.5 text-[13px] transition-colors duration-150 ${
                   active
                     ? "bg-primary/10 font-bold text-primary"
@@ -57,7 +81,7 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
         </nav>
         <div className="shrink-0 space-y-3 px-3 pb-4 pt-2">
           <Link
-            href="/entries"
+            href={`${tenantPrefix}/entries`}
             className="ink-gradient flex w-full items-center justify-center gap-2 rounded-lg py-3 text-[13px] font-bold text-on-primary shadow-md transition-all hover:opacity-90 active:scale-[0.98]"
           >
             <span className="material-symbols-outlined text-lg leading-none" aria-hidden="true">add_circle</span>

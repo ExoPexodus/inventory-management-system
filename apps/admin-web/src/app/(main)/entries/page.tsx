@@ -8,19 +8,16 @@ import {
   PageHeader,
   PrimaryButton,
   SecondaryButton,
+  SelectInput,
   Tabs,
   TextInput,
 } from "@/components/ui/primitives";
 import { formatMoneyUSD } from "@/lib/format";
 
-type Tenant = { id: string; name: string; slug: string };
-
 type ProductGroup = { id: string; title: string };
 
 export default function EntriesPage() {
   const [tab, setTab] = useState("details");
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [tenantId, setTenantId] = useState("");
   const [shopName, setShopName] = useState("");
   const [sku, setSku] = useState("");
   const [pname, setPname] = useState("");
@@ -35,22 +32,10 @@ export default function EntriesPage() {
 
   useEffect(() => {
     void (async () => {
-      const o = await fetch("/api/ims/v1/admin/overview");
-      if (o.ok) {
-        const j = (await o.json()) as { tenants: Tenant[] };
-        setTenants(j.tenants);
-        if (j.tenants[0]) setTenantId(j.tenants[0].id);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!tenantId) return;
-    void (async () => {
-      const r = await fetch(`/api/ims/v1/admin/product-groups?tenant_id=${encodeURIComponent(tenantId)}`);
+      const r = await fetch("/api/ims/v1/admin/product-groups");
       if (r.ok) setProductGroups((await r.json()) as ProductGroup[]);
     })();
-  }, [tenantId]);
+  }, []);
 
   const selectedGroupTitle = productGroups.find((g) => g.id === productGroupId)?.title ?? null;
   const previewPriceCents = Math.round(parseFloat(price) * 100);
@@ -62,7 +47,7 @@ export default function EntriesPage() {
     const r = await fetch("/api/ims/v1/admin/shops", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenant_id: tenantId, name: shopName }),
+      body: JSON.stringify({ name: shopName }),
     });
     setMsg(r.ok ? "Shop created" : `Shop failed (${r.status})`);
     if (r.ok) setShopName("");
@@ -78,7 +63,7 @@ export default function EntriesPage() {
     const r = await fetch("/api/ims/v1/admin/product-groups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenant_id: tenantId, title }),
+      body: JSON.stringify({ title }),
     });
     if (r.ok) {
       setNewGroupTitle("");
@@ -100,7 +85,6 @@ export default function EntriesPage() {
       return;
     }
     const body: Record<string, unknown> = {
-      tenant_id: tenantId,
       sku,
       name: pname,
       unit_price_cents: unit,
@@ -156,20 +140,6 @@ export default function EntriesPage() {
           {tab === "details" ? (
             <div className="space-y-6 rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Product details</p>
-              <label className="block text-sm font-medium text-on-surface">
-                Tenant
-                <select
-                  className="ledger-input mt-1 w-full py-2 text-sm"
-                  value={tenantId}
-                  onChange={(e) => setTenantId(e.target.value)}
-                >
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-on-surface">
                   SKU
@@ -202,18 +172,16 @@ export default function EntriesPage() {
               />
               <div>
                 <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Variant grouping</p>
-                <select
-                  className="ledger-input mt-2 w-full py-2 text-sm"
+                <SelectInput
+                  className="mt-2"
                   value={productGroupId}
-                  onChange={(e) => setProductGroupId(e.target.value)}
-                >
-                  <option value="">None</option>
-                  {productGroups.map((g) => (
-                    <option key={g.id} value={g.id}>
-                      {g.title}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setProductGroupId}
+                  placeholder="None"
+                  options={[
+                    { value: "", label: "None" },
+                    ...productGroups.map((g) => ({ value: g.id, label: g.title })),
+                  ]}
+                />
                 <label className="mt-3 block text-sm font-medium text-on-surface">
                   Variant label
                   <TextInput
@@ -294,9 +262,7 @@ export default function EntriesPage() {
                 <Badge tone="good">{category || "Category"}</Badge>
                 {variantLabel ? <Badge tone="warn">{variantLabel}</Badge> : null}
               </div>
-              <p className="text-xs text-on-surface-variant">
-                Tenant <span className="font-semibold text-on-surface">{tenants.find((t) => t.id === tenantId)?.name ?? "—"}</span>
-              </p>
+              <p className="text-xs text-on-surface-variant">Tenant scope is derived from your signed-in organization.</p>
             </div>
           </div>
         </div>

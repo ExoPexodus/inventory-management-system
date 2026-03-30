@@ -9,7 +9,7 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep
+from app.auth.admin_deps import AdminAuthDep, AdminContext
 from app.auth.jwt import create_operator_access_token
 from app.db.admin_deps_db import get_db_admin
 from app.db.session import get_db
@@ -17,6 +17,20 @@ from app.models import AdminUser, Device, EnrollmentToken, Product, Shop, ShopPr
 from app.services.enrollment import hash_token
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin"])
+
+
+def _require_operator_tenant(ctx: AdminContext) -> UUID:
+    if ctx.is_legacy_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Legacy admin token is not allowed for this endpoint",
+        )
+    if ctx.tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator is not assigned to a tenant",
+        )
+    return ctx.tenant_id
 
 
 class AdminLoginBody(BaseModel):
@@ -28,6 +42,8 @@ class AdminLoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+    tenant_id: UUID
+    tenant_slug: str
 
 
 @router.post("/auth/login", response_model=AdminLoginResponse)
@@ -52,8 +68,19 @@ def admin_login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Operator is not assigned to a tenant",
         )
+    tenant = db.get(Tenant, user.tenant_id)
+    if tenant is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator tenant does not exist",
+        )
     access, ttl = create_operator_access_token(operator_id=user.id, tenant_id=user.tenant_id)
-    return AdminLoginResponse(access_token=access, expires_in=ttl)
+    return AdminLoginResponse(
+        access_token=access,
+        expires_in=ttl,
+        tenant_id=tenant.id,
+        tenant_slug=tenant.slug,
+    )
 
 
 class TenantOverview(BaseModel):
@@ -120,9 +147,12 @@ class UpdateTenantCurrencyResponse(BaseModel):
 def update_tenant_currency(
     tenant_id: UUID,
     body: UpdateTenantCurrencyBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> UpdateTenantCurrencyResponse:
+    operator_tenant = _require_operator_tenant(ctx)
+    if tenant_id != operator_tenant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     tenant = db.get(Tenant, tenant_id)
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
@@ -152,9 +182,12 @@ class MintEnrollmentResponse(BaseModel):
 @router.post("/enrollment-tokens", response_model=MintEnrollmentResponse)
 def mint_enrollment_token(
     body: MintEnrollmentBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> MintEnrollmentResponse:
+    operator_tenant = _require_operator_tenant(ctx)
+    if body.tenant_id != operator_tenant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     shop = db.get(Shop, body.shop_id)
     if shop is None or shop.tenant_id != body.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found for tenant")
@@ -197,9 +230,12 @@ class EnqueueAggregateResponse(BaseModel):
 @router.post("/jobs/aggregate-report", response_model=EnqueueAggregateResponse)
 def enqueue_aggregate_report(
     body: EnqueueAggregateBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> EnqueueAggregateResponse:
+    operator_tenant = _require_operator_tenant(ctx)
+    if body.tenant_id != operator_tenant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     tenant = db.get(Tenant, body.tenant_id)
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
@@ -223,12 +259,15 @@ class UpdateShopDefaultTaxResponse(BaseModel):
 def update_shop_default_tax_rate(
     shop_id: UUID,
     body: UpdateShopDefaultTaxBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> UpdateShopDefaultTaxResponse:
+    operator_tenant = _require_operator_tenant(ctx)
     shop = db.get(Shop, shop_id)
     if shop is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
+    if shop.tenant_id != operator_tenant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     shop.default_tax_rate_bps = body.default_tax_rate_bps
     db.commit()
     return UpdateShopDefaultTaxResponse(shop_id=shop.id, default_tax_rate_bps=shop.default_tax_rate_bps)
@@ -257,12 +296,15 @@ class ShopProductTaxOut(BaseModel):
 @router.get("/shops/{shop_id}/product-taxes", response_model=list[ShopProductTaxOut])
 def list_shop_product_taxes(
     shop_id: UUID,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> list[ShopProductTaxOut]:
+    operator_tenant = _require_operator_tenant(ctx)
     shop = db.get(Shop, shop_id)
     if shop is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
+    if shop.tenant_id != operator_tenant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     rows = db.execute(select(ShopProductTax).where(ShopProductTax.shop_id == shop_id)).scalars().all()
     return [
         ShopProductTaxOut(
@@ -282,12 +324,15 @@ def upsert_shop_product_tax(
     shop_id: UUID,
     product_id: UUID,
     body: UpsertShopProductTaxBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> ShopProductTaxOut:
+    operator_tenant = _require_operator_tenant(ctx)
     shop = db.get(Shop, shop_id)
     if shop is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
+    if shop.tenant_id != operator_tenant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     prod = db.get(Product, product_id)
     if prod is None or prod.tenant_id != shop.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found for shop tenant")
@@ -328,9 +373,15 @@ def upsert_shop_product_tax(
 def delete_shop_product_tax(
     shop_id: UUID,
     product_id: UUID,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> None:
+    operator_tenant = _require_operator_tenant(ctx)
+    shop = db.get(Shop, shop_id)
+    if shop is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
+    if shop.tenant_id != operator_tenant:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     row = db.execute(
         select(ShopProductTax).where(
             ShopProductTax.shop_id == shop_id,

@@ -113,13 +113,14 @@ export default function PurchaseOrdersPage() {
           <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Create draft</p>
           <label className="block text-sm font-medium text-on-surface">
             Supplier
-            <SelectInput className="mt-1" required value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              {suppliers.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </SelectInput>
+            <SelectInput
+              className="mt-1"
+              required
+              value={supplierId}
+              onChange={setSupplierId}
+              placeholder="Select supplier"
+              options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
+            />
           </label>
           <label className="block text-sm font-medium text-on-surface">
             Notes

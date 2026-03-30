@@ -82,21 +82,29 @@ export default function ProductsPage() {
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant/10 bg-surface-container-low p-4 shadow-sm">
         <SearchBar className="min-w-[14rem] flex-1" placeholder="Search name or SKU" value={q} onChange={(e) => setQ(e.target.value)} />
-        <SelectInput className="min-w-[9rem]" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">All statuses</option>
-          <option value="active">active</option>
-          <option value="draft">draft</option>
-          <option value="archived">archived</option>
-          <option value="discontinued">discontinued</option>
-        </SelectInput>
-        <SelectInput className="min-w-[11rem]" value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">All categories</option>
-          {categories.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </SelectInput>
+        <SelectInput
+          className="min-w-[9rem]"
+          value={status}
+          onChange={setStatus}
+          placeholder="All statuses"
+          options={[
+            { value: "", label: "All statuses" },
+            { value: "active", label: "active" },
+            { value: "draft", label: "draft" },
+            { value: "archived", label: "archived" },
+            { value: "discontinued", label: "discontinued" },
+          ]}
+        />
+        <SelectInput
+          className="min-w-[11rem]"
+          value={category}
+          onChange={setCategory}
+          placeholder="All categories"
+          options={[
+            { value: "", label: "All categories" },
+            ...categories.map((c) => ({ value: c, label: c })),
+          ]}
+        />
       </div>
 
       <Panel title="Products" subtitle={`${rows.length} rows`} noPad>

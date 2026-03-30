@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -25,12 +25,17 @@ class StockAlertOut(BaseModel):
 
 @router.get("/stock-alerts", response_model=list[StockAlertOut])
 def stock_alerts(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     threshold: int = 5,
 ) -> list[StockAlertOut]:
+    if ctx.tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant-scoped operator required",
+        )
     out: list[StockAlertOut] = []
-    shops = db.execute(select(Shop)).scalars().all()
+    shops = db.execute(select(Shop).where(Shop.tenant_id == ctx.tenant_id)).scalars().all()
     for shop in shops:
         prods = db.execute(select(Product).where(Product.tenant_id == shop.tenant_id, Product.active.is_(True))).scalars().all()
         for p in prods:

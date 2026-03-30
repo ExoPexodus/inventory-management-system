@@ -26,8 +26,6 @@ type MovementRow = {
 
 type MovementPage = { items: MovementRow[]; next_cursor: string | null };
 
-type Tenant = { id: string; name: string };
-
 type ShopRow = { id: string; tenant_id: string; name: string };
 
 type StockRow = {
@@ -63,8 +61,6 @@ function movementIcon(t: string): string {
 }
 
 export default function InventoryPage() {
-  const [tenants, setTenants] = useState<Tenant[]>([]);
-  const [tenantId, setTenantId] = useState("");
   const [shops, setShops] = useState<ShopRow[]>([]);
   const [shopId, setShopId] = useState("");
   const [stockRows, setStockRows] = useState<StockRow[]>([]);
@@ -123,19 +119,7 @@ export default function InventoryPage() {
 
   useEffect(() => {
     void (async () => {
-      const o = await fetch("/api/ims/v1/admin/overview");
-      if (o.ok) {
-        const j = (await o.json()) as { tenants: Tenant[] };
-        setTenants(j.tenants);
-        if (j.tenants[0]) setTenantId(j.tenants[0].id);
-      }
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (!tenantId) return;
-    void (async () => {
-      const r = await fetch(`/api/ims/v1/admin/shops?tenant_id=${encodeURIComponent(tenantId)}`);
+      const r = await fetch("/api/ims/v1/admin/shops");
       if (r.ok) {
         const list = (await r.json()) as ShopRow[];
         setShops(list);
@@ -145,7 +129,7 @@ export default function InventoryPage() {
         });
       }
     })();
-  }, [tenantId]);
+  }, []);
 
   useEffect(() => {
     if (!shopId) {
@@ -232,24 +216,14 @@ export default function InventoryPage() {
         <div className="border-b border-outline-variant/10 px-6 py-4">
           <div className="flex flex-wrap gap-4">
             <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-              Tenant
-              <SelectInput className="mt-1 min-w-[10rem]" value={tenantId} onChange={(e) => setTenantId(e.target.value)}>
-                {tenants.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </SelectInput>
-            </label>
-            <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
               Shop
-              <SelectInput className="mt-1 min-w-[12rem]" value={shopId} onChange={(e) => setShopId(e.target.value)}>
-                {shops.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </SelectInput>
+              <SelectInput
+                className="mt-1 min-w-[12rem]"
+                value={shopId}
+                onChange={setShopId}
+                placeholder="Select shop"
+                options={shops.map((s) => ({ value: s.id, label: s.name }))}
+              />
             </label>
           </div>
         </div>
@@ -309,11 +283,17 @@ export default function InventoryPage() {
               <h3 className="font-headline text-lg font-bold text-on-surface">Movement journal</h3>
               <p className="text-sm text-on-surface-variant">Ledger deltas with type semantics</p>
             </div>
-            <SelectInput className="max-w-[12rem]" value={mtype} onChange={(e) => setMtype(e.target.value)}>
-              <option value="">All types</option>
-              <option value="adjustment">adjustment</option>
-              <option value="sale">sale</option>
-            </SelectInput>
+            <SelectInput
+              className="max-w-[12rem]"
+              value={mtype}
+              onChange={setMtype}
+              placeholder="All types"
+              options={[
+                { value: "", label: "All types" },
+                { value: "adjustment", label: "adjustment" },
+                { value: "sale", label: "sale" },
+              ]}
+            />
           </div>
           {mErr ? (
             <div className="px-6 py-3">

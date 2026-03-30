@@ -1,5 +1,7 @@
 import { ReactNode } from "react";
 import Image from "next/image";
+export { SelectInput } from "@/components/ui/SelectInput";
+export type { SelectInputProps, SelectOption } from "@/components/ui/SelectInput";
 
 // ─── Page Header ─────────────────────────────────────────────────────────────
 
@@ -131,17 +133,6 @@ export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={`ledger-input w-full py-2 text-base font-headline text-on-surface placeholder:text-outline-variant/50 ${props.className ?? ""}`}
-    />
-  );
-}
-
-// ─── Select Input ─────────────────────────────────────────────────────────────
-
-export function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select
-      {...props}
-      className={`ledger-input w-full py-2 text-sm text-on-surface ${props.className ?? ""}`}
     />
   );
 }

@@ -9,8 +9,8 @@ import {
   Pagination,
   SearchBar,
   SelectInput,
-  TextInput,
 } from "@/components/ui/primitives";
+import { DateInput } from "@/components/ui/DateInput";
 import { formatMoneyUSD } from "@/lib/format";
 
 type TxLine = {
@@ -186,22 +186,27 @@ export default function OrdersPage() {
           <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Filters</p>
           <div className="mt-4 space-y-3">
             <label className="block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</label>
-            <SelectInput value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="posted">Posted</option>
-              <option value="pending">Pending</option>
-              <option value="refunded">Refunded</option>
-              <option value="voided">Voided</option>
-              <option value="flagged">Flagged</option>
-            </SelectInput>
+            <SelectInput
+              value={status}
+              onChange={setStatus}
+              placeholder="All statuses"
+              options={[
+                { value: "", label: "All statuses" },
+                { value: "posted", label: "Posted" },
+                { value: "pending", label: "Pending" },
+                { value: "refunded", label: "Refunded" },
+                { value: "voided", label: "Voided" },
+                { value: "flagged", label: "Flagged" },
+              ]}
+            />
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">From</label>
-                <TextInput type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+                <DateInput value={dateFrom} onChange={setDateFrom} />
               </div>
               <div>
                 <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">To</label>
-                <TextInput type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+                <DateInput value={dateTo} onChange={setDateTo} />
               </div>
             </div>
           </div>

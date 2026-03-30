@@ -67,7 +67,7 @@ services:
       # Plain HTTP on LAN / localhost: keep "false". Set "true" only behind HTTPS.
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     ports:
-      - "${ADMIN_WEB_PUBLISH_PORT:-3000}:3000"
+      - "${ADMIN_WEB_PUBLISH_PORT:-3100}:3000"
     depends_on:
       api:
         condition: service_started

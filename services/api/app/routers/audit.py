@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,12 +22,27 @@ class AuditEntryOut(BaseModel):
 
 @router.get("/events", response_model=list[AuditEntryOut])
 def list_audit_events(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     limit: int = 100,
 ) -> list[AuditEntryOut]:
-    txns = db.execute(select(Transaction).order_by(Transaction.created_at.desc()).limit(limit)).scalars().all()
-    moves = db.execute(select(StockMovement).order_by(StockMovement.created_at.desc()).limit(limit)).scalars().all()
+    if ctx.tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Tenant-scoped operator required",
+        )
+    txns = db.execute(
+        select(Transaction)
+        .where(Transaction.tenant_id == ctx.tenant_id)
+        .order_by(Transaction.created_at.desc())
+        .limit(limit)
+    ).scalars().all()
+    moves = db.execute(
+        select(StockMovement)
+        .where(StockMovement.tenant_id == ctx.tenant_id)
+        .order_by(StockMovement.created_at.desc())
+        .limit(limit)
+    ).scalars().all()
     items: list[AuditEntryOut] = []
     for t in txns:
         items.append(

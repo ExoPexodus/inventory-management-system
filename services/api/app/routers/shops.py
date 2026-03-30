@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,13 +21,17 @@ class ShopOut(BaseModel):
 
 @router.get("", response_model=list[ShopOut])
 def list_shops(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
 ) -> list[ShopOut]:
+    if ctx.tenant_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant-scoped operator required")
+    if tenant_id is not None and tenant_id != ctx.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
+    tenant_id = ctx.tenant_id
     stmt = select(Shop).order_by(Shop.created_at.desc())
-    if tenant_id is not None:
-        stmt = stmt.where(Shop.tenant_id == tenant_id)
+    stmt = stmt.where(Shop.tenant_id == tenant_id)
     rows = db.execute(stmt).scalars().all()
     return [ShopOut(id=s.id, tenant_id=s.tenant_id, name=s.name) for s in rows]
 

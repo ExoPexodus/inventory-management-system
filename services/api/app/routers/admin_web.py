@@ -13,7 +13,7 @@ from sqlalchemy import Select, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth.admin_deps import AdminAuthDep
+from app.auth.admin_deps import AdminAuthDep, AdminContext
 from app.db.admin_deps_db import get_db_admin
 from app.models import (
     AdminUser,
@@ -22,7 +22,6 @@ from app.models import (
     Shop,
     StockMovement,
     Supplier,
-    Tenant,
     Transaction,
     TransactionLine,
 )
@@ -39,6 +38,30 @@ from app.routers.transactions import (
 from app.services.stock import current_quantity
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin Console"])
+
+
+def _require_operator_tenant(ctx: AdminContext) -> UUID:
+    if ctx.is_legacy_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Legacy admin token is not allowed for this endpoint",
+        )
+    if ctx.tenant_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator is not assigned to a tenant",
+        )
+    return ctx.tenant_id
+
+
+def _coerce_tenant_scope(ctx: AdminContext, requested_tenant_id: UUID | None) -> UUID:
+    operator_tenant = _require_operator_tenant(ctx)
+    if requested_tenant_id is not None and requested_tenant_id != operator_tenant:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cross-tenant access is forbidden",
+        )
+    return operator_tenant
 
 
 def _admin_transactions_base_stmt(
@@ -71,7 +94,7 @@ def _admin_transactions_base_stmt(
 
 @router.get("/transactions", response_model=TransactionListResponse)
 def admin_list_transactions(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
     shop_id: UUID | None = None,
@@ -83,6 +106,7 @@ def admin_list_transactions(
     ),
     q: str | None = Query(default=None, description="Filter by line product name or SKU (substring)."),
 ) -> TransactionListResponse:
+    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
     statuses = _parse_status_filter(status)
     stmt = _admin_transactions_base_stmt(tenant_id, shop_id, statuses=statuses, search=q)
     stmt = stmt.order_by(Transaction.created_at.desc(), Transaction.id.desc())
@@ -159,15 +183,15 @@ class DashboardSummaryOut(BaseModel):
 
 @router.get("/dashboard-summary", response_model=DashboardSummaryOut)
 def dashboard_summary(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
     stock_alert_threshold: int = Query(default=5, ge=0, le=1_000_000),
     activity_limit: int = Query(default=12, ge=1, le=50),
 ) -> DashboardSummaryOut:
+    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
     txn_filters = [Transaction.status == "posted"]
-    if tenant_id is not None:
-        txn_filters.append(Transaction.tenant_id == tenant_id)
+    txn_filters.append(Transaction.tenant_id == tenant_id)
 
     posted_transaction_count = int(
         db.execute(select(func.count()).select_from(Transaction).where(*txn_filters)).scalar_one()
@@ -180,18 +204,13 @@ def dashboard_summary(
 
     def count_model(model, tenant_col) -> int:
         c = select(func.count()).select_from(model)
-        if tenant_id is not None:
-            c = c.where(tenant_col == tenant_id)
+        c = c.where(tenant_col == tenant_id)
         return int(db.execute(c).scalar_one())
 
     shop_count = count_model(Shop, Shop.tenant_id)
     product_count = count_model(Product, Product.tenant_id)
     supplier_count = count_model(Supplier, Supplier.tenant_id)
-    tenant_count = (
-        1
-        if tenant_id is not None
-        else int(db.execute(select(func.count()).select_from(Tenant)).scalar_one())
-    )
+    tenant_count = 1
 
     stock_alert_count = _stock_alert_qty(db, tenant_id, stock_alert_threshold)
 
@@ -202,8 +221,7 @@ def dashboard_summary(
         .limit(activity_limit)
     ).scalars().all()
     move_stmt = select(StockMovement).order_by(StockMovement.created_at.desc()).limit(activity_limit)
-    if tenant_id is not None:
-        move_stmt = move_stmt.where(StockMovement.tenant_id == tenant_id)
+    move_stmt = move_stmt.where(StockMovement.tenant_id == tenant_id)
     moves = db.execute(move_stmt).scalars().all()
 
     items: list[RecentActivityItem] = []
@@ -252,11 +270,12 @@ class SalesSeriesResponse(BaseModel):
 
 @router.get("/analytics/sales-series", response_model=SalesSeriesResponse)
 def sales_series(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
     days: int = Query(default=30, ge=1, le=366),
 ) -> SalesSeriesResponse:
+    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
     start = datetime.now(UTC) - timedelta(days=days)
     day_bucket = func.date_trunc("day", Transaction.created_at).label("day")
     stmt = (
@@ -267,8 +286,7 @@ def sales_series(
         )
         .where(Transaction.status == "posted", Transaction.created_at >= start)
     )
-    if tenant_id is not None:
-        stmt = stmt.where(Transaction.tenant_id == tenant_id)
+    stmt = stmt.where(Transaction.tenant_id == tenant_id)
     stmt = stmt.group_by(day_bucket).order_by(day_bucket)
     rows = db.execute(stmt).all()
     points: list[SalesSeriesPoint] = []
@@ -302,7 +320,6 @@ class SupplierOut(BaseModel):
 
 
 class CreateSupplierBody(BaseModel):
-    tenant_id: UUID
     name: str = Field(min_length=1, max_length=255)
     status: str = Field(default="active", max_length=32)
     contact_email: EmailStr | None = None
@@ -320,13 +337,13 @@ class PatchSupplierBody(BaseModel):
 
 @router.get("/suppliers", response_model=list[SupplierOut])
 def list_suppliers(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
 ) -> list[SupplierOut]:
+    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
     stmt = select(Supplier).order_by(Supplier.created_at.desc())
-    if tenant_id is not None:
-        stmt = stmt.where(Supplier.tenant_id == tenant_id)
+    stmt = stmt.where(Supplier.tenant_id == tenant_id)
     rows = db.execute(stmt).scalars().all()
     return [
         SupplierOut(
@@ -346,13 +363,12 @@ def list_suppliers(
 @router.post("/suppliers", response_model=SupplierOut)
 def create_supplier(
     body: CreateSupplierBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> SupplierOut:
-    if db.get(Tenant, body.tenant_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    tenant_id = _require_operator_tenant(ctx)
     row = Supplier(
-        tenant_id=body.tenant_id,
+        tenant_id=tenant_id,
         name=body.name.strip(),
         status=body.status.strip().lower(),
         contact_email=body.contact_email,
@@ -378,12 +394,15 @@ def create_supplier(
 def patch_supplier(
     supplier_id: UUID,
     body: PatchSupplierBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> SupplierOut:
+    tenant_id = _require_operator_tenant(ctx)
     row = db.get(Supplier, supplier_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
+    if row.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     if body.name is not None:
         row.name = body.name.strip()
     if body.status is not None:
@@ -448,7 +467,7 @@ class StockMovementListResponse(BaseModel):
 
 @router.get("/inventory/movements", response_model=StockMovementListResponse)
 def list_stock_movements(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
     shop_id: UUID | None = None,
@@ -457,9 +476,9 @@ def list_stock_movements(
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = None,
 ) -> StockMovementListResponse:
+    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
     stmt = select(StockMovement).order_by(StockMovement.created_at.desc(), StockMovement.id.desc())
-    if tenant_id is not None:
-        stmt = stmt.where(StockMovement.tenant_id == tenant_id)
+    stmt = stmt.where(StockMovement.tenant_id == tenant_id)
     if shop_id is not None:
         stmt = stmt.where(StockMovement.shop_id == shop_id)
     if product_id is not None:
@@ -518,10 +537,13 @@ class PatchOperatorBody(BaseModel):
 
 @router.get("/operators", response_model=list[OperatorOut])
 def list_operators(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> list[OperatorOut]:
-    rows = db.execute(select(AdminUser).order_by(AdminUser.created_at.desc())).scalars().all()
+    tenant_id = _require_operator_tenant(ctx)
+    rows = db.execute(
+        select(AdminUser).where(AdminUser.tenant_id == tenant_id).order_by(AdminUser.created_at.desc())
+    ).scalars().all()
     return [
         OperatorOut(id=r.id, email=r.email, role=r.role, is_active=r.is_active, created_at=r.created_at)
         for r in rows
@@ -532,12 +554,15 @@ def list_operators(
 def patch_operator(
     operator_id: UUID,
     body: PatchOperatorBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> OperatorOut:
+    tenant_id = _require_operator_tenant(ctx)
     row = db.get(AdminUser, operator_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operator not found")
+    if row.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     if body.role is not None:
         row.role = body.role.strip()
     if body.is_active is not None:
@@ -550,7 +575,6 @@ def patch_operator(
 
 
 class CreateShopBody(BaseModel):
-    tenant_id: UUID
     name: str = Field(min_length=1, max_length=255)
 
 
@@ -568,13 +592,13 @@ class ShopSummaryOut(BaseModel):
 
 @router.get("/shops", response_model=list[ShopSummaryOut])
 def admin_list_shops(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
 ) -> list[ShopSummaryOut]:
+    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
     stmt = select(Shop).order_by(Shop.tenant_id, Shop.name)
-    if tenant_id is not None:
-        stmt = stmt.where(Shop.tenant_id == tenant_id)
+    stmt = stmt.where(Shop.tenant_id == tenant_id)
     rows = db.execute(stmt).scalars().all()
     return [ShopSummaryOut(id=r.id, tenant_id=r.tenant_id, name=r.name) for r in rows]
 
@@ -582,12 +606,11 @@ def admin_list_shops(
 @router.post("/shops", response_model=CreateShopResponse)
 def admin_create_shop(
     body: CreateShopBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> CreateShopResponse:
-    if db.get(Tenant, body.tenant_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-    shop = Shop(tenant_id=body.tenant_id, name=body.name.strip())
+    tenant_id = _require_operator_tenant(ctx)
+    shop = Shop(tenant_id=tenant_id, name=body.name.strip())
     db.add(shop)
     db.commit()
     db.refresh(shop)
@@ -595,7 +618,6 @@ def admin_create_shop(
 
 
 class CreateProductBody(BaseModel):
-    tenant_id: UUID
     sku: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     unit_price_cents: int = Field(ge=0)
@@ -644,13 +666,15 @@ class ProductListItem(BaseModel):
 
 @router.get("/products", response_model=list[ProductListItem])
 def admin_list_products(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     q: str | None = None,
     status_filter: str | None = Query(None, alias="status"),
     category: str | None = None,
 ) -> list[ProductListItem]:
+    tenant_id = _require_operator_tenant(ctx)
     stmt = select(Product).options(selectinload(Product.product_group)).order_by(Product.name.asc())
+    stmt = stmt.where(Product.tenant_id == tenant_id)
     if q and q.strip():
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(Product.name.ilike(like), Product.sku.ilike(like)))
@@ -678,14 +702,13 @@ def admin_list_products(
 @router.post("/products", response_model=CreateProductResponse)
 def admin_create_product(
     body: CreateProductBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> CreateProductResponse:
-    if db.get(Tenant, body.tenant_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
-    group = _resolve_product_group(db, body.tenant_id, body.product_group_id)
+    tenant_id = _require_operator_tenant(ctx)
+    group = _resolve_product_group(db, tenant_id, body.product_group_id)
     prod = Product(
-        tenant_id=body.tenant_id,
+        tenant_id=tenant_id,
         product_group_id=group.id if group else None,
         sku=body.sku.strip(),
         name=body.name.strip(),
@@ -722,7 +745,6 @@ class ProductGroupOut(BaseModel):
 
 
 class CreateProductGroupBody(BaseModel):
-    tenant_id: UUID
     title: str = Field(min_length=1, max_length=255)
     notes: str | None = None
 
@@ -730,13 +752,12 @@ class CreateProductGroupBody(BaseModel):
 @router.post("/product-groups", response_model=ProductGroupOut)
 def admin_create_product_group(
     body: CreateProductGroupBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> ProductGroupOut:
-    if db.get(Tenant, body.tenant_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    tenant_id = _require_operator_tenant(ctx)
     row = ProductGroup(
-        tenant_id=body.tenant_id,
+        tenant_id=tenant_id,
         title=body.title.strip(),
         notes=body.notes.strip() if body.notes else None,
     )
@@ -754,10 +775,11 @@ def admin_create_product_group(
 
 @router.get("/product-groups", response_model=list[ProductGroupOut])
 def admin_list_product_groups(
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
-    tenant_id: UUID,
+    tenant_id: UUID | None = None,
 ) -> list[ProductGroupOut]:
+    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
     rows = db.execute(
         select(ProductGroup)
         .where(ProductGroup.tenant_id == tenant_id)
@@ -785,12 +807,15 @@ class PatchProductBody(BaseModel):
 def admin_patch_product(
     product_id: UUID,
     body: PatchProductBody,
-    _: AdminAuthDep,
+    ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> CreateProductResponse:
+    tenant_id = _require_operator_tenant(ctx)
     prod = db.get(Product, product_id)
     if prod is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    if prod.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
 
     patch = body.model_dump(exclude_unset=True)
     if "name" in patch and patch["name"] is not None:

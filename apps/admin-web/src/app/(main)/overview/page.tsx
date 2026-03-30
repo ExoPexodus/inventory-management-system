@@ -9,7 +9,6 @@ type DashboardSummary = {
   supplier_count: number;
   shop_count: number;
   product_count: number;
-  tenant_count: number;
   pending_order_count?: number;
   avg_transaction_cents?: number;
   revenue_delta_pct?: number;
@@ -35,11 +34,7 @@ export default async function OverviewPage() {
       <div>
         <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Executive overview</p>
         <h2 className="font-headline text-4xl font-extrabold tracking-tight text-on-surface">Operations Pulse</h2>
-        <p className="mt-2 text-on-surface-variant">
-          Live summary across{" "}
-          <span className="font-semibold text-on-surface">{d.tenant_count}</span> tenant
-          {d.tenant_count === 1 ? "" : "s"}
-        </p>
+        <p className="mt-2 text-on-surface-variant">Live summary for your organization.</p>
       </div>
 
       {/* Bento stat cards */}
