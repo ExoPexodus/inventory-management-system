@@ -4,10 +4,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers import (
     admin,
     admin_analytics,
+    admin_audit,
     admin_catalog,
     admin_inventory,
+    admin_integrations,
+    admin_notifications,
     admin_orders,
     admin_platform,
+    admin_reconciliation,
+    admin_reports,
+    admin_shifts,
     admin_staff,
     admin_suppliers,
     admin_web,
@@ -50,10 +56,16 @@ app.include_router(admin_orders.router)
 app.include_router(admin_suppliers.router)
 app.include_router(admin_staff.router)
 app.include_router(admin_analytics.router)
+app.include_router(admin_integrations.router)
+app.include_router(admin_notifications.router)
+app.include_router(admin_reconciliation.router)
+app.include_router(admin_shifts.router)
 app.include_router(admin_platform.router)
 app.include_router(tenants.router)
 app.include_router(shops.router)
 app.include_router(inventory.router)
 app.include_router(reporting.router)
+app.include_router(admin_audit.router)
+app.include_router(admin_reports.router)
 app.include_router(audit.router)
 app.include_router(notifications.router)

@@ -23,6 +23,9 @@ class EnrollResponse(BaseModel):
     tenant_id: UUID
     shop_ids: list[UUID]
     expires_in: int
+    employee_id: UUID | None = None
+    employee_name: str | None = None
+    employee_credential_type: str | None = None
 
 
 @router.post("/enroll", response_model=EnrollResponse)
@@ -31,7 +34,7 @@ def enroll(
     db: Annotated[Session, Depends(get_db)],
 ) -> EnrollResponse:
     try:
-        access, refresh, tenant_id, shops, ttl = enroll_device(
+        access, refresh, tenant_id, shops, ttl, employee_id, employee_name, employee_credential_type = enroll_device(
             db,
             raw_enrollment_token=body.enrollment_token,
             fingerprint=body.device_fingerprint,
@@ -47,6 +50,9 @@ def enroll(
         tenant_id=tenant_id,
         shop_ids=shops,
         expires_in=ttl,
+        employee_id=employee_id,
+        employee_name=employee_name,
+        employee_credential_type=employee_credential_type,
     )
 
 

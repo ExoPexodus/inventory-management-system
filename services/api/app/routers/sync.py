@@ -25,6 +25,8 @@ class TenantCurrencyOut(BaseModel):
     code: str
     exponent: int
     symbol_override: str | None = None
+    display_mode: str = "symbol"
+    conversion_rate: float | None = None
 
 
 class ProductDTO(BaseModel):
@@ -155,6 +157,8 @@ def sync_pull(
             code=tenant.default_currency_code,
             exponent=tenant.currency_exponent,
             symbol_override=tenant.currency_symbol_override,
+            display_mode=tenant.currency_display_mode or "symbol",
+            conversion_rate=tenant.currency_conversion_rate,
         ),
         shop_default_tax_rate_bps=shop_row.default_tax_rate_bps,
     )

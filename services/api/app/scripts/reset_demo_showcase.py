@@ -12,6 +12,7 @@ Also prints a fresh enrollment token for cashier device onboarding.
 from __future__ import annotations
 
 import os
+import random
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -46,6 +47,43 @@ from app.services.tax import sale_tax_totals
 
 
 FIXED_SLUG = "showcase-demo"
+
+# ---------------------------------------------------------------------------
+# Hour-of-day weights for realistic peak patterns
+# ---------------------------------------------------------------------------
+_HOUR_WEIGHTS = {
+    7: 3, 8: 12, 9: 14, 10: 9, 11: 10,
+    12: 13, 13: 11, 14: 7, 15: 6,
+    16: 8, 17: 12, 18: 10, 19: 6, 20: 4, 21: 2,
+}
+_HOURS = list(_HOUR_WEIGHTS.keys())
+_HOUR_W = list(_HOUR_WEIGHTS.values())
+
+# Weekday base transaction count (Mon=0 … Sun=6)
+_WEEKDAY_BASE = {0: 10, 1: 10, 2: 12, 3: 13, 4: 18, 5: 20, 6: 8}
+
+# Category probability by time bucket
+# (beverages, grocery, stationery, apparel) — must sum to 1.0
+_TIME_CATEGORY_WEIGHTS = {
+    "morning":   (0.75, 0.25, 0.00, 0.00),
+    "lunch":     (0.40, 0.30, 0.20, 0.10),
+    "afternoon": (0.35, 0.25, 0.25, 0.15),
+    "evening":   (0.30, 0.20, 0.25, 0.25),
+}
+
+_BEVERAGE_SKUS = ["SFT-LATTE", "SFT-AMER", "SFT-TEA"]
+_BEVERAGE_W    = [40, 35, 25]
+_GROCERY_SKUS  = ["GEN-WATER", "GEN-BAR"]
+_GROCERY_W     = [55, 45]
+_STATION_SKUS  = ["OFF-PEN", "OFF-NOTE", "LOW-STK"]
+_STATION_W     = [50, 35, 15]
+_APPAREL_SKUS  = ["APP-TOTE", "APP-HAT-M", "APP-HAT-S"]
+_APPAREL_W     = [50, 35, 15]
+
+_ITEM_COUNT_CHOICES = [1, 2, 3, 4]
+_ITEM_COUNT_W       = [55, 30, 12, 3]
+_QTY_CHOICES        = [1, 2, 3, 4]
+_QTY_W              = [70, 20, 7, 3]
 
 
 def _require_confirmation() -> None:
@@ -150,9 +188,54 @@ def _sale_txn(
     )
 
 
+def _pick_hour(rng: random.Random) -> int:
+    return rng.choices(_HOURS, weights=_HOUR_W, k=1)[0]
+
+
+def _pick_sale_items(rng: random.Random, hour: int) -> list[tuple[str, int]]:
+    """Return a list of (sku, qty) pairs for a single transaction."""
+    if 7 <= hour <= 10:
+        time_bucket = "morning"
+    elif 11 <= hour <= 14:
+        time_bucket = "lunch"
+    elif 15 <= hour <= 17:
+        time_bucket = "afternoon"
+    else:
+        time_bucket = "evening"
+
+    cat_weights = _TIME_CATEGORY_WEIGHTS[time_bucket]
+    n_items = rng.choices(_ITEM_COUNT_CHOICES, weights=_ITEM_COUNT_W, k=1)[0]
+
+    chosen_skus: list[str] = []
+    for _ in range(n_items):
+        cat = rng.choices(
+            ["beverages", "grocery", "stationery", "apparel"],
+            weights=cat_weights,
+            k=1,
+        )[0]
+        if cat == "beverages":
+            sku = rng.choices(_BEVERAGE_SKUS, weights=_BEVERAGE_W, k=1)[0]
+        elif cat == "grocery":
+            sku = rng.choices(_GROCERY_SKUS, weights=_GROCERY_W, k=1)[0]
+        elif cat == "stationery":
+            sku = rng.choices(_STATION_SKUS, weights=_STATION_W, k=1)[0]
+        else:
+            sku = rng.choices(_APPAREL_SKUS, weights=_APPAREL_W, k=1)[0]
+        chosen_skus.append(sku)
+
+    # Merge duplicates (same product in one transaction = higher qty)
+    merged: dict[str, int] = {}
+    for sku in chosen_skus:
+        qty = rng.choices(_QTY_CHOICES, weights=_QTY_W, k=1)[0]
+        merged[sku] = merged.get(sku, 0) + qty
+
+    return list(merged.items())
+
+
 def main() -> None:
     _require_confirmation()
     raw_enrollment = secrets.token_urlsafe(24)
+    rng = random.Random(42)
     db = SessionLocal()
     try:
         _wipe_tenants(db)
@@ -189,17 +272,17 @@ def main() -> None:
         db.flush()
 
         product_specs: list[tuple[str, str, int, str, UUID | None, str | None]] = [
-            ("SFT-AMER", "Americano", 350, "Beverages", grp_bev.id, "12 oz"),
-            ("SFT-LATTE", "Latte", 495, "Beverages", grp_bev.id, "16 oz"),
-            ("SFT-TEA", "Green tea", 275, "Beverages", grp_bev.id, None),
-            ("GEN-WATER", "Still water", 200, "Grocery", None, None),
-            ("GEN-BAR", "Energy bar", 225, "Grocery", None, None),
-            ("APP-HAT-S", "Canvas cap", 1999, "Apparel", grp_apparel.id, "S"),
-            ("APP-HAT-M", "Canvas cap", 1999, "Apparel", grp_apparel.id, "M"),
-            ("APP-TOTE", "Tote bag", 2495, "Apparel", None, None),
-            ("OFF-NOTE", "Desk notepad", 599, "Stationery", None, None),
-            ("OFF-PEN", "Gel pen 2pk", 449, "Stationery", None, None),
-            ("LOW-STK", "Promo sticker roll", 150, "Stationery", None, None),
+            ("SFT-AMER",  "Americano",         350,  "Beverages",  grp_bev.id,     "12 oz"),
+            ("SFT-LATTE", "Latte",             495,  "Beverages",  grp_bev.id,     "16 oz"),
+            ("SFT-TEA",   "Green tea",         275,  "Beverages",  grp_bev.id,     None),
+            ("GEN-WATER", "Still water",       200,  "Grocery",    None,           None),
+            ("GEN-BAR",   "Energy bar",        225,  "Grocery",    None,           None),
+            ("APP-HAT-S", "Canvas cap",        1999, "Apparel",    grp_apparel.id, "S"),
+            ("APP-HAT-M", "Canvas cap",        1999, "Apparel",    grp_apparel.id, "M"),
+            ("APP-TOTE",  "Tote bag",          2495, "Apparel",    None,           None),
+            ("OFF-NOTE",  "Desk notepad",      599,  "Stationery", None,           None),
+            ("OFF-PEN",   "Gel pen 2pk",       449,  "Stationery", None,           None),
+            ("LOW-STK",   "Promo sticker roll", 150, "Stationery", None,           None),
         ]
 
         products: list[Product] = []
@@ -225,10 +308,10 @@ def main() -> None:
         product_by_sku = {p.sku: p for p in products}
 
         suppliers_data = [
-            ("Metro Roasters Co.", "active", "orders@metroroasters.test", "+1-555-0101", "Primary coffee beans"),
-            ("Pacific Packaging", "active", "hello@pacificpack.test", "+1-555-0102", None),
-            ("QuickShip Logistics", "active", "ops@quickship.test", None, "Outbound freight"),
-            ("Old Harbor Wholesale", "inactive", "archive@oldharbor.test", None, "Paused — seasonal only"),
+            ("Metro Roasters Co.",   "active",   "orders@metroroasters.test", "+1-555-0101", "Primary coffee beans"),
+            ("Pacific Packaging",    "active",   "hello@pacificpack.test",    "+1-555-0102", None),
+            ("QuickShip Logistics",  "active",   "ops@quickship.test",        None,          "Outbound freight"),
+            ("Old Harbor Wholesale", "inactive", "archive@oldharbor.test",    None,          "Paused — seasonal only"),
         ]
         suppliers: list[Supplier] = []
         for name, st, em, ph, notes in suppliers_data:
@@ -244,7 +327,7 @@ def main() -> None:
             suppliers.append(supplier)
         db.flush()
 
-        # Downtown: americano tax-exempt for demo overrides
+        # Tax overrides
         tax_exempt = ShopProductTax(
             tenant_id=tenant.id,
             shop_id=shop_downtown.id,
@@ -252,7 +335,6 @@ def main() -> None:
             tax_exempt=True,
             effective_tax_rate_bps=None,
         )
-        # Westside: custom rate on latte
         tax_custom = ShopProductTax(
             tenant_id=tenant.id,
             shop_id=shop_west.id,
@@ -263,59 +345,59 @@ def main() -> None:
         db.add_all([tax_exempt, tax_custom])
         db.flush()
 
-        tax_overrides_dd: dict[UUID, ShopProductTax] = {
-            tax_exempt.product_id: tax_exempt,
-        }
-        tax_overrides_west: dict[UUID, ShopProductTax] = {
-            tax_custom.product_id: tax_custom,
-        }
+        tax_overrides_dd: dict[UUID, ShopProductTax] = {tax_exempt.product_id: tax_exempt}
+        tax_overrides_west: dict[UUID, ShopProductTax] = {tax_custom.product_id: tax_custom}
 
-        # Opening inventory — generous stock; LOW-STK intentionally small for alerts
-        downtown_inv = {p.id: 120 for p in products}
+        # Opening inventory — increased so stock survives 63 days of sales
+        downtown_inv = {p.id: 300 for p in products}
         downtown_inv[product_by_sku["LOW-STK"].id] = 4
-        west_inv = {p.id: 55 for p in products}
+        west_inv = {p.id: 150 for p in products}
         west_inv[product_by_sku["LOW-STK"].id] = 3
 
         _add_opening_stock(db, tenant.id, shop_downtown.id, downtown_inv, "showcase-dd")
         _add_opening_stock(db, tenant.id, shop_west.id, west_inv, "showcase-ws")
 
         now = datetime.now(UTC)
-        # Historical sales (posted) — spread for analytics chart
-        scenarios: list[tuple[Shop, dict[UUID, ShopProductTax], str, list[tuple[str, int]], str, int, str]] = [
-            (shop_downtown, tax_overrides_dd, "posted", [("SFT-LATTE", 2), ("GEN-BAR", 1)], "cash", 1, "a"),
-            (shop_downtown, tax_overrides_dd, "posted", [("SFT-AMER", 1), ("OFF-PEN", 1)], "card", 2, "b"),
-            (shop_west, tax_overrides_west, "posted", [("SFT-LATTE", 1), ("APP-TOTE", 1)], "cash", 10, "c"),
-            (shop_downtown, tax_overrides_dd, "posted", [("APP-HAT-M", 2)], "card", 3, "d"),
-            (shop_west, tax_overrides_west, "posted", [("GEN-WATER", 3), ("OFF-NOTE", 1)], "cash", 4, "e"),
-            (shop_downtown, tax_overrides_dd, "posted", [("SFT-TEA", 2), ("GEN-BAR", 2)], "cash", 5, "f"),
-            (shop_west, tax_overrides_west, "posted", [("APP-HAT-S", 1), ("OFF-PEN", 2)], "card", 6, "g"),
-            (shop_downtown, tax_overrides_dd, "posted", [("SFT-LATTE", 3)], "card", 7, "h"),
-            (shop_downtown, tax_overrides_dd, "posted", [("APP-TOTE", 1), ("GEN-BAR", 1)], "cash", 8, "i"),
-            (shop_west, tax_overrides_west, "posted", [("SFT-AMER", 2)], "cash", 9, "j"),
-            (shop_downtown, tax_overrides_dd, "posted", [("OFF-NOTE", 2), ("GEN-WATER", 2)], "card", 11, "k"),
-            (shop_west, tax_overrides_west, "posted", [("LOW-STK", 1)], "cash", 12, "l"),
-            (shop_downtown, tax_overrides_dd, "posted", [("SFT-LATTE", 1), ("SFT-AMER", 2)], "card", 13, "m"),
-            (shop_downtown, tax_overrides_dd, "posted", [("APP-HAT-S", 1), ("APP-HAT-M", 1)], "cash", 14, "n"),
-            (shop_west, tax_overrides_west, "posted", [("SFT-TEA", 1), ("OFF-PEN", 3)], "cash", 0, "o"),
-            (shop_downtown, tax_overrides_dd, "posted", [("GEN-BAR", 4)], "card", 0, "p"),
-        ]
 
-        for shop, tax_ov, st, lines, tender, days_ago, suf in scenarios:
-            when = now - timedelta(days=days_ago, hours=3 + len(suf))
-            _sale_txn(
-                db,
-                tenant_id=tenant.id,
-                shop=shop,
-                product_by_sku=product_by_sku,
-                sku_qty=lines,
-                tender=tender,
-                when=when,
-                status=st,
-                mutation_suffix=suf,
-                tax_overrides=tax_ov,
-            )
+        # -----------------------------------------------------------------------
+        # 63 days of realistic transactions
+        # -----------------------------------------------------------------------
+        total_txns = 0
+        for day_offset in range(63, 0, -1):
+            day_dt = now - timedelta(days=day_offset)
+            weekday = day_dt.weekday()
+            txn_count = _WEEKDAY_BASE[weekday] + rng.randint(-2, 3)
 
-        # Pending sale (no stock deduction)
+            for i in range(txn_count):
+                hour = _pick_hour(rng)
+                minute = rng.randint(0, 59)
+                when = day_dt.replace(
+                    hour=hour,
+                    minute=minute,
+                    second=rng.randint(0, 59),
+                    microsecond=0,
+                    tzinfo=UTC,
+                )
+                shop = shop_downtown if rng.random() < 0.65 else shop_west
+                tax_ov = tax_overrides_dd if shop is shop_downtown else tax_overrides_west
+                tender = "card" if rng.random() < 0.65 else "cash"
+                sku_qty = _pick_sale_items(rng, hour)
+
+                _sale_txn(
+                    db,
+                    tenant_id=tenant.id,
+                    shop=shop,
+                    product_by_sku=product_by_sku,
+                    sku_qty=sku_qty,
+                    tender=tender,
+                    when=when,
+                    status="posted",
+                    mutation_suffix=f"{day_offset}-{str(shop.id)[:4]}-{i}",
+                    tax_overrides=tax_ov,
+                )
+                total_txns += 1
+
+        # Pending sale (no stock deduction — in progress at cashier)
         _sale_txn(
             db,
             tenant_id=tenant.id,
@@ -329,7 +411,7 @@ def main() -> None:
             tax_overrides=tax_overrides_dd,
         )
 
-        # Refunded sale (still show line items; skip stock deduction in _sale_txn by status)
+        # Refunded sale
         _sale_txn(
             db,
             tenant_id=tenant.id,
@@ -343,7 +425,8 @@ def main() -> None:
             tax_overrides=tax_overrides_west,
         )
 
-        manual_adj = StockMovement(
+        # Manual stock movements
+        db.add(StockMovement(
             tenant_id=tenant.id,
             shop_id=shop_downtown.id,
             product_id=product_by_sku["OFF-NOTE"].id,
@@ -352,10 +435,8 @@ def main() -> None:
             transaction_id=None,
             idempotency_key="showcase:manual-receipt-1",
             created_at=now - timedelta(days=6),
-        )
-        db.add(manual_adj)
-
-        spoilage = StockMovement(
+        ))
+        db.add(StockMovement(
             tenant_id=tenant.id,
             shop_id=shop_west.id,
             product_id=product_by_sku["GEN-BAR"].id,
@@ -364,19 +445,16 @@ def main() -> None:
             transaction_id=None,
             idempotency_key="showcase:shrink-1",
             created_at=now - timedelta(days=4),
-        )
-        db.add(spoilage)
+        ))
 
-        db.add(
-            EnrollmentToken(
-                tenant_id=tenant.id,
-                shop_id=shop_downtown.id,
-                token_hash=hash_token(raw_enrollment),
-                expires_at=datetime.now(UTC) + timedelta(days=14),
-            )
-        )
+        db.add(EnrollmentToken(
+            tenant_id=tenant.id,
+            shop_id=shop_downtown.id,
+            token_hash=hash_token(raw_enrollment),
+            expires_at=datetime.now(UTC) + timedelta(days=14),
+        ))
 
-        # Strict admin-web scope: bind all existing operators to the showcase tenant.
+        # Bind all existing operators to showcase tenant
         admins = db.execute(select(AdminUser)).scalars().all()
         for admin in admins:
             admin.tenant_id = tenant.id
@@ -388,111 +466,145 @@ def main() -> None:
 
         owner_admin_id = admins[0].id if admins else None
 
-        # Procurement + stock control showcase data
-        main_supplier = suppliers[0] if suppliers else None
-        if main_supplier is not None:
-            po_draft = PurchaseOrder(
-                tenant_id=tenant.id,
-                supplier_id=main_supplier.id,
-                status="draft",
-                expected_delivery_date=now + timedelta(days=3),
-                notes="Weekly replenishment draft",
-                created_by=owner_admin_id,
-            )
-            po_ordered = PurchaseOrder(
-                tenant_id=tenant.id,
-                supplier_id=main_supplier.id,
-                status="ordered",
-                expected_delivery_date=now + timedelta(days=1),
-                notes="Urgent beverage restock",
-                created_by=owner_admin_id,
-            )
-            po_received = PurchaseOrder(
-                tenant_id=tenant.id,
-                supplier_id=main_supplier.id,
-                status="received",
-                expected_delivery_date=now - timedelta(days=1),
-                notes="Received and stocked",
-                created_by=owner_admin_id,
-            )
-            db.add_all([po_draft, po_ordered, po_received])
-            db.flush()
+        # -----------------------------------------------------------------------
+        # Procurement showcase data (5 POs spanning the period)
+        # -----------------------------------------------------------------------
+        main_supplier = suppliers[0]  # Metro Roasters
 
-            db.add_all(
-                [
-                    PurchaseOrderLine(
-                        purchase_order_id=po_draft.id,
-                        product_id=product_by_sku["OFF-PEN"].id,
-                        quantity_ordered=60,
-                        quantity_received=0,
-                        unit_cost_cents=180,
-                    ),
-                    PurchaseOrderLine(
-                        purchase_order_id=po_ordered.id,
-                        product_id=product_by_sku["SFT-LATTE"].id,
-                        quantity_ordered=80,
-                        quantity_received=0,
-                        unit_cost_cents=270,
-                    ),
-                    PurchaseOrderLine(
-                        purchase_order_id=po_received.id,
-                        product_id=product_by_sku["LOW-STK"].id,
-                        quantity_ordered=120,
-                        quantity_received=120,
-                        unit_cost_cents=45,
-                    ),
-                ]
-            )
-
-            db.add(
-                StockMovement(
-                    tenant_id=tenant.id,
-                    shop_id=shop_downtown.id,
-                    product_id=product_by_sku["LOW-STK"].id,
-                    quantity_delta=120,
-                    movement_type="receipt",
-                    transaction_id=None,
-                    idempotency_key="showcase:po-receive:low-stk",
-                    created_at=now - timedelta(hours=28),
-                )
-            )
-
-        adj_pending = StockAdjustment(
+        # PO received ~45 days ago
+        po_old_received = PurchaseOrder(
             tenant_id=tenant.id,
-            shop_id=shop_west.id,
-            product_id=product_by_sku["GEN-BAR"].id,
-            quantity_delta=-5,
-            reason_code="damage",
-            notes="Shelf damage discovered during cycle count",
-            status="pending",
+            supplier_id=main_supplier.id,
+            status="received",
+            expected_delivery_date=now - timedelta(days=46),
+            notes="Initial bulk order — beverages",
             created_by=owner_admin_id,
-            approved_by=None,
+            created_at=now - timedelta(days=50),
         )
-        adj_approved = StockAdjustment(
+        # PO received ~20 days ago
+        po_mid_received = PurchaseOrder(
+            tenant_id=tenant.id,
+            supplier_id=suppliers[1].id,
+            status="received",
+            expected_delivery_date=now - timedelta(days=21),
+            notes="Stationery restock — mid month",
+            created_by=owner_admin_id,
+            created_at=now - timedelta(days=24),
+        )
+        po_received = PurchaseOrder(
+            tenant_id=tenant.id,
+            supplier_id=main_supplier.id,
+            status="received",
+            expected_delivery_date=now - timedelta(days=1),
+            notes="Received and stocked",
+            created_by=owner_admin_id,
+        )
+        po_ordered = PurchaseOrder(
+            tenant_id=tenant.id,
+            supplier_id=main_supplier.id,
+            status="ordered",
+            expected_delivery_date=now + timedelta(days=1),
+            notes="Urgent beverage restock",
+            created_by=owner_admin_id,
+        )
+        po_draft = PurchaseOrder(
+            tenant_id=tenant.id,
+            supplier_id=main_supplier.id,
+            status="draft",
+            expected_delivery_date=now + timedelta(days=3),
+            notes="Weekly replenishment draft",
+            created_by=owner_admin_id,
+        )
+        db.add_all([po_old_received, po_mid_received, po_received, po_ordered, po_draft])
+        db.flush()
+
+        db.add_all([
+            PurchaseOrderLine(
+                purchase_order_id=po_old_received.id,
+                product_id=product_by_sku["SFT-LATTE"].id,
+                quantity_ordered=200, quantity_received=200, unit_cost_cents=270,
+            ),
+            PurchaseOrderLine(
+                purchase_order_id=po_old_received.id,
+                product_id=product_by_sku["SFT-AMER"].id,
+                quantity_ordered=150, quantity_received=150, unit_cost_cents=220,
+            ),
+            PurchaseOrderLine(
+                purchase_order_id=po_mid_received.id,
+                product_id=product_by_sku["OFF-PEN"].id,
+                quantity_ordered=100, quantity_received=100, unit_cost_cents=180,
+            ),
+            PurchaseOrderLine(
+                purchase_order_id=po_mid_received.id,
+                product_id=product_by_sku["OFF-NOTE"].id,
+                quantity_ordered=80, quantity_received=80, unit_cost_cents=220,
+            ),
+            PurchaseOrderLine(
+                purchase_order_id=po_received.id,
+                product_id=product_by_sku["LOW-STK"].id,
+                quantity_ordered=120, quantity_received=120, unit_cost_cents=45,
+            ),
+            PurchaseOrderLine(
+                purchase_order_id=po_ordered.id,
+                product_id=product_by_sku["SFT-LATTE"].id,
+                quantity_ordered=80, quantity_received=0, unit_cost_cents=270,
+            ),
+            PurchaseOrderLine(
+                purchase_order_id=po_draft.id,
+                product_id=product_by_sku["OFF-PEN"].id,
+                quantity_ordered=60, quantity_received=0, unit_cost_cents=180,
+            ),
+        ])
+
+        # Receipt stock movement for the LOW-STK PO
+        db.add(StockMovement(
             tenant_id=tenant.id,
             shop_id=shop_downtown.id,
-            product_id=product_by_sku["OFF-NOTE"].id,
-            quantity_delta=12,
-            reason_code="recount",
-            notes="Variance confirmed and corrected",
-            status="approved",
-            created_by=owner_admin_id,
-            approved_by=owner_admin_id,
-        )
-        db.add_all([adj_pending, adj_approved])
-        db.add(
-            StockMovement(
+            product_id=product_by_sku["LOW-STK"].id,
+            quantity_delta=120,
+            movement_type="receipt",
+            transaction_id=None,
+            idempotency_key="showcase:po-receive:low-stk",
+            created_at=now - timedelta(hours=28),
+        ))
+
+        # Stock adjustments
+        db.add_all([
+            StockAdjustment(
+                tenant_id=tenant.id,
+                shop_id=shop_west.id,
+                product_id=product_by_sku["GEN-BAR"].id,
+                quantity_delta=-5,
+                reason_code="damage",
+                notes="Shelf damage discovered during cycle count",
+                status="pending",
+                created_by=owner_admin_id,
+                approved_by=None,
+            ),
+            StockAdjustment(
                 tenant_id=tenant.id,
                 shop_id=shop_downtown.id,
                 product_id=product_by_sku["OFF-NOTE"].id,
                 quantity_delta=12,
-                movement_type="adjustment",
-                transaction_id=None,
-                idempotency_key="showcase:adjustment:approved-off-note",
-                created_at=now - timedelta(hours=12),
-            )
-        )
+                reason_code="recount",
+                notes="Variance confirmed and corrected",
+                status="approved",
+                created_by=owner_admin_id,
+                approved_by=owner_admin_id,
+            ),
+        ])
+        db.add(StockMovement(
+            tenant_id=tenant.id,
+            shop_id=shop_downtown.id,
+            product_id=product_by_sku["OFF-NOTE"].id,
+            quantity_delta=12,
+            movement_type="adjustment",
+            transaction_id=None,
+            idempotency_key="showcase:adjustment:approved-off-note",
+            created_at=now - timedelta(hours=12),
+        ))
 
+        # Transfer order (in transit)
         transfer = TransferOrder(
             tenant_id=tenant.id,
             from_shop_id=shop_downtown.id,
@@ -503,15 +615,13 @@ def main() -> None:
         )
         db.add(transfer)
         db.flush()
-        db.add(
-            TransferOrderLine(
-                transfer_order_id=transfer.id,
-                product_id=product_by_sku["GEN-WATER"].id,
-                quantity_requested=24,
-                quantity_shipped=20,
-                quantity_received=0,
-            )
-        )
+        db.add(TransferOrderLine(
+            transfer_order_id=transfer.id,
+            product_id=product_by_sku["GEN-WATER"].id,
+            quantity_requested=24,
+            quantity_shipped=20,
+            quantity_received=0,
+        ))
 
         db.commit()
 
@@ -521,6 +631,7 @@ def main() -> None:
         print(f"  shop_downtown_id:    {shop_downtown.id}")
         print(f"  shop_westside_id:    {shop_west.id}")
         print(f"  products:            {len(products)}")
+        print(f"  transactions seeded: {total_txns} posted (+ 1 pending, 1 refunded)")
         print(f"  enrollment_token:    {raw_enrollment}")
         print("  Use cashier app → enroll with token above (Downtown Store).")
     except Exception:

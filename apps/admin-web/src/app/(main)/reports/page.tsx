@@ -47,12 +47,32 @@ export default function ReportsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
 
-  const exportReport = (id: string) => {
+  const [exporting, setExporting] = useState<string | null>(null);
+  const [exportErr, setExportErr] = useState<string | null>(null);
+
+  const exportReport = async (id: string) => {
+    setExporting(id);
+    setExportErr(null);
     const sp = new URLSearchParams();
     sp.set("report", id);
     if (from) sp.set("from", from);
     if (to) sp.set("to", to);
-    void fetch(`/api/ims/v1/admin/reports/export?${sp.toString()}`);
+    try {
+      const res = await fetch(`/api/ims/v1/admin/reports/export?${sp.toString()}`);
+      if (!res.ok) { setExportErr(`Export failed (${res.status})`); return; }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const match = /filename="([^"]+)"/.exec(cd);
+      const filename = match?.[1] ?? `${id}_export.csv`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
@@ -90,14 +110,17 @@ export default function ReportsPage() {
               </div>
             </div>
             <div className="mt-6 flex justify-end">
-              <SecondaryButton type="button" onClick={() => exportReport(r.id)}>
-                <span className="material-symbols-outlined text-base">download</span>
-                Export
+              <SecondaryButton type="button" disabled={exporting === r.id} onClick={() => void exportReport(r.id)}>
+                <span className="material-symbols-outlined text-base">{exporting === r.id ? "hourglass_top" : "download"}</span>
+                {exporting === r.id ? "Exporting…" : "Export CSV"}
               </SecondaryButton>
             </div>
           </div>
         ))}
       </div>
+      {exportErr && (
+        <p className="rounded-lg border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{exportErr}</p>
+      )}
     </div>
   );
 }

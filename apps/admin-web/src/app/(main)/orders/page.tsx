@@ -11,7 +11,8 @@ import {
   SelectInput,
 } from "@/components/ui/primitives";
 import { DateInput } from "@/components/ui/DateInput";
-import { formatMoneyUSD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { useCurrency } from "@/lib/currency-context";
 
 type TxLine = {
   product_id: string;
@@ -19,6 +20,11 @@ type TxLine = {
   product_name: string | null;
   quantity: number;
   unit_price_cents: number;
+};
+
+type TxPayment = {
+  tender_type: string;
+  amount_cents: number;
 };
 
 type Tx = {
@@ -30,6 +36,7 @@ type Tx = {
   tax_cents: number;
   created_at: string;
   lines: TxLine[];
+  payments: TxPayment[];
   cashier_name?: string | null;
 };
 
@@ -47,6 +54,7 @@ function statusBadgeClasses(status: string): string {
 }
 
 export default function OrdersPage() {
+  const currency = useCurrency();
   const [status, setStatus] = useState("");
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -58,6 +66,9 @@ export default function OrdersPage() {
   nextAfterRef.current = nextAfter;
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [selectedTx, setSelectedTx] = useState<Tx | null>(null);
+  const [showFlaggedModal, setShowFlaggedModal] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const rows = useMemo(() => cache[page] ?? [], [cache, page]);
 
@@ -121,6 +132,22 @@ export default function OrdersPage() {
 
   const totalPages = nextAfter[page] ? page + 1 : Math.max(page, 1);
 
+  async function handleTxAction(txId: string, newStatus: "posted" | "voided") {
+    setActionLoading(txId);
+    try {
+      await fetch(`/api/ims/v1/admin/transactions/${txId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } finally {
+      setActionLoading(null);
+      setCache({});
+      setNextAfter({});
+      setPage(1);
+    }
+  }
+
   function exportAuditReport() {
     const header = ["order_id", "cashier", "timestamp", "status", "amount_cents", "tax_cents"];
     const lines = rows.map((t) =>
@@ -174,14 +201,20 @@ export default function OrdersPage() {
           <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Shift health</p>
           <p className="mt-4 font-headline text-3xl font-extrabold text-primary">{shiftHealth.count}</p>
           <p className="mt-1 text-sm text-on-surface-variant">Transactions on this page</p>
-          <p className="mt-4 font-headline text-xl font-bold text-on-surface">{formatMoneyUSD(shiftHealth.volume)}</p>
+          <p className="mt-4 font-headline text-xl font-bold text-on-surface">{formatMoney(shiftHealth.volume, currency)}</p>
           <p className="text-xs text-on-surface-variant">Total volume (page)</p>
         </div>
-        <div className="rounded-xl border border-error/20 bg-error-container/30 p-6 shadow-sm">
+        <button
+          type="button"
+          onClick={() => flaggedPending > 0 ? setShowFlaggedModal(true) : undefined}
+          className={`rounded-xl border border-error/20 bg-error-container/30 p-6 shadow-sm text-left w-full transition ${flaggedPending > 0 ? "cursor-pointer hover:bg-error-container/45" : "cursor-default"}`}
+        >
           <p className="text-xs font-bold uppercase tracking-widest text-on-error-container">Flagged / pending</p>
           <p className="mt-4 font-headline text-3xl font-extrabold text-error">{flaggedPending}</p>
-          <p className="mt-1 text-sm text-on-error-container/90">Needs attention on current page</p>
-        </div>
+          <p className="mt-1 text-sm text-on-error-container/90">
+            {flaggedPending > 0 ? "Click to review and take action" : "No attention needed on this page"}
+          </p>
+        </button>
         <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-6 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Filters</p>
           <div className="mt-4 space-y-3">
@@ -263,10 +296,11 @@ export default function OrdersPage() {
                         {t.status}
                       </span>
                     </td>
-                    <td className="px-6 py-3 text-right tabular-nums font-semibold text-on-surface">{formatMoneyUSD(t.total_cents)}</td>
+                    <td className="px-6 py-3 text-right tabular-nums font-semibold text-on-surface">{formatMoney(t.total_cents, currency)}</td>
                     <td className="px-6 py-3 text-center">
                       <button
                         type="button"
+                        onClick={() => setSelectedTx(t)}
                         className="inline-flex rounded-lg p-2 text-on-surface-variant opacity-0 transition group-hover:opacity-100 hover:bg-surface-container"
                         aria-label="Receipt"
                       >
@@ -285,6 +319,252 @@ export default function OrdersPage() {
           onChange={(p) => setPage(p)}
         />
       </section>
+
+      {selectedTx ? (
+        <ReceiptDialog tx={selectedTx} onClose={() => setSelectedTx(null)} />
+      ) : null}
+
+      {showFlaggedModal ? (
+        <FlaggedPendingModal
+          txs={rows.filter((t) => {
+            const s = t.status.toLowerCase();
+            return s === "pending" || s === "flagged";
+          })}
+          onClose={() => setShowFlaggedModal(false)}
+          onViewReceipt={(tx) => { setShowFlaggedModal(false); setSelectedTx(tx); }}
+          onAction={(txId, newStatus) => void handleTxAction(txId, newStatus)}
+          actionLoading={actionLoading}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ReceiptDialog({ tx, onClose }: { tx: Tx; onClose: () => void }) {
+  const currency = useCurrency();
+  const subtotal = tx.lines.reduce((acc, l) => acc + l.quantity * l.unit_price_cents, 0);
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="ink-gradient px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">Receipt</p>
+              <p className="mt-1 font-mono text-sm text-on-primary/90">#{tx.id}</p>
+            </div>
+            <span className={`mt-1 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusBadgeClasses(tx.status)}`}>
+              {tx.status}
+            </span>
+          </div>
+          <p className="mt-2 text-xs text-on-primary/70">
+            {new Date(tx.created_at).toLocaleString(undefined, {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+            {tx.cashier_name ? ` · ${tx.cashier_name}` : ""}
+          </p>
+        </div>
+
+        {/* Lines */}
+        <div className="max-h-64 overflow-y-auto px-6 py-4">
+          <p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Items</p>
+          {tx.lines.length === 0 ? (
+            <p className="text-sm text-on-surface-variant">No line items.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant/10 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                  <th className="pb-2 text-left">Product</th>
+                  <th className="pb-2 text-center">Qty</th>
+                  <th className="pb-2 text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {tx.lines.map((l, i) => (
+                  <tr key={i}>
+                    <td className="py-2">
+                      <p className="font-medium text-on-surface">{l.product_name ?? "—"}</p>
+                      {l.product_sku ? <p className="font-mono text-[11px] text-on-surface-variant">{l.product_sku}</p> : null}
+                    </td>
+                    <td className="py-2 text-center tabular-nums text-on-surface-variant">{l.quantity}</td>
+                    <td className="py-2 text-right tabular-nums font-semibold text-on-surface">
+                      {formatMoney(l.quantity * l.unit_price_cents, currency)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Totals */}
+        <div className="border-t border-outline-variant/10 px-6 py-4 space-y-1.5">
+          <div className="flex justify-between text-sm text-on-surface-variant">
+            <span>Subtotal</span><span className="tabular-nums">{formatMoney(subtotal, currency)}</span>
+          </div>
+          <div className="flex justify-between text-sm text-on-surface-variant">
+            <span>Tax</span><span className="tabular-nums">{formatMoney(tx.tax_cents, currency)}</span>
+          </div>
+          <div className="flex justify-between font-bold text-base text-on-surface border-t border-outline-variant/10 pt-2">
+            <span>Total</span><span className="tabular-nums">{formatMoney(tx.total_cents, currency)}</span>
+          </div>
+        </div>
+
+        {/* Payments */}
+        {tx.payments.length > 0 ? (
+          <div className="border-t border-outline-variant/10 px-6 py-3 space-y-1">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant mb-2">Payments</p>
+            {tx.payments.map((p, i) => (
+              <div key={i} className="flex justify-between text-sm">
+                <span className="capitalize text-on-surface-variant">{p.tender_type.replace(/_/g, " ")}</span>
+                <span className="tabular-nums text-on-surface">{formatMoney(p.amount_cents, currency)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {/* Close */}
+        <div className="border-t border-outline-variant/10 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-lg border border-outline-variant/20 py-2 text-sm font-semibold text-on-surface-variant transition hover:bg-surface-container"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FlaggedPendingModal({
+  txs,
+  onClose,
+  onViewReceipt,
+  onAction,
+  actionLoading,
+}: {
+  txs: Tx[];
+  onClose: () => void;
+  onViewReceipt: (tx: Tx) => void;
+  onAction: (txId: string, newStatus: "posted" | "voided") => void;
+  actionLoading: string | null;
+}) {
+  const currency = useCurrency();
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-2xl overflow-hidden rounded-2xl bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="border-b border-error/20 bg-error-container/30 px-6 py-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-error-container">Attention required</p>
+          <h3 className="mt-1 font-headline text-xl font-extrabold text-on-surface">
+            Flagged &amp; pending transactions
+          </h3>
+          <p className="mt-0.5 text-sm text-on-surface-variant">
+            {txs.length} transaction{txs.length !== 1 ? "s" : ""} need{txs.length === 1 ? "s" : ""} review on this page
+          </p>
+        </div>
+
+        {/* List */}
+        <div className="max-h-[60vh] overflow-y-auto">
+          {txs.length === 0 ? (
+            <p className="px-6 py-8 text-center text-sm text-on-surface-variant">No flagged or pending transactions on this page.</p>
+          ) : (
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant/10 bg-surface-container-low">
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Order</th>
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Cashier</th>
+                  <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
+                  <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Amount</th>
+                  <th className="px-6 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {txs.map((t) => {
+                  const isActioning = actionLoading === t.id;
+                  return (
+                    <tr key={t.id} className="hover:bg-surface-container-low/40">
+                      <td className="px-6 py-4">
+                        <p className="font-mono text-xs font-bold text-on-surface">#{t.id.slice(0, 8)}</p>
+                        <p className="mt-0.5 text-[10px] text-on-surface-variant">
+                          {new Date(t.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          {" "}
+                          {new Date(t.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        </p>
+                      </td>
+                      <td className="px-6 py-4 text-on-surface">{t.cashier_name?.trim() || "Unassigned"}</td>
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${statusBadgeClasses(t.status)}`}>
+                          {t.status}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-right tabular-nums font-semibold text-on-surface">
+                        {formatMoney(t.total_cents, currency)}
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={isActioning}
+                            onClick={() => onAction(t.id, "posted")}
+                            className="inline-flex items-center gap-1 rounded-lg bg-tertiary-fixed px-2.5 py-1.5 text-xs font-semibold text-on-tertiary-fixed-variant transition hover:opacity-90 disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-sm">check_circle</span>
+                            {isActioning ? "…" : "Approve"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isActioning}
+                            onClick={() => onAction(t.id, "voided")}
+                            className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/30 bg-surface-container px-2.5 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container-high disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-sm">cancel</span>
+                            {isActioning ? "…" : "Void"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isActioning}
+                            onClick={() => onViewReceipt(t)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/20 px-2.5 py-1.5 text-xs font-semibold text-on-surface-variant transition hover:bg-surface-container disabled:opacity-50"
+                          >
+                            <span className="material-symbols-outlined text-sm">receipt_long</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-outline-variant/10 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-lg border border-outline-variant/20 py-2 text-sm font-semibold text-on-surface-variant transition hover:bg-surface-container"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

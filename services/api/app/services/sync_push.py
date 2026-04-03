@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Notification,
     PaymentAllocation,
     Product,
     Shop,
@@ -253,6 +254,24 @@ def apply_sale_completed(
     _ = _occurred_at  # reserved for future auditing / conflict checks
     db.flush()
     db.refresh(txn)
+
+    # Fire stock-low notifications for any product that crossed its reorder_point
+    for prod, qty, _ in parsed_lines:
+        if prod.reorder_point and prod.reorder_point > 0:
+            new_qty = current_quantity(db, tenant_id=tenant_id, product_id=prod.id)
+            if new_qty <= prod.reorder_point:
+                db.add(
+                    Notification(
+                        tenant_id=tenant_id,
+                        type="stock_low",
+                        title=f"Low stock: {prod.name}",
+                        body=f"On-hand quantity is {new_qty} (reorder point: {prod.reorder_point})",
+                        resource_type="product",
+                        resource_id=str(prod.id),
+                    )
+                )
+    db.flush()
+
     return AppliedResult(client_mutation_id, txn.id, "accepted", None, None)
 
 

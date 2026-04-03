@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { serverJsonGet } from "@/lib/api/server-json";
-import { formatMoneyUSD } from "@/lib/format";
+import { formatMoney, type CurrencyConfig } from "@/lib/format";
+import { OverviewRevenueChart } from "@/components/ui/OverviewRevenueChart";
 
 type DashboardSummary = {
   posted_transaction_count: number;
@@ -16,7 +17,15 @@ type DashboardSummary = {
 };
 
 export default async function OverviewPage() {
-  const res = await serverJsonGet<DashboardSummary>("/v1/admin/dashboard-summary");
+  type CurrencySettingsRaw = { currency_code: string; currency_exponent: number; symbol_override?: string | null; display_mode: "symbol" | "convert"; conversion_rate?: number | null };
+  const [res, seriesRes, currencyRes] = await Promise.all([
+    serverJsonGet<DashboardSummary>("/v1/admin/dashboard-summary"),
+    serverJsonGet<{ points: Array<{ day: string; gross_cents: number }> }>("/v1/admin/analytics/sales-series?days=30"),
+    serverJsonGet<CurrencySettingsRaw>("/v1/admin/tenant-settings/currency"),
+  ]);
+  const currency: CurrencyConfig = currencyRes.ok
+    ? { code: currencyRes.data.currency_code, exponent: currencyRes.data.currency_exponent, displayMode: currencyRes.data.display_mode, conversionRate: currencyRes.data.conversion_rate ?? null }
+    : { code: "USD", exponent: 2, displayMode: "symbol", conversionRate: null };
 
   if (!res.ok) {
     return (
@@ -28,6 +37,12 @@ export default async function OverviewPage() {
 
   const d = res.data;
   const revDelta = d.revenue_delta_pct ?? 0;
+  const chartPoints = seriesRes.ok ? seriesRes.data.points : [];
+  const chartValues = chartPoints.map((p) => p.gross_cents / 100);
+  const chartLabels = chartPoints.map((p) => {
+    const dt = new Date(p.day + "T00:00:00");
+    return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  });
 
   return (
     <div className="space-y-8">
@@ -48,7 +63,7 @@ export default async function OverviewPage() {
           </div>
           <div className="mt-4">
             <h3 className="font-headline text-4xl font-extrabold tracking-tighter text-primary">
-              {formatMoneyUSD(d.gross_sales_cents)}
+              {formatMoney(d.gross_sales_cents, currency)}
             </h3>
             <p className="mt-1 text-xs text-on-surface-variant/60">
               From {d.posted_transaction_count.toLocaleString()} transactions
@@ -59,7 +74,7 @@ export default async function OverviewPage() {
           <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Avg. Transaction</span>
           <div className="mt-4">
             <h3 className="font-headline text-4xl font-extrabold tracking-tighter text-primary">
-              {formatMoneyUSD(d.avg_transaction_cents ?? 0)}
+              {formatMoney(d.avg_transaction_cents ?? 0, currency)}
             </h3>
             <p className="mt-1 text-xs text-on-surface-variant/60">Per posted transaction</p>
           </div>
@@ -83,30 +98,17 @@ export default async function OverviewPage() {
         <div className="mb-10 flex items-center justify-between">
           <div>
             <h3 className="font-headline text-xl font-bold text-primary">Revenue Trends</h3>
-            <p className="text-sm text-on-surface-variant">A visualization of fiscal movement</p>
+            <p className="text-sm text-on-surface-variant">Last 30 days · posted transactions</p>
           </div>
         </div>
-        <div className="relative h-64 w-full">
-          <div className="absolute inset-0 flex items-end justify-between px-2 opacity-10">
-            {Array.from({ length: 7 }).map((_, i) => (
-              <div key={i} className="h-full w-px bg-outline" />
-            ))}
-          </div>
-          <svg className="relative z-10 h-full w-full overflow-visible" viewBox="0 0 1000 200" preserveAspectRatio="none">
-            <defs>
-              <linearGradient id="lineGradient" x1="0" x2="0" y1="0" y2="1">
-                <stop offset="0%" stopColor="#06274d" stopOpacity="0.8" />
-                <stop offset="100%" stopColor="#06274d" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <path d="M0,150 Q100,140 200,120 T400,100 T600,60 T800,80 T1000,40 V200 H0 Z" fill="url(#lineGradient)" />
-            <path d="M0,150 Q100,140 200,120 T400,100 T600,60 T800,80 T1000,40" fill="none" stroke="#06274d" strokeLinecap="round" strokeWidth="3" />
-            <circle cx="600" cy="60" r="6" fill="#06274d" />
-            <circle cx="600" cy="60" r="10" fill="#06274d" fillOpacity="0.2" />
-          </svg>
-          <div className="mt-4 flex justify-between text-[10px] font-bold uppercase tracking-tighter text-on-surface-variant">
-            <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
-          </div>
+        <div className="h-64 w-full">
+          {chartValues.length > 0 ? (
+            <OverviewRevenueChart values={chartValues} labels={chartLabels} currency={currency} />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-on-surface-variant">
+              No transactions in the last 30 days.
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,19 +1,27 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Avatar, Badge, SearchBar } from "@/components/ui/primitives";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Avatar,
+  Badge,
+  PageHeader,
+  Panel,
+  SecondaryButton,
+  SearchBar,
+} from "@/components/ui/primitives";
+import { DateInput } from "@/components/ui/DateInput";
 
 type AuditEvent = {
   id: string;
   actor: string;
   action: string;
-  resource: string;
+  resource_type: string;
   resource_id?: string | null;
   ip_address?: string | null;
   created_at: string;
 };
 
-type Page = { items: AuditEvent[] };
+type Page = { items: AuditEvent[]; next_cursor: string | null };
 
 function actionTone(action: string): "default" | "good" | "warn" | "danger" {
   const a = action.toLowerCase();
@@ -26,51 +34,87 @@ function actionTone(action: string): "default" | "good" | "warn" | "danger" {
 export default function AuditPage() {
   const [q, setQ] = useState("");
   const [debounced, setDebounced] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [rows, setRows] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+
+  // Track current filter context to reset rows on filter change
+  const filterKey = useRef("");
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(q.trim()), 300);
     return () => clearTimeout(t);
   }, [q]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
+  const buildUrl = useCallback(
+    (cursor?: string) => {
       const sp = new URLSearchParams();
       if (debounced) sp.set("q", debounced);
-      sp.set("limit", "100");
-      const r = await fetch(`/api/ims/v1/admin/audit-log?${sp.toString()}`);
+      if (fromDate) sp.set("from_date", fromDate);
+      if (toDate) sp.set("to_date", toDate);
+      if (cursor) sp.set("after", cursor);
+      return `/api/ims/v1/admin/audit-log?${sp.toString()}`;
+    },
+    [debounced, fromDate, toDate]
+  );
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setRows([]);
+    setNextCursor(null);
+    filterKey.current = buildUrl();
+    try {
+      const r = await fetch(buildUrl());
       if (!r.ok) return;
       const data = (await r.json()) as Page;
       setRows(Array.isArray(data.items) ? data.items : []);
+      setNextCursor(data.next_cursor ?? null);
     } finally {
       setLoading(false);
     }
-  }, [debounced]);
+  }, [buildUrl]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useEffect(() => { void load(); }, [load]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const r = await fetch(buildUrl(nextCursor));
+      if (!r.ok) return;
+      const data = (await r.json()) as Page;
+      setRows((prev) => [...prev, ...(Array.isArray(data.items) ? data.items : [])]);
+      setNextCursor(data.next_cursor ?? null);
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Security</p>
-        <h2 className="font-headline text-4xl font-extrabold tracking-tight text-on-surface">Audit log</h2>
-        <p className="mt-2 font-light text-on-surface-variant">Immutable trail of privileged actions across your tenant.</p>
+      <PageHeader
+        kicker="Security"
+        title="Audit log"
+        subtitle="Immutable trail of privileged actions across your tenant."
+      />
+
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant/10 bg-surface-container-low p-4 shadow-sm">
+        <SearchBar className="min-w-[14rem] flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search actor, action, resource…" />
+        <DateInput className="min-w-[10rem]" value={fromDate} onChange={setFromDate} placeholder="From date" />
+        <DateInput className="min-w-[10rem]" value={toDate} onChange={setToDate} placeholder="To date" />
+        {(fromDate || toDate) && (
+          <SecondaryButton type="button" onClick={() => { setFromDate(""); setToDate(""); }}>
+            Clear dates
+          </SecondaryButton>
+        )}
       </div>
 
-      <div className="max-w-md">
-        <SearchBar value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search actor, action, resource…" />
-      </div>
-
-      <div className="overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-sm">
-        <div className="border-b border-outline-variant/10 px-6 py-4">
-          <h3 className="font-headline text-lg font-bold text-primary">Event log</h3>
-        </div>
+      <Panel title="Event log" subtitle={`${rows.length}${nextCursor ? "+" : ""} events`} noPad>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[880px] text-left text-sm">
+          <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant/10">
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Actor</th>
@@ -83,15 +127,11 @@ export default function AuditPage() {
             <tbody className="divide-y divide-outline-variant/10">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-on-surface-variant">
-                    Loading events…
-                  </td>
+                  <td colSpan={5} className="px-6 py-8 text-on-surface-variant">Loading events…</td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
-                    No audit events match your search.
-                  </td>
+                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">No audit events match your search.</td>
                 </tr>
               ) : (
                 rows.map((e) => (
@@ -106,7 +146,7 @@ export default function AuditPage() {
                       <Badge tone={actionTone(e.action)}>{e.action}</Badge>
                     </td>
                     <td className="px-6 py-4 text-on-surface">
-                      <span>{e.resource}</span>
+                      <span>{e.resource_type}</span>
                       {e.resource_id ? (
                         <span className="mt-0.5 block font-mono text-xs text-on-surface-variant">{e.resource_id}</span>
                       ) : null}
@@ -119,7 +159,14 @@ export default function AuditPage() {
             </tbody>
           </table>
         </div>
-      </div>
+        {nextCursor && (
+          <div className="border-t border-outline-variant/10 px-6 py-4">
+            <SecondaryButton type="button" disabled={loadingMore} onClick={() => void loadMore()}>
+              {loadingMore ? "Loading…" : "Load more"}
+            </SecondaryButton>
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }

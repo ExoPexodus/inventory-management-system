@@ -9,10 +9,14 @@ import {
   LoadingRow,
   PageHeader,
   Panel,
+  PrimaryButton,
   SearchBar,
+  SecondaryButton,
   SelectInput,
+  TextInput,
 } from "@/components/ui/primitives";
-import { formatMoneyUSD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { useCurrency } from "@/lib/currency-context";
 
 type Product = {
   id: string;
@@ -35,24 +39,32 @@ function statusTone(s: string): "default" | "good" | "warn" | "danger" {
 }
 
 export default function ProductsPage() {
+  const currency = useCurrency();
   const [rows, setRows] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [category, setCategory] = useState("");
+  const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkReorderPt, setBulkReorderPt] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
+
+  async function fetchProducts() {
+    setLoading(true);
+    const sp = new URLSearchParams();
+    if (q.trim()) sp.set("q", q.trim());
+    if (status) sp.set("status", status);
+    if (category.trim()) sp.set("category", category.trim());
+    const r = await fetch(`/api/ims/v1/admin/products?${sp.toString()}`);
+    if (r.ok) setRows((await r.json()) as Product[]);
+    else setRows([]);
+    setLoading(false);
+  }
 
   useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      const sp = new URLSearchParams();
-      if (q.trim()) sp.set("q", q.trim());
-      if (status) sp.set("status", status);
-      if (category.trim()) sp.set("category", category.trim());
-      const r = await fetch(`/api/ims/v1/admin/products?${sp.toString()}`);
-      if (r.ok) setRows((await r.json()) as Product[]);
-      else setRows([]);
-      setLoading(false);
-    })();
+    void fetchProducts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q, status, category]);
 
   const categories = useMemo(() => {
@@ -62,6 +74,37 @@ export default function ProductsPage() {
     }
     return [...s].sort();
   }, [rows]);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === rows.length) setSelected(new Set());
+    else setSelected(new Set(rows.map((r) => r.id)));
+  }
+
+  async function applyBulkReorder() {
+    const rp = parseInt(bulkReorderPt, 10);
+    if (isNaN(rp) || rp < 0) return;
+    setBulkSaving(true);
+    const r = await fetch("/api/ims/v1/admin/products/bulk-reorder-point", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_ids: [...selected], reorder_point: rp }),
+    });
+    setBulkSaving(false);
+    if (r.ok) {
+      setSelected(new Set());
+      setBulkReorderPt("");
+      void fetchProducts();
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -112,26 +155,43 @@ export default function ProductsPage() {
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant/10">
+                <th className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={rows.length > 0 && selected.size === rows.length}
+                    onChange={toggleSelectAll}
+                    className="rounded border-outline-variant/40 accent-primary"
+                  />
+                </th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Product</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">SKU</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Category</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
                 <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Unit price</th>
+                <th className="px-6 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Reorder Pt.</th>
                 <th className="px-6 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
               {loading ? (
-                <LoadingRow colSpan={6} label="Loading products…" />
+                <LoadingRow colSpan={8} label="Loading products…" />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-0">
+                  <td colSpan={8} className="p-0">
                     <EmptyState title="No products match filters" detail="Adjust filters or create a SKU from the entry hub." />
                   </td>
                 </tr>
               ) : (
                 rows.map((row) => (
-                <tr key={row.id} className="group hover:bg-surface-container-low/50">
+                <tr key={row.id} className={`group hover:bg-surface-container-low/50 ${selected.has(row.id) ? "bg-primary/5" : ""}`}>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(row.id)}
+                      onChange={() => toggleSelect(row.id)}
+                      className="rounded border-outline-variant/40 accent-primary"
+                    />
+                  </td>
                   <td className="px-6 py-3">
                     <div className="flex items-center gap-3">
                       <Avatar name={row.name} className="h-10 w-10 text-xs" />
@@ -148,15 +208,23 @@ export default function ProductsPage() {
                   <td className="px-6 py-3">
                     <Badge tone={statusTone(row.status)}>{row.status}</Badge>
                   </td>
-                  <td className="px-6 py-3 text-right tabular-nums font-semibold text-on-surface">{formatMoneyUSD(row.unit_price_cents)}</td>
+                  <td className="px-6 py-3 text-right tabular-nums font-semibold text-on-surface">{formatMoney(row.unit_price_cents, currency)}</td>
                   <td className="px-6 py-3 text-center">
-                    <Link
-                      href="/entries"
+                    {row.reorder_point > 0 ? (
+                      <span className="inline-flex items-center rounded-full bg-secondary/10 px-2 py-0.5 text-xs font-bold text-secondary">{row.reorder_point}</span>
+                    ) : (
+                      <span className="text-xs text-on-surface-variant/40">—</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => setEditProduct(row)}
                       className="inline-flex rounded-lg p-2 text-on-surface-variant opacity-0 transition group-hover:opacity-100 hover:bg-surface-container"
                       aria-label="Edit"
                     >
                       <span className="material-symbols-outlined text-xl">edit</span>
-                    </Link>
+                    </button>
                   </td>
                 </tr>
                 ))
@@ -165,6 +233,29 @@ export default function ProductsPage() {
           </table>
         </div>
       </Panel>
+
+      {/* Bulk reorder toolbar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-2xl border border-outline-variant/20 bg-surface-container-lowest px-5 py-3 shadow-2xl">
+            <span className="text-sm font-medium text-on-surface">{selected.size} item{selected.size !== 1 ? "s" : ""} selected</span>
+            <div className="h-5 w-px bg-outline-variant/30" />
+            <span className="text-sm text-on-surface-variant">Set reorder point:</span>
+            <input
+              type="number"
+              min="0"
+              value={bulkReorderPt}
+              onChange={(e) => setBulkReorderPt(e.target.value)}
+              placeholder="e.g. 10"
+              className="w-20 rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-1.5 text-sm text-on-surface outline-none focus:border-primary"
+            />
+            <PrimaryButton type="button" disabled={bulkSaving || !bulkReorderPt} onClick={() => void applyBulkReorder()}>
+              {bulkSaving ? "Saving…" : "Apply"}
+            </PrimaryButton>
+            <SecondaryButton type="button" onClick={() => setSelected(new Set())}>Clear</SecondaryButton>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-6 shadow-sm">
         <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Need a new SKU?</p>
@@ -177,6 +268,140 @@ export default function ProductsPage() {
           Open entry hub
           <span className="material-symbols-outlined text-base">arrow_forward</span>
         </Link>
+      </div>
+
+      {editProduct ? (
+        <EditProductDialog
+          product={editProduct}
+          onClose={() => setEditProduct(null)}
+          onSaved={() => { setEditProduct(null); void fetchProducts(); }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function EditProductDialog({
+  product,
+  onClose,
+  onSaved,
+}: {
+  product: Product;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(product.name);
+  const [cat, setCat] = useState(product.category ?? "");
+  const [prodStatus, setProdStatus] = useState(product.status);
+  const [priceUsd, setPriceUsd] = useState((product.unit_price_cents / 100).toFixed(2));
+  const [reorderPt, setReorderPt] = useState(String(product.reorder_point ?? 0));
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const priceCents = Math.round(parseFloat(priceUsd) * 100);
+    if (isNaN(priceCents) || priceCents < 0) {
+      setErr("Enter a valid price");
+      return;
+    }
+    const rp = parseInt(reorderPt, 10);
+    if (isNaN(rp) || rp < 0) {
+      setErr("Reorder point must be 0 or greater");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    const r = await fetch(`/api/ims/v1/admin/products/${product.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: name.trim(),
+        category: cat.trim() || null,
+        status: prodStatus,
+        unit_price_cents: priceCents,
+        reorder_point: rp,
+      }),
+    });
+    if (r.ok) {
+      onSaved();
+    } else {
+      const body = await r.json().catch(() => ({})) as { detail?: string };
+      setErr(body.detail ?? `Save failed (${r.status})`);
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg overflow-hidden rounded-2xl bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="ink-gradient px-6 py-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">Edit product</p>
+          <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">{product.name}</p>
+          <p className="mt-0.5 font-mono text-xs text-on-primary/70">{product.sku}</p>
+        </div>
+        <form onSubmit={onSubmit} className="space-y-4 p-6">
+          <label className="block text-sm font-medium text-on-surface">
+            Name
+            <TextInput required className="mt-1" value={name} onChange={(e) => setName(e.target.value)} />
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block text-sm font-medium text-on-surface">
+              Category
+              <TextInput className="mt-1" value={cat} onChange={(e) => setCat(e.target.value)} placeholder="e.g. Beverages" />
+            </label>
+            <label className="block text-sm font-medium text-on-surface">
+              Unit price (USD)
+              <TextInput
+                type="number"
+                min="0"
+                step="0.01"
+                className="mt-1"
+                value={priceUsd}
+                onChange={(e) => setPriceUsd(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block text-sm font-medium text-on-surface">
+              Status
+              <SelectInput
+                className="mt-1"
+                value={prodStatus}
+                onChange={setProdStatus}
+                options={[
+                  { value: "active", label: "Active" },
+                  { value: "draft", label: "Draft" },
+                  { value: "archived", label: "Archived" },
+                  { value: "discontinued", label: "Discontinued" },
+                ]}
+              />
+            </label>
+            <label className="block text-sm font-medium text-on-surface">
+              Reorder point
+              <TextInput
+                type="number"
+                min="0"
+                step="1"
+                className="mt-1"
+                value={reorderPt}
+                onChange={(e) => setReorderPt(e.target.value)}
+                placeholder="0"
+              />
+            </label>
+          </div>
+          {err ? <p className="text-sm text-error">{err}</p> : null}
+          <div className="flex gap-2 pt-2">
+            <PrimaryButton type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</PrimaryButton>
+            <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
+          </div>
+        </form>
       </div>
     </div>
   );

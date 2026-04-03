@@ -165,6 +165,7 @@ export function SelectInput({
                   role="option"
                   aria-selected={isSelected}
                   onMouseEnter={() => setActiveIndex(idx)}
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => selectAt(idx)}
                   className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition ${
                     isSelected

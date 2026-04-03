@@ -19,7 +19,9 @@ from app.models import (
     AdminUser,
     Product,
     ProductGroup,
+    PurchaseOrder,
     Shop,
+    StockAdjustment,
     StockMovement,
     Supplier,
     Transaction,
@@ -146,21 +148,74 @@ def admin_list_transactions(
     return TransactionListResponse(items=items, next_cursor=next_cur)
 
 
+_VALID_TX_STATUS_TRANSITIONS: dict[str, set[str]] = {
+    "pending": {"posted", "voided"},
+    "flagged": {"posted", "voided"},
+}
+
+
+class TxStatusPatch(BaseModel):
+    status: str
+
+
+@router.patch("/transactions/{tx_id}/status")
+def patch_transaction_status(
+    tx_id: UUID,
+    body: TxStatusPatch,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> dict:
+    tenant_id = _require_operator_tenant(ctx)
+    tx = db.get(Transaction, tx_id)
+    if tx is None or tx.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found")
+    allowed = _VALID_TX_STATUS_TRANSITIONS.get(tx.status, set())
+    if body.status not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot transition from '{tx.status}' to '{body.status}'. Allowed: {sorted(allowed) or 'none'}",
+        )
+    tx.status = body.status
+    db.commit()
+    return {"id": str(tx_id), "status": body.status}
+
+
 def _stock_alert_qty(db: Session, tenant_id: UUID | None, threshold: int) -> int:
-    cnt = 0
-    shop_stmt = select(Shop)
-    if tenant_id is not None:
-        shop_stmt = shop_stmt.where(Shop.tenant_id == tenant_id)
-    shops = db.execute(shop_stmt).scalars().all()
-    for shop in shops:
-        prods = db.execute(
-            select(Product).where(Product.tenant_id == shop.tenant_id, Product.active.is_(True))
-        ).scalars().all()
-        for p in prods:
-            q = current_quantity(db, shop.id, p.id)
-            if q <= threshold:
-                cnt += 1
-    return cnt
+    if tenant_id is None:
+        return 0
+    sub = (
+        select(
+            StockMovement.shop_id,
+            StockMovement.product_id,
+            func.coalesce(func.sum(StockMovement.quantity_delta), 0).label("qty"),
+        )
+        .join(Product, Product.id == StockMovement.product_id)
+        .where(StockMovement.tenant_id == tenant_id, Product.active.is_(True))
+        .group_by(StockMovement.shop_id, StockMovement.product_id)
+        .having(func.coalesce(func.sum(StockMovement.quantity_delta), 0) <= threshold)
+        .subquery()
+    )
+    return int(db.execute(select(func.count()).select_from(sub)).scalar_one())
+
+
+def _stock_alert_qty_per_product(db: Session, tenant_id: UUID | None) -> int:
+    """Count shop×product pairs where total stock ≤ product's own reorder_point."""
+    if tenant_id is None:
+        return 0
+    reorder = Product.reorder_point
+    sub = (
+        select(
+            StockMovement.shop_id,
+            StockMovement.product_id,
+            reorder.label("rp"),
+        )
+        .join(Product, Product.id == StockMovement.product_id)
+        .where(StockMovement.tenant_id == tenant_id, Product.active.is_(True))
+        .group_by(StockMovement.shop_id, StockMovement.product_id, reorder)
+        .having(func.coalesce(func.sum(StockMovement.quantity_delta), 0) <= reorder)
+        .subquery()
+    )
+    return int(db.execute(select(func.count()).select_from(sub)).scalar_one())
 
 
 class RecentActivityItem(BaseModel):
@@ -178,6 +233,9 @@ class DashboardSummaryOut(BaseModel):
     shop_count: int
     product_count: int
     tenant_count: int
+    avg_transaction_cents: int = 0
+    pending_order_count: int = 0
+    revenue_delta_pct: float = 0.0
     recent_activity: list[RecentActivityItem]
 
 
@@ -212,7 +270,43 @@ def dashboard_summary(
     supplier_count = count_model(Supplier, Supplier.tenant_id)
     tenant_count = 1
 
-    stock_alert_count = _stock_alert_qty(db, tenant_id, stock_alert_threshold)
+    stock_alert_count = _stock_alert_qty_per_product(db, tenant_id)
+
+    avg_transaction_cents = (
+        gross_sales_cents // posted_transaction_count if posted_transaction_count > 0 else 0
+    )
+
+    pending_order_count = int(
+        db.execute(
+            select(func.count())
+            .select_from(PurchaseOrder)
+            .where(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.status == "ordered")
+        ).scalar_one()
+    )
+
+    now = datetime.now(UTC)
+    period_start = now - timedelta(days=30)
+    prev_start = now - timedelta(days=60)
+    curr_rev = int(
+        db.execute(
+            select(func.coalesce(func.sum(Transaction.total_cents), 0)).where(
+                Transaction.tenant_id == tenant_id,
+                Transaction.status == "posted",
+                Transaction.created_at >= period_start,
+            )
+        ).scalar_one()
+    )
+    prev_rev = int(
+        db.execute(
+            select(func.coalesce(func.sum(Transaction.total_cents), 0)).where(
+                Transaction.tenant_id == tenant_id,
+                Transaction.status == "posted",
+                Transaction.created_at >= prev_start,
+                Transaction.created_at < period_start,
+            )
+        ).scalar_one()
+    )
+    revenue_delta_pct = round((curr_rev - prev_rev) / prev_rev * 100, 1) if prev_rev > 0 else 0.0
 
     txns = db.execute(
         select(Transaction)
@@ -228,19 +322,19 @@ def dashboard_summary(
     for t in txns:
         items.append(
             RecentActivityItem(
-                kind="transaction",
+                kind="sale",
                 ref_id=t.id,
                 created_at=t.created_at.isoformat(),
-                detail=f"{t.kind}:{t.status}:{t.total_cents}",
+                detail=f"${t.total_cents / 100:.2f} · {t.kind}",
             )
         )
     for m in moves:
         items.append(
             RecentActivityItem(
-                kind="stock_movement",
+                kind="adjustment",
                 ref_id=m.id,
                 created_at=m.created_at.isoformat(),
-                detail=f"{m.movement_type}:{m.quantity_delta}",
+                detail=f"\u0394{m.quantity_delta:+d} · {m.movement_type}",
             )
         )
     items.sort(key=lambda x: x.created_at, reverse=True)
@@ -254,6 +348,9 @@ def dashboard_summary(
         shop_count=shop_count,
         product_count=product_count,
         tenant_count=tenant_count,
+        avg_transaction_cents=avg_transaction_cents,
+        pending_order_count=pending_order_count,
+        revenue_delta_pct=revenue_delta_pct,
         recent_activity=items,
     )
 
@@ -330,7 +427,7 @@ class CreateSupplierBody(BaseModel):
 class PatchSupplierBody(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     status: str | None = Field(default=None, max_length=32)
-    contact_email: EmailStr | None = None
+    contact_email: str | None = None
     contact_phone: str | None = Field(default=None, max_length=64)
     notes: str | None = None
 
@@ -636,6 +733,7 @@ class CreateProductResponse(BaseModel):
     product_group_id: UUID | None = None
     group_title: str | None = None
     variant_label: str | None = None
+    reorder_point: int = 0
 
 
 def _resolve_product_group(
@@ -733,6 +831,7 @@ def admin_create_product(
         product_group_id=prod.product_group_id,
         group_title=group.title if group else None,
         variant_label=prod.variant_label,
+        reorder_point=prod.reorder_point,
     )
 
 
@@ -797,10 +896,17 @@ def admin_list_product_groups(
     ]
 
 
+_VALID_PRODUCT_STATUSES = {"active", "draft", "archived", "discontinued"}
+
+
 class PatchProductBody(BaseModel):
     product_group_id: UUID | None = None
     variant_label: str | None = Field(default=None, max_length=128)
     name: str | None = Field(default=None, min_length=1, max_length=255)
+    status: str | None = None
+    category: str | None = Field(default=None, max_length=128)
+    unit_price_cents: int | None = Field(default=None, ge=0)
+    reorder_point: int | None = Field(default=None, ge=0)
 
 
 @router.patch("/products/{product_id}", response_model=CreateProductResponse)
@@ -824,6 +930,24 @@ def admin_patch_product(
     if "variant_label" in patch:
         vl = patch["variant_label"]
         prod.variant_label = vl.strip() if isinstance(vl, str) and vl.strip() else None
+
+    if "status" in patch and patch["status"] is not None:
+        if patch["status"] not in _VALID_PRODUCT_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Invalid status '{patch['status']}'. Must be one of: {', '.join(sorted(_VALID_PRODUCT_STATUSES))}",
+            )
+        prod.status = patch["status"]
+
+    if "category" in patch:
+        cat = patch["category"]
+        prod.category = cat.strip() if isinstance(cat, str) and cat.strip() else None
+
+    if "unit_price_cents" in patch and patch["unit_price_cents"] is not None:
+        prod.unit_price_cents = patch["unit_price_cents"]
+
+    if "reorder_point" in patch and patch["reorder_point"] is not None:
+        prod.reorder_point = patch["reorder_point"]
 
     group_title: str | None = None
     if "product_group_id" in patch:
@@ -851,4 +975,117 @@ def admin_patch_product(
         product_group_id=prod.product_group_id,
         group_title=group_title,
         variant_label=prod.variant_label,
+        reorder_point=prod.reorder_point,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Bulk reorder point
+# ---------------------------------------------------------------------------
+
+
+class BulkReorderPointBody(BaseModel):
+    product_ids: list[UUID] = Field(min_length=1, max_length=200)
+    reorder_point: int = Field(ge=0)
+
+
+class BulkReorderPointResponse(BaseModel):
+    updated_count: int
+
+
+@router.post("/products/bulk-reorder-point", response_model=BulkReorderPointResponse)
+def bulk_set_reorder_point(
+    body: BulkReorderPointBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> BulkReorderPointResponse:
+    tenant_id = _require_operator_tenant(ctx)
+    result = db.execute(
+        Product.__table__.update()
+        .where(Product.id.in_(body.product_ids), Product.tenant_id == tenant_id)
+        .values(reorder_point=body.reorder_point)
+    )
+    db.commit()
+    return BulkReorderPointResponse(updated_count=result.rowcount)
+
+
+# ---------------------------------------------------------------------------
+# Stock adjustments
+# ---------------------------------------------------------------------------
+
+import uuid as _uuid_mod  # noqa: E402 — local import to avoid name conflicts
+
+_VALID_REASONS = {"correction", "damage", "loss", "found", "other"}
+
+
+class AdjustmentIn(BaseModel):
+    shop_id: UUID
+    product_id: UUID
+    quantity_delta: int = Field(ne=0)
+    reason: str
+    notes: str | None = None
+
+
+@router.post("/inventory/adjustments", response_model=StockMovementOut, status_code=status.HTTP_201_CREATED)
+def create_stock_adjustment(
+    body: AdjustmentIn,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> StockMovementOut:
+    tenant_id = _require_operator_tenant(ctx)
+
+    if body.reason not in _VALID_REASONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid reason '{body.reason}'. Must be one of: {', '.join(sorted(_VALID_REASONS))}",
+        )
+
+    shop = db.get(Shop, body.shop_id)
+    if shop is None or shop.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
+
+    prod = db.get(Product, body.product_id)
+    if prod is None or prod.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    adj = StockAdjustment(
+        id=_uuid_mod.uuid4(),
+        tenant_id=tenant_id,
+        shop_id=body.shop_id,
+        product_id=body.product_id,
+        quantity_delta=body.quantity_delta,
+        reason_code=body.reason,
+        notes=body.notes,
+        approved_by=ctx.operator_id,
+        created_by=ctx.operator_id,
+        status="approved",
+    )
+    db.add(adj)
+
+    idempotency_key = f"adj-{adj.id}"
+    movement = StockMovement(
+        id=_uuid_mod.uuid4(),
+        tenant_id=tenant_id,
+        shop_id=body.shop_id,
+        product_id=body.product_id,
+        quantity_delta=body.quantity_delta,
+        movement_type="adjustment",
+        idempotency_key=idempotency_key,
+    )
+    db.add(movement)
+    db.commit()
+    db.refresh(movement)
+
+    return StockMovementOut(
+        id=movement.id,
+        tenant_id=movement.tenant_id,
+        shop_id=movement.shop_id,
+        shop_name=shop.name,
+        product_id=movement.product_id,
+        product_sku=prod.sku,
+        product_name=prod.name,
+        quantity_delta=movement.quantity_delta,
+        movement_type=movement.movement_type,
+        transaction_id=None,
+        created_at=movement.created_at,
     )

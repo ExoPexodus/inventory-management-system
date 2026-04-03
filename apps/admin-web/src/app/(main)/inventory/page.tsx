@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Badge,
   ErrorState,
@@ -9,10 +10,14 @@ import {
   PageHeader,
   Pagination,
   Panel,
+  PrimaryButton,
+  SecondaryButton,
   SelectInput,
+  TextInput,
   Timeline,
 } from "@/components/ui/primitives";
-import { formatMoneyUSD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { useCurrency } from "@/lib/currency-context";
 
 type MovementRow = {
   id: string;
@@ -61,10 +66,24 @@ function movementIcon(t: string): string {
 }
 
 export default function InventoryPage() {
+  return (
+    <Suspense>
+      <InventoryPageInner />
+    </Suspense>
+  );
+}
+
+function InventoryPageInner() {
+  const currency = useCurrency();
+  const searchParams = useSearchParams();
+  const highlightCritical = searchParams.get("highlight") === "critical";
+  const shopIdParam = searchParams.get("shopId");
+  const firstCriticalRef = useRef<HTMLTableRowElement | null>(null);
   const [shops, setShops] = useState<ShopRow[]>([]);
   const [shopId, setShopId] = useState("");
   const [stockRows, setStockRows] = useState<StockRow[]>([]);
   const [stockLoading, setStockLoading] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
 
   const [mtype, setMtype] = useState("");
   const [mPage, setMPage] = useState(1);
@@ -74,6 +93,7 @@ export default function InventoryPage() {
   mNextRef.current = mNext;
   const [mLoading, setMLoading] = useState(true);
   const [mErr, setMErr] = useState<string | null>(null);
+  const [recentMovements, setRecentMovements] = useState<MovementRow[]>([]);
 
   const fetchMovements = useCallback(
     async (targetPage: number) => {
@@ -94,6 +114,26 @@ export default function InventoryPage() {
         const data = (await r.json()) as MovementPage;
         setMCache((p) => ({ ...p, [targetPage]: data.items }));
         setMNext((p) => ({ ...p, [targetPage]: data.next_cursor }));
+
+        // Silently prefetch next page so forward navigation is instant
+        if (data.next_cursor) {
+          const nextPage = targetPage + 1;
+          setMCache((current) => {
+            if (current[nextPage]) return current;
+            const prefetchSp = new URLSearchParams({ limit: String(MOV_PAGE) });
+            if (mtype) prefetchSp.set("movement_type", mtype);
+            prefetchSp.set("cursor", data.next_cursor!);
+            fetch(`/api/ims/v1/admin/inventory/movements?${prefetchSp}`)
+              .then((res) => (res.ok ? res.json() : null))
+              .then((prefetchData: MovementPage | null) => {
+                if (!prefetchData) return;
+                setMCache((p) => ({ ...p, [nextPage]: prefetchData.items }));
+                setMNext((p) => ({ ...p, [nextPage]: prefetchData.next_cursor }));
+              })
+              .catch(() => { /* ignore prefetch errors */ });
+            return current;
+          });
+        }
       } catch (e) {
         setMErr(e instanceof Error ? e.message : "Movements failed");
       } finally {
@@ -118,6 +158,15 @@ export default function InventoryPage() {
   }, [mPage, mCache, fetchMovements, mtype]);
 
   useEffect(() => {
+    const sp = new URLSearchParams({ limit: "6" });
+    if (mtype) sp.set("movement_type", mtype);
+    fetch(`/api/ims/v1/admin/inventory/movements?${sp}`)
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((data: MovementPage) => setRecentMovements(data.items ?? []))
+      .catch(() => setRecentMovements([]));
+  }, [mtype]);
+
+  useEffect(() => {
     void (async () => {
       const r = await fetch("/api/ims/v1/admin/shops");
       if (r.ok) {
@@ -125,28 +174,34 @@ export default function InventoryPage() {
         setShops(list);
         setShopId((prev) => {
           if (prev && list.some((s) => s.id === prev)) return prev;
+          if (shopIdParam && list.some((s) => s.id === shopIdParam)) return shopIdParam;
           return list[0]?.id ?? "";
         });
       }
     })();
   }, []);
 
-  useEffect(() => {
-    if (!shopId) {
-      setStockRows([]);
-      return;
+  const fetchStock = useCallback(async (sid: string) => {
+    if (!sid) { setStockRows([]); return; }
+    setStockLoading(true);
+    try {
+      const r = await fetch(`/api/ims/v1/inventory/shop/${sid}/products`);
+      if (r.ok) setStockRows((await r.json()) as StockRow[]);
+      else setStockRows([]);
+    } finally {
+      setStockLoading(false);
     }
-    void (async () => {
-      setStockLoading(true);
-      try {
-        const r = await fetch(`/api/ims/v1/inventory/shop/${shopId}/products`);
-        if (r.ok) setStockRows((await r.json()) as StockRow[]);
-        else setStockRows([]);
-      } finally {
-        setStockLoading(false);
-      }
-    })();
-  }, [shopId]);
+  }, []);
+
+  useEffect(() => {
+    void fetchStock(shopId);
+  }, [shopId, fetchStock]);
+
+  useEffect(() => {
+    if (highlightCritical && firstCriticalRef.current) {
+      firstCriticalRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [highlightCritical, stockRows]);
 
   const valuation = useMemo(() => {
     const totalValuation = stockRows.reduce((a, s) => a + s.quantity * s.unit_price_cents, 0);
@@ -163,12 +218,12 @@ export default function InventoryPage() {
 
   const timelineItems = useMemo(
     () =>
-      movementRows.slice(0, 6).map((r) => ({
+      recentMovements.map((r) => ({
         title: `${r.movement_type} · ${r.product_sku ?? "SKU"}`,
         detail: `${r.shop_name ?? "Shop"} · ${r.created_at}`,
         tone: r.quantity_delta < 0 ? ("warn" as const) : ("default" as const),
       })),
-    [movementRows],
+    [recentMovements],
   );
 
   return (
@@ -198,7 +253,7 @@ export default function InventoryPage() {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
           <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Total valuation</p>
-          <p className="mt-4 font-headline text-3xl font-extrabold text-primary">{formatMoneyUSD(valuation.totalValuation)}</p>
+          <p className="mt-4 font-headline text-3xl font-extrabold text-primary">{formatMoney(valuation.totalValuation, currency)}</p>
           <p className="mt-1 text-xs text-on-surface-variant">Shop scope: current selector</p>
         </div>
         <div className="rounded-xl border border-secondary/25 bg-secondary-container/20 p-6 shadow-sm">
@@ -214,7 +269,7 @@ export default function InventoryPage() {
 
       <Panel title="Holdings" subtitle="On-hand from the live inventory service" noPad>
         <div className="border-b border-outline-variant/10 px-6 py-4">
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap items-end justify-between gap-4">
             <label className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
               Shop
               <SelectInput
@@ -225,6 +280,15 @@ export default function InventoryPage() {
                 options={shops.map((s) => ({ value: s.id, label: s.name }))}
               />
             </label>
+            <button
+              type="button"
+              disabled={!shopId || stockRows.length === 0}
+              onClick={() => setAdjustOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-outline-variant/30 px-4 py-2 text-sm font-semibold text-on-surface transition hover:bg-surface-container disabled:opacity-40"
+            >
+              <span className="material-symbols-outlined text-base">tune</span>
+              Adjust stock
+            </button>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -253,8 +317,19 @@ export default function InventoryPage() {
                   </td>
                 </tr>
               ) : (
-                stockRows.map((s) => (
-                  <tr key={s.product_id} className="hover:bg-surface-container-low/50">
+                stockRows.map((s, idx) => {
+                  const badge = stockBadge(s.quantity);
+                  const isHighlighted = highlightCritical && (badge === "danger" || badge === "warn");
+                  const isFirst = isHighlighted && idx === stockRows.findIndex((r) => {
+                    const b = stockBadge(r.quantity);
+                    return b === "danger" || b === "warn";
+                  });
+                  return (
+                  <tr
+                    key={s.product_id}
+                    ref={isFirst ? firstCriticalRef : null}
+                    className={`hover:bg-surface-container-low/50 ${isHighlighted ? "ring-2 ring-inset ring-secondary/50 bg-secondary-container/10" : ""}`}
+                  >
                     <td className="px-6 py-3 font-mono text-xs text-on-surface">{s.sku}</td>
                     <td className="px-6 py-3">
                       <span className="font-medium text-on-surface">{s.name}</span>
@@ -264,12 +339,13 @@ export default function InventoryPage() {
                     </td>
                     <td className="px-6 py-3 text-on-surface-variant">{s.group_title ?? "—"}</td>
                     <td className={`px-6 py-3 text-right tabular-nums ${qtyClass(s.quantity)}`}>{s.quantity}</td>
-                    <td className="px-6 py-3 text-right tabular-nums text-on-surface">{formatMoneyUSD(s.unit_price_cents)}</td>
+                    <td className="px-6 py-3 text-right tabular-nums text-on-surface">{formatMoney(s.unit_price_cents, currency)}</td>
                     <td className="px-6 py-3">
                       <Badge tone={stockBadge(s.quantity)}>{s.quantity <= 5 ? "critical" : s.quantity <= 10 ? "low" : "ok"}</Badge>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -344,7 +420,7 @@ export default function InventoryPage() {
         <div className="space-y-6 lg:col-span-4">
           <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm lg:sticky lg:top-6">
             <h3 className="font-headline text-lg font-bold text-on-surface">Recent activity</h3>
-            <p className="mt-1 text-sm text-on-surface-variant">Last six movements on this journal page</p>
+            <p className="mt-1 text-sm text-on-surface-variant">Six most recent movements across all pages</p>
             <div className="mt-6">
               <Timeline items={timelineItems} />
             </div>
@@ -369,6 +445,144 @@ export default function InventoryPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {adjustOpen && shopId ? (
+        <AdjustStockDialog
+          shopId={shopId}
+          stockRows={stockRows}
+          onClose={() => setAdjustOpen(false)}
+          onSaved={() => {
+            setAdjustOpen(false);
+            void fetchStock(shopId);
+            setMPage(1);
+            setMCache({});
+            setMNext({});
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AdjustStockDialog({
+  shopId,
+  stockRows,
+  onClose,
+  onSaved,
+}: {
+  shopId: string;
+  stockRows: StockRow[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [productId, setProductId] = useState(stockRows[0]?.product_id ?? "");
+  const [delta, setDelta] = useState("");
+  const [reason, setReason] = useState("correction");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const deltaNum = parseInt(delta, 10);
+    if (isNaN(deltaNum) || deltaNum === 0) {
+      setErr("Delta must be a non-zero integer");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    const r = await fetch("/api/ims/v1/admin/inventory/adjustments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shop_id: shopId,
+        product_id: productId,
+        quantity_delta: deltaNum,
+        reason,
+        notes: notes.trim() || null,
+      }),
+    });
+    if (r.ok) {
+      onSaved();
+    } else {
+      const body = await r.json().catch(() => ({})) as { detail?: string };
+      setErr(body.detail ?? `Save failed (${r.status})`);
+    }
+    setSaving(false);
+  }
+
+  const selected = stockRows.find((s) => s.product_id === productId);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md overflow-hidden rounded-2xl bg-surface shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="ink-gradient px-6 py-5">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">Stock adjustment</p>
+          <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">Adjust on-hand quantity</p>
+          <p className="mt-1 text-xs text-on-primary/70">Creates an approved ledger entry immediately.</p>
+        </div>
+        <form onSubmit={onSubmit} className="space-y-4 p-6">
+          <label className="block text-sm font-medium text-on-surface">
+            Product
+            <SelectInput
+              className="mt-1"
+              value={productId}
+              onChange={setProductId}
+              options={stockRows.map((s) => ({ value: s.product_id, label: `${s.sku} — ${s.name}` }))}
+            />
+            {selected ? (
+              <p className="mt-1 text-xs text-on-surface-variant">Current on-hand: <span className="font-bold text-on-surface">{selected.quantity}</span></p>
+            ) : null}
+          </label>
+          <label className="block text-sm font-medium text-on-surface">
+            Quantity delta
+            <TextInput
+              required
+              type="number"
+              className="mt-1"
+              value={delta}
+              onChange={(e) => setDelta(e.target.value)}
+              placeholder="e.g. +10 to add, -3 to remove"
+            />
+            <p className="mt-1 text-xs text-on-surface-variant">Positive = add stock · Negative = remove stock</p>
+          </label>
+          <label className="block text-sm font-medium text-on-surface">
+            Reason
+            <SelectInput
+              className="mt-1"
+              value={reason}
+              onChange={setReason}
+              options={[
+                { value: "correction", label: "Correction" },
+                { value: "damage", label: "Damage" },
+                { value: "loss", label: "Loss / theft" },
+                { value: "found", label: "Found / recovery" },
+                { value: "other", label: "Other" },
+              ]}
+            />
+          </label>
+          <label className="block text-sm font-medium text-on-surface">
+            Notes (optional)
+            <TextInput
+              className="mt-1"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Additional context…"
+            />
+          </label>
+          {err ? <p className="text-sm text-error">{err}</p> : null}
+          <div className="flex gap-2 pt-2">
+            <PrimaryButton type="submit" disabled={saving}>{saving ? "Saving…" : "Apply adjustment"}</PrimaryButton>
+            <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
+          </div>
+        </form>
       </div>
     </div>
   );

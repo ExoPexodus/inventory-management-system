@@ -52,6 +52,7 @@ const config: Config = {
         "outline-variant": "#c4c6cd",
         "inverse-surface": "#30312e",
         "inverse-on-surface": "#f2f1ec",
+        scrim: "#000000",
       },
       fontFamily: {
         sans: ["var(--font-body)", "system-ui", "sans-serif"],

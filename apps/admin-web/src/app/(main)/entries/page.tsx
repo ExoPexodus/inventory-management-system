@@ -12,11 +12,13 @@ import {
   Tabs,
   TextInput,
 } from "@/components/ui/primitives";
-import { formatMoneyUSD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { useCurrency } from "@/lib/currency-context";
 
 type ProductGroup = { id: string; title: string };
 
 export default function EntriesPage() {
+  const currency = useCurrency();
   const [tab, setTab] = useState("details");
   const [shopName, setShopName] = useState("");
   const [sku, setSku] = useState("");
@@ -256,7 +258,7 @@ export default function EntriesPage() {
               <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">{pname || "Product name"}</p>
             </div>
             <div className="space-y-3 p-6">
-              <p className="font-headline text-3xl font-extrabold text-primary">{priceOk ? formatMoneyUSD(previewPriceCents) : "—"}</p>
+              <p className="font-headline text-3xl font-extrabold text-primary">{priceOk ? formatMoney(previewPriceCents, currency) : "—"}</p>
               <div className="flex flex-wrap gap-2 text-sm">
                 <Badge tone="default">SKU {sku || "—"}</Badge>
                 <Badge tone="good">{category || "Category"}</Badge>

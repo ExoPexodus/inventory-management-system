@@ -1,9 +1,14 @@
 import type { Metadata } from "next";
-import { Manrope, Public_Sans } from "next/font/google";
+import type React from "react";
+import "@fontsource/public-sans/400.css";
+import "@fontsource/public-sans/500.css";
+import "@fontsource/public-sans/600.css";
+import "@fontsource/public-sans/700.css";
+import "@fontsource/manrope/600.css";
+import "@fontsource/manrope/700.css";
+import "@fontsource/manrope/800.css";
+import "material-symbols/outlined.css";
 import "./globals.css";
-
-const publicSans = Public_Sans({ subsets: ["latin"], variable: "--font-body" });
-const manrope = Manrope({ subsets: ["latin"], variable: "--font-display" });
 
 export const metadata: Metadata = {
   title: "Inventory admin",
@@ -17,19 +22,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <link
-          rel="preload"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
-          as="style"
-        />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap"
-        />
-      </head>
+      <head />
       <body
-        className={`${publicSans.variable} ${manrope.variable} min-h-screen bg-background font-sans text-on-surface antialiased`}
+        className="min-h-screen bg-background font-sans text-on-surface antialiased"
+        style={{ "--font-body": "'Public Sans', system-ui, sans-serif", "--font-display": "'Manrope', system-ui, sans-serif" } as React.CSSProperties}
       >
         {children}
       </body>

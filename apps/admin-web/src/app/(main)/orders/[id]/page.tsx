@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Badge, Breadcrumbs, Timeline } from "@/components/ui/primitives";
-import { formatMoneyUSD } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
+import { useCurrency } from "@/lib/currency-context";
 
 type Tx = { id: string; status: string; total_cents: number; tax_cents: number; created_at: string; cashier_name?: string | null };
 type Event = { event_type: string; created_at: string; payload?: Record<string, unknown> };
@@ -17,6 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function OrderDetailPage() {
+  const currency = useCurrency();
   const params = useParams<{ id: string }>();
   const orderId = params?.id ?? "";
   const [tx, setTx] = useState<Tx | null>(null);
@@ -57,11 +59,11 @@ export default function OrderDetailPage() {
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
           <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Total</p>
-            <h3 className="mt-3 font-headline text-3xl font-extrabold text-primary">{formatMoneyUSD(tx.total_cents)}</h3>
+            <h3 className="mt-3 font-headline text-3xl font-extrabold text-primary">{formatMoney(tx.total_cents, currency)}</h3>
           </div>
           <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Tax</p>
-            <h3 className="mt-3 font-headline text-3xl font-extrabold text-primary">{formatMoneyUSD(tx.tax_cents)}</h3>
+            <h3 className="mt-3 font-headline text-3xl font-extrabold text-primary">{formatMoney(tx.tax_cents, currency)}</h3>
           </div>
           <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Cashier</p>
@@ -84,9 +86,9 @@ export default function OrderDetailPage() {
                 {[
                   { label: "Transaction ID", value: tx.id },
                   { label: "Status", value: <Badge tone={tx.status === "posted" ? "good" : tx.status === "flagged" ? "danger" : "default"}>{tx.status}</Badge> },
-                  { label: "Amount", value: formatMoneyUSD(tx.total_cents) },
-                  { label: "Tax", value: formatMoneyUSD(tx.tax_cents) },
-                  { label: "Subtotal", value: formatMoneyUSD(tx.total_cents - tx.tax_cents) },
+                  { label: "Amount", value: formatMoney(tx.total_cents, currency) },
+                  { label: "Tax", value: formatMoney(tx.tax_cents, currency) },
+                  { label: "Subtotal", value: formatMoney(tx.total_cents - tx.tax_cents, currency) },
                   { label: "Created", value: new Date(tx.created_at).toLocaleString() },
                 ].map((row) => (
                   <div key={row.label} className="flex items-center justify-between px-6 py-4">

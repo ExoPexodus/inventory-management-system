@@ -119,6 +119,27 @@ class InventoryApi {
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> employeeLogin({
+    required String accessToken,
+    required String credential,
+    String? employeeId,
+    String? email,
+  }) async {
+    final payload = <String, dynamic>{'credential': credential};
+    if (employeeId != null && employeeId.isNotEmpty) payload['employee_id'] = employeeId;
+    if (email != null && email.isNotEmpty) payload['email'] = email;
+    final r = await http.post(
+      _uri('/v1/employees/login'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode(payload),
+    );
+    if (r.statusCode >= 400) throw ApiException(r.statusCode, r.body);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> syncPull({
     required String accessToken,
     required String shopId,
