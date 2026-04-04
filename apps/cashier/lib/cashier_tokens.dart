@@ -34,6 +34,7 @@ abstract final class CashierColors {
   static const Color onSecondaryContainer = Color(0xFF745C00);
   static const Color outlineVariant = Color(0xFFC4C6CD);
   static const Color tertiaryFixed = Color(0xFFFFDF99);
+  static const Color error = Color(0xFFB3261E);
   static const Color errorContainer = Color(0xFFFFDAD6);
   static const Color onErrorContainer = Color(0xFF93000A);
   static const Color surfaceTint = Color(0xFF455F88);
