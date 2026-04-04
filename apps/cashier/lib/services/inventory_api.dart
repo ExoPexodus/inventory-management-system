@@ -227,4 +227,54 @@ class InventoryApi {
     if (r.statusCode >= 400) throw ApiException(r.statusCode, r.body);
     return jsonDecode(r.body) as Map<String, dynamic>;
   }
+
+  /// Returns the active (open) shift for this device's shop, or null if none.
+  Future<Map<String, dynamic>?> getActiveShift({required String accessToken}) async {
+    final r = await http.get(
+      _uri('/v1/shifts/active'),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (r.statusCode == 404) return null;
+    if (r.statusCode >= 400) throw ApiException(r.statusCode, r.body);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// Opens a new shift. Throws ApiException(409) if one is already open.
+  Future<Map<String, dynamic>> openShift({
+    required String accessToken,
+    String? notes,
+  }) async {
+    final r = await http.post(
+      _uri('/v1/shifts'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({'notes': notes}),
+    );
+    if (r.statusCode >= 400) throw ApiException(r.statusCode, r.body);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  /// Closes the given shift with the cashier's physical cash count.
+  Future<Map<String, dynamic>> closeShift({
+    required String accessToken,
+    required String shiftId,
+    required int reportedCashCents,
+    String? notes,
+  }) async {
+    final r = await http.patch(
+      _uri('/v1/shifts/$shiftId/close'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode({
+        'reported_cash_cents': reportedCashCents,
+        'notes': notes,
+      }),
+    );
+    if (r.statusCode >= 400) throw ApiException(r.statusCode, r.body);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
 }

@@ -345,15 +345,15 @@ function ReceiptDialog({ tx, onClose }: { tx: Tx; onClose: () => void }) {
   const subtotal = tx.lines.reduce((acc, l) => acc + l.quantity * l.unit_price_cents, 0);
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-2xl bg-surface shadow-xl"
+        className="w-full max-w-md rounded-2xl bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="ink-gradient px-6 py-5">
+        <div className="ink-gradient rounded-t-2xl px-6 py-5">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">Receipt</p>
@@ -461,15 +461,15 @@ function FlaggedPendingModal({
   const currency = useCurrency();
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-2xl overflow-hidden rounded-2xl bg-surface shadow-xl"
+        className="w-full max-w-2xl rounded-2xl bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="border-b border-error/20 bg-error-container/30 px-6 py-5">
+        <div className="rounded-t-2xl border-b border-error/20 bg-error-container/30 px-6 py-5">
           <p className="text-xs font-bold uppercase tracking-widest text-on-error-container">Attention required</p>
           <h3 className="mt-1 font-headline text-xl font-extrabold text-on-surface">
             Flagged &amp; pending transactions

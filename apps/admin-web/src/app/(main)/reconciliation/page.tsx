@@ -28,6 +28,7 @@ type RecRow = {
   opened_at: string;
   closed_at: string | null;
   resolution_note: string | null;
+  reviewed_by: string | null;
 };
 
 type RecPage = { items: RecRow[] };
@@ -37,6 +38,7 @@ function recTone(status: string): "default" | "good" | "warn" | "danger" {
   if (status === "matched") return "good";
   if (status === "resolved") return "good";
   if (status === "variance") return "danger";
+  if (status === "pending_review") return "warn";
   return "default";
 }
 
@@ -66,6 +68,9 @@ export default function ReconciliationPage() {
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [resolveSaving, setResolveSaving] = useState(false);
   const [resolveErr, setResolveErr] = useState<string | null>(null);
+
+  // Approve
+  const [approveSaving, setApproveSaving] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,6 +102,13 @@ export default function ReconciliationPage() {
     const unresolved = rows.filter((r) => r.rec_status === "variance").length;
     return { totalVariance, matched, unresolved, periods: rows.length };
   }, [rows]);
+
+  async function handleApprove(id: string) {
+    setApproveSaving(id);
+    await fetch(`/api/ims/v1/admin/reconciliation/${id}/approve`, { method: "PATCH" });
+    setApproveSaving(null);
+    void load();
+  }
 
   async function handleResolve(e: React.FormEvent) {
     e.preventDefault();
@@ -227,16 +239,29 @@ export default function ReconciliationPage() {
                           <Badge tone={recTone(r.rec_status)}>{r.rec_status}</Badge>
                         </td>
                         <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
-                          {r.rec_status === "variance" && (
-                            <button
-                              type="button"
-                              onClick={() => { setResolveRow(r); setResolutionNotes(""); setResolveErr(null); }}
-                              className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/30 bg-surface-container px-3 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container-high"
-                            >
-                              <span className="material-symbols-outlined text-sm">check_circle</span>
-                              Resolve
-                            </button>
-                          )}
+                          <div className="flex gap-2">
+                            {r.rec_status === "variance" && (
+                              <button
+                                type="button"
+                                onClick={() => { setResolveRow(r); setResolutionNotes(""); setResolveErr(null); }}
+                                className="inline-flex items-center gap-1 rounded-lg border border-outline-variant/30 bg-surface-container px-3 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container-high"
+                              >
+                                <span className="material-symbols-outlined text-sm">check_circle</span>
+                                Resolve
+                              </button>
+                            )}
+                            {r.rec_status === "pending_review" && (
+                              <button
+                                type="button"
+                                disabled={approveSaving === r.id}
+                                onClick={() => void handleApprove(r.id)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-tertiary/30 bg-tertiary-fixed/10 px-3 py-1.5 text-xs font-semibold text-tertiary transition hover:bg-tertiary-fixed/20 disabled:opacity-50"
+                              >
+                                <span className="material-symbols-outlined text-sm">thumb_up</span>
+                                {approveSaving === r.id ? "Approving…" : "Approve"}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                       {isExpanded && (
@@ -277,9 +302,9 @@ export default function ReconciliationPage() {
 
       {/* Resolve dialog */}
       {resolveRow && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4" onClick={() => setResolveRow(null)}>
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="ink-gradient px-6 py-5">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4" onClick={() => setResolveRow(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="ink-gradient rounded-t-2xl px-6 py-5">
               <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">Cash variance</p>
               <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">Resolve discrepancy</p>
               <p className="mt-0.5 text-sm text-on-primary/70">{resolveRow.period}</p>

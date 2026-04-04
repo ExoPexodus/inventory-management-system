@@ -18,6 +18,7 @@ from app.routers import (
     admin_suppliers,
     admin_web,
     audit,
+    device_shifts,
     devices,
     health,
     inventory,
@@ -48,6 +49,7 @@ app.include_router(health.router)
 app.include_router(devices.router)
 app.include_router(sync.router)
 app.include_router(transactions.router)
+app.include_router(device_shifts.router)
 app.include_router(admin.router)
 app.include_router(admin_web.router)
 app.include_router(admin_catalog.router)

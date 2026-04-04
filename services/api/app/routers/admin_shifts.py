@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminAuthDep, AdminContext
 from app.db.admin_deps_db import get_db_admin
-from app.models import Shop, ShiftClosing, Transaction
+from app.models import PaymentAllocation, Shop, ShiftClosing, Transaction
 
 router = APIRouter(prefix="/v1/admin/shifts", tags=["Admin Shifts"])
 
@@ -76,6 +76,22 @@ def _shift_tx_stats(db: Session, shift: ShiftClosing) -> tuple[int, int]:
         )
     ).one()
     return int(row.cnt), int(row.gross)
+
+
+def _expected_cash_cents(db: Session, shop_id, tenant_id, opened_at, closed_at) -> int:
+    """Sum only cash-tender payment allocations within the shift window."""
+    return int(db.execute(
+        select(func.coalesce(func.sum(PaymentAllocation.amount_cents), 0))
+        .join(Transaction, Transaction.id == PaymentAllocation.transaction_id)
+        .where(
+            Transaction.shop_id == shop_id,
+            Transaction.tenant_id == tenant_id,
+            Transaction.created_at >= opened_at,
+            Transaction.created_at <= closed_at,
+            Transaction.status == "posted",
+            PaymentAllocation.tender_type == "cash",
+        )
+    ).scalar_one())
 
 
 def _build_shift_out(db: Session, shift: ShiftClosing, shop_name: str | None) -> ShiftOut:
@@ -199,17 +215,8 @@ def close_shift(
 
     now = datetime.now(UTC)
 
-    # Compute expected from posted transactions in the shift window
-    expected = int(
-        db.execute(
-            select(func.coalesce(func.sum(Transaction.total_cents), 0)).where(
-                Transaction.shop_id == shift.shop_id,
-                Transaction.created_at >= shift.opened_at,
-                Transaction.created_at <= now,
-                Transaction.status == "posted",
-            )
-        ).scalar_one()
-    )
+    # Compute expected from cash-only payment allocations in the shift window
+    expected = _expected_cash_cents(db, shift.shop_id, tenant_id, shift.opened_at, now)
 
     shift.closed_at = now
     shift.status = "closed"

@@ -43,6 +43,7 @@ class ReconciliationRow(BaseModel):
     opened_at: str
     closed_at: str | None
     resolution_note: str | None
+    reviewed_by: str | None
 
 
 class ReconciliationListResponse(BaseModel):
@@ -53,12 +54,14 @@ def _rec_status(shift: ShiftClosing) -> tuple[str, str | None]:
     """Return (status, resolution_note) from a closed shift."""
     notes = shift.notes or ""
     if "[RESOLVED" in notes:
-        # Extract the resolution note portion
         idx = notes.find("[RESOLVED")
         return "resolved", notes[idx:]
-    if shift.discrepancy_cents == 0:
-        return "matched", None
-    return "variance", None
+    if shift.discrepancy_cents != 0:
+        return "variance", None
+    # Zero variance — check if manager has reviewed
+    if shift.reviewed_by is None:
+        return "pending_review", None
+    return "matched", None
 
 
 @router.get("", response_model=ReconciliationListResponse)
@@ -108,6 +111,7 @@ def list_reconciliation(
             opened_at=shift.opened_at.isoformat(),
             closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
             resolution_note=resolution_note,
+            reviewed_by=str(shift.reviewed_by) if shift.reviewed_by else None,
         ))
 
     return ReconciliationListResponse(items=items)
@@ -166,4 +170,49 @@ def resolve_reconciliation(
         opened_at=shift.opened_at.isoformat(),
         closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
         resolution_note=resolution_note,
+        reviewed_by=str(shift.reviewed_by) if shift.reviewed_by else None,
+    )
+
+
+@router.patch("/{shift_id}/approve", response_model=ReconciliationRow)
+def approve_reconciliation(
+    shift_id: UUID,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> ReconciliationRow:
+    """Manager marks a zero-variance shift as reviewed/approved."""
+    from datetime import UTC, datetime
+    tenant_id = _require_operator_tenant(ctx)
+
+    shift = db.get(ShiftClosing, shift_id)
+    if shift is None or shift.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shift not found")
+    if shift.status != "closed":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Shift must be closed to approve")
+    if shift.discrepancy_cents != 0:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Use resolve for shifts with variance")
+
+    shift.reviewed_by = ctx.operator_id
+    shift.reviewed_at = datetime.now(UTC)
+    db.commit()
+    db.refresh(shift)
+
+    shop = db.get(Shop, shift.shop_id)
+    shop_name = shop.name if shop else None
+    rec_st, resolution_note = _rec_status(shift)
+    period = f"{shop_name or 'Unknown'} — {shift.closed_at.strftime('%b %d, %Y') if shift.closed_at else '?'}"
+
+    return ReconciliationRow(
+        id=shift.id,
+        period=period,
+        shop_id=shift.shop_id,
+        shop_name=shop_name,
+        expected_cents=shift.expected_cash_cents,
+        actual_cents=shift.reported_cash_cents,
+        variance_cents=shift.discrepancy_cents,
+        rec_status=rec_st,
+        opened_at=shift.opened_at.isoformat(),
+        closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
+        resolution_note=resolution_note,
+        reviewed_by=str(shift.reviewed_by) if shift.reviewed_by else None,
     )

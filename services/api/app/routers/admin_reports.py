@@ -102,7 +102,7 @@ def _export_sales(db: Session, tenant_id, from_date, to_date) -> StreamingRespon
         stmt = stmt.where(Transaction.created_at <= to_date + "T23:59:59")
 
     txns = db.execute(stmt).scalars().all()
-    headers = ["id", "created_at", "kind", "status", "total_cents", "tax_cents", "discount_cents", "shop_id"]
+    headers = ["id", "created_at", "kind", "status", "total_cents", "tax_cents", "shop_id"]
     rows = [
         [
             str(t.id),
@@ -111,7 +111,6 @@ def _export_sales(db: Session, tenant_id, from_date, to_date) -> StreamingRespon
             t.status,
             t.total_cents,
             t.tax_cents,
-            t.discount_cents,
             str(t.shop_id) if t.shop_id else "",
         ]
         for t in txns
@@ -120,19 +119,27 @@ def _export_sales(db: Session, tenant_id, from_date, to_date) -> StreamingRespon
 
 
 def _export_inventory(db: Session, tenant_id) -> StreamingResponse:
-    from app.services.stock import current_quantity
-    from sqlalchemy import func
-
     products = db.execute(
         select(Product)
         .where(Product.tenant_id == tenant_id, Product.status == "active")
         .order_by(Product.name)
     ).scalars().all()
 
+    # Aggregate stock across all shops per product in a single query
+    stock_rows = db.execute(
+        select(
+            StockMovement.product_id,
+            func.coalesce(func.sum(StockMovement.quantity_delta), 0).label("qty"),
+        )
+        .where(StockMovement.tenant_id == tenant_id)
+        .group_by(StockMovement.product_id)
+    ).all()
+    stock_by_product: dict = {str(r.product_id): int(r.qty) for r in stock_rows}
+
     headers = ["sku", "name", "category", "unit_price_cents", "reorder_point", "current_stock", "extended_value_cents"]
     rows = []
     for p in products:
-        qty = current_quantity(db, tenant_id=tenant_id, product_id=p.id)
+        qty = stock_by_product.get(str(p.id), 0)
         rows.append([
             p.sku,
             p.name,

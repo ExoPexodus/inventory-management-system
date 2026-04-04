@@ -63,6 +63,7 @@ type ShopRevenueItem = {
   gross_cents: number;
   transaction_count: number;
   pct: number;
+  stock_alert_count: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -239,29 +240,40 @@ export default function AnalyticsPage() {
             </div>
             <span className="material-symbols-outlined text-3xl text-primary">inventory_2</span>
           </div>
-          {/* Multi-shop: show per-shop links if we have shop revenue data */}
-          {shopRevenue.length > 1 ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {shopRevenue.map((s) => (
-                <Link
-                  key={s.shop_id}
-                  href={`/inventory?highlight=critical&shopId=${s.shop_id}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 bg-surface px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container"
-                >
-                  <span className="material-symbols-outlined text-sm text-on-surface-variant">storefront</span>
-                  {s.shop_name}
-                </Link>
-              ))}
-            </div>
-          ) : (
-            <Link
-              href="/inventory?highlight=critical"
-              className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 bg-surface px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container"
-            >
-              <span className="material-symbols-outlined text-sm text-on-surface-variant">open_in_new</span>
-              View inventory
-            </Link>
-          )}
+          {/* Multi-shop: only show links for shops that actually have alerts */}
+          {(() => {
+            const alertShops = shopRevenue.filter((s) => s.stock_alert_count > 0);
+            return alertShops.length > 1 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {alertShops.map((s) => (
+                  <Link
+                    key={s.shop_id}
+                    href={`/inventory?highlight=critical&shopId=${s.shop_id}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 bg-surface px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container"
+                  >
+                    <span className="material-symbols-outlined text-sm text-on-surface-variant">storefront</span>
+                    {s.shop_name}
+                  </Link>
+                ))}
+              </div>
+            ) : alertShops.length === 1 ? (
+              <Link
+                href={`/inventory?highlight=critical&shopId=${alertShops[0].shop_id}`}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 bg-surface px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container"
+              >
+                <span className="material-symbols-outlined text-sm text-on-surface-variant">open_in_new</span>
+                View inventory
+              </Link>
+            ) : (
+              <Link
+                href="/inventory?highlight=critical"
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 bg-surface px-3 py-2 text-xs font-semibold text-on-surface transition hover:bg-surface-container"
+              >
+                <span className="material-symbols-outlined text-sm text-on-surface-variant">open_in_new</span>
+                View inventory
+              </Link>
+            );
+          })()}
         </div>
       ) : null}
 

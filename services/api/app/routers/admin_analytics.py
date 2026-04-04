@@ -188,6 +188,7 @@ class ShopRevenueItem(BaseModel):
     gross_cents: int
     transaction_count: int
     pct: float
+    stock_alert_count: int = 0
 
 
 class ShopRevenueOut(BaseModel):
@@ -520,6 +521,26 @@ def shop_revenue(
     )
     rows = db.execute(stmt).all()
     total = sum(int(r.gross) for r in rows) or 1
+
+    # Per-shop stock alert counts: distinct (shop, product) pairs at/below reorder point
+    alert_sub = (
+        select(
+            StockMovement.shop_id.label("shop_id"),
+            StockMovement.product_id.label("product_id"),
+        )
+        .join(Product, Product.id == StockMovement.product_id)
+        .where(StockMovement.tenant_id == tenant_id, Product.active.is_(True))
+        .group_by(StockMovement.shop_id, StockMovement.product_id)
+        .having(func.coalesce(func.sum(StockMovement.quantity_delta), 0) <= Product.reorder_point)
+        .subquery()
+    )
+    alert_rows = db.execute(
+        select(alert_sub.c.shop_id, func.count().label("cnt"))
+        .select_from(alert_sub)
+        .group_by(alert_sub.c.shop_id)
+    ).all()
+    alert_by_shop: dict[str, int] = {str(ar.shop_id): int(ar.cnt) for ar in alert_rows}
+
     items = [
         ShopRevenueItem(
             shop_id=r.shop_id,
@@ -527,6 +548,7 @@ def shop_revenue(
             gross_cents=int(r.gross),
             transaction_count=int(r.cnt),
             pct=round(int(r.gross) / total * 100, 1),
+            stock_alert_count=alert_by_shop.get(str(r.shop_id), 0),
         )
         for r in rows
     ]

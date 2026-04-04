@@ -16,6 +16,8 @@ import '../widgets/compact_transaction_row.dart';
 import '../widgets/gradient_primary_button.dart';
 import '../widgets/metric_card.dart';
 import '../widgets/quick_access_tile.dart';
+import 'shift_close_dialog.dart';
+import 'shift_open_dialog.dart';
 import 'sync_status_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -41,6 +43,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _connectivity = 'Checking...';
   List<Map<String, dynamic>> _recentTx = [];
   Map<String, dynamic>? _shift;
+  Map<String, dynamic>? _activeShift;
   bool _dashLoading = false;
 
   @override
@@ -100,9 +103,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       late TransactionListPage page;
       late Map<String, dynamic> shiftBody;
+      Map<String, dynamic>? activeShift;
       try {
         page = await tx();
         shiftBody = await sh();
+        activeShift = await api.getActiveShift(accessToken: s.accessToken);
       } on ApiException catch (e) {
         if (e.statusCode == 401) {
           final body = await api.refresh(refreshToken: s.refreshToken);
@@ -124,6 +129,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             accessToken: s2.accessToken,
             shopId: s2.defaultShopId,
           );
+          activeShift = await api.getActiveShift(accessToken: s2.accessToken);
         } else {
           rethrow;
         }
@@ -132,6 +138,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       setState(() {
         _recentTx = page.items;
         _shift = shiftBody;
+        _activeShift = activeShift;
         _dashLoading = false;
       });
     } catch (_) {
@@ -149,8 +156,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     await _loadDashData();
   }
 
+  Future<void> _openShiftFlow() async {
+    final s = await SessionStore.load();
+    if (s == null || !mounted) return;
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ShiftOpenDialog(accessToken: s.accessToken, api: InventoryApi(s.baseUrl)),
+    );
+    if (result == true) await _loadDashData();
+  }
+
+  Future<void> _closeShiftFlow() async {
+    final s = await SessionStore.load();
+    if (s == null || !mounted || _activeShift == null) return;
+    final result = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ShiftCloseDialog(
+        accessToken: s.accessToken,
+        api: InventoryApi(s.baseUrl),
+        shift: _activeShift!,
+        shopId: s.defaultShopId,
+      ),
+    );
+    if (result == true) await _loadDashData();
+  }
+
   String _lineSummary(Map<String, dynamic> t) {
     final lines = (t['lines'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>();
+
     if (lines.isEmpty) return '';
     final parts = <String>[];
     for (final ln in lines.take(3)) {
@@ -261,6 +296,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   ),
                 ],
               ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: _ShiftBanner(
+              activeShift: _activeShift,
+              loading: _dashLoading,
+              onOpen: _openShiftFlow,
+              onClose: _closeShiftFlow,
             ),
           ),
           if (tier != null)
@@ -565,6 +608,98 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: SizedBox(height: CashierSpacing.xl),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _ShiftBanner extends StatelessWidget {
+  const _ShiftBanner({
+    required this.activeShift,
+    required this.loading,
+    required this.onOpen,
+    required this.onClose,
+  });
+
+  final Map<String, dynamic>? activeShift;
+  final bool loading;
+  final VoidCallback onOpen;
+  final VoidCallback onClose;
+
+  String _duration(String openedAt) {
+    final start = DateTime.tryParse(openedAt);
+    if (start == null) return '';
+    final diff = DateTime.now().difference(start);
+    final h = diff.inHours;
+    final m = diff.inMinutes % 60;
+    return h > 0 ? '${h}h ${m}m' : '${m}m';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    if (loading && activeShift == null) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(CashierSpacing.gutter, CashierSpacing.md, CashierSpacing.gutter, 0),
+        child: SizedBox.shrink(),
+      );
+    }
+
+    final bool hasShift = activeShift != null;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        CashierSpacing.gutter,
+        CashierSpacing.md,
+        CashierSpacing.gutter,
+        0,
+      ),
+      child: Material(
+        color: hasShift ? CashierColors.primary.withValues(alpha: 0.12) : CashierColors.surfaceContainer,
+        borderRadius: BorderRadius.circular(CashierRadius.quickTile),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: CashierSpacing.md, vertical: CashierSpacing.sm),
+          child: Row(
+            children: [
+              Icon(
+                hasShift ? Icons.radio_button_checked_rounded : Icons.radio_button_unchecked_rounded,
+                color: hasShift ? CashierColors.primary : CashierColors.onSurfaceVariant,
+                size: 20,
+              ),
+              const SizedBox(width: CashierSpacing.sm),
+              Expanded(
+                child: hasShift
+                    ? Text(
+                        'Shift active · ${_duration(activeShift!['opened_at'] as String)}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: CashierColors.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      )
+                    : Text(
+                        'No active shift — tap to open one',
+                        style: theme.textTheme.bodyMedium?.copyWith(color: CashierColors.onSurfaceVariant),
+                      ),
+              ),
+              if (hasShift)
+                TextButton(
+                  onPressed: onClose,
+                  child: const Text('Close shift'),
+                )
+              else
+                FilledButton(
+                  onPressed: onOpen,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: CashierColors.primary,
+                    foregroundColor: CashierColors.onPrimary,
+                    padding: const EdgeInsets.symmetric(horizontal: CashierSpacing.md),
+                    minimumSize: const Size(0, 36),
+                  ),
+                  child: const Text('Open shift'),
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.admin_deps import AdminAuthDep, AdminContext
 from app.db.admin_deps_db import get_db_admin
+from app.services.audit_service import write_audit
 from app.models import (
     AdminUser,
     Product,
@@ -175,7 +176,18 @@ def patch_transaction_status(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot transition from '{tx.status}' to '{body.status}'. Allowed: {sorted(allowed) or 'none'}",
         )
+    old_status = tx.status
     tx.status = body.status
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="update_transaction_status",
+        resource_type="transaction",
+        resource_id=str(tx_id),
+        before={"status": old_status},
+        after={"status": body.status},
+    )
     db.commit()
     return {"id": str(tx_id), "status": body.status}
 
@@ -473,6 +485,16 @@ def create_supplier(
         notes=body.notes,
     )
     db.add(row)
+    db.flush()
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="create_supplier",
+        resource_type="supplier",
+        resource_id=str(row.id),
+        after={"name": row.name, "status": row.status},
+    )
     db.commit()
     db.refresh(row)
     return SupplierOut(
@@ -500,6 +522,7 @@ def patch_supplier(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
     if row.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
+    before_snap = {"name": row.name, "status": row.status}
     if body.name is not None:
         row.name = body.name.strip()
     if body.status is not None:
@@ -510,6 +533,16 @@ def patch_supplier(
         row.contact_phone = body.contact_phone
     if body.notes is not None:
         row.notes = body.notes
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="update_supplier",
+        resource_type="supplier",
+        resource_id=str(supplier_id),
+        before=before_snap,
+        after={"name": row.name, "status": row.status},
+    )
     db.commit()
     db.refresh(row)
     return SupplierOut(
@@ -816,10 +849,20 @@ def admin_create_product(
     )
     db.add(prod)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="sku_conflict") from None
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="create_product",
+        resource_type="product",
+        resource_id=str(prod.id),
+        after={"sku": prod.sku, "name": prod.name, "status": prod.status},
+    )
+    db.commit()
     db.refresh(prod)
     return CreateProductResponse(
         id=prod.id,
@@ -924,6 +967,7 @@ def admin_patch_product(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
 
     patch = body.model_dump(exclude_unset=True)
+    before_snap = {"name": prod.name, "status": prod.status, "unit_price_cents": prod.unit_price_cents}
     if "name" in patch and patch["name"] is not None:
         prod.name = patch["name"].strip()
 
@@ -959,6 +1003,16 @@ def admin_patch_product(
             prod.product_group_id = g.id
             group_title = g.title
 
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="update_product",
+        resource_type="product",
+        resource_id=str(product_id),
+        before=before_snap,
+        after={"name": prod.name, "status": prod.status, "unit_price_cents": prod.unit_price_cents},
+    )
     db.commit()
     db.refresh(prod)
     if prod.product_group_id is not None:

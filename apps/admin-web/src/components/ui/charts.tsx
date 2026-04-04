@@ -173,7 +173,7 @@ export function HourlyHeatmap({ buckets, formatValue }: HourlyHeatmapProps) {
 
   return (
     <div className="space-y-2">
-      <div className="flex items-end gap-0.5" style={{ height: "10rem" }}>
+      <div className="flex items-end gap-0.5" style={{ height: "8rem" }}>
         {buckets.map((b) => {
           const pct = (b.avg_gross_cents / maxGross) * 100;
           const heightPct = Math.max(pct, 2);
@@ -183,7 +183,8 @@ export function HourlyHeatmap({ buckets, formatValue }: HourlyHeatmapProps) {
           return (
             <div
               key={b.hour}
-              className="group relative flex-1"
+              className="group relative flex-1 flex flex-col justify-end"
+              style={{ height: "100%" }}
               onMouseEnter={() => setHoveredHour(b.hour)}
               onMouseLeave={() => setHoveredHour(null)}
             >

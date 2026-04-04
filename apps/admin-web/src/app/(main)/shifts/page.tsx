@@ -312,9 +312,9 @@ export default function ShiftsPage() {
 
       {/* Open shift dialog */}
       {openDialogVisible && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4" onClick={() => setOpenDialogVisible(false)}>
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="ink-gradient px-6 py-5">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4" onClick={() => setOpenDialogVisible(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="ink-gradient rounded-t-2xl px-6 py-5">
               <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">Start a new session</p>
               <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">Open shift</p>
             </div>
@@ -349,9 +349,9 @@ export default function ShiftsPage() {
 
       {/* Close shift dialog */}
       {closeShift && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4" onClick={() => setCloseShift(null)}>
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <div className="ink-gradient px-6 py-5">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4" onClick={() => setCloseShift(null)}>
+          <div className="w-full max-w-md rounded-2xl bg-surface shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="ink-gradient rounded-t-2xl px-6 py-5">
               <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">End-of-day</p>
               <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">Close shift</p>
               <p className="mt-0.5 text-sm text-on-primary/70">{closeShift.shop_name ?? "Unknown shop"} — opened {fmtDatetime(closeShift.opened_at)}</p>

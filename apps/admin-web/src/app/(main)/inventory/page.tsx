@@ -516,14 +516,14 @@ function AdjustStockDialog({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-scrim/40 p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-2xl bg-surface shadow-xl"
+        className="w-full max-w-md rounded-2xl bg-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="ink-gradient px-6 py-5">
+        <div className="ink-gradient rounded-t-2xl px-6 py-5">
           <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">Stock adjustment</p>
           <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">Adjust on-hand quantity</p>
           <p className="mt-1 text-xs text-on-primary/70">Creates an approved ledger entry immediately.</p>
