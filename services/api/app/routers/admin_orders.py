@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep
+from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import (
     Product,
@@ -143,7 +143,7 @@ def _require_operator_tenant(ctx) -> UUID:  # type: ignore[type-arg]
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=list[POOut])
+@router.get("", response_model=list[POOut], dependencies=[require_permission("procurement:read")])
 def list_purchase_orders(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -169,7 +169,7 @@ def list_purchase_orders(
     return [_build_po_out(po, db) for po in rows]
 
 
-@router.post("", response_model=POOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=POOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("procurement:write")])
 def create_purchase_order(
     body: POIn,
     ctx: AdminAuthDep,
@@ -198,7 +198,7 @@ def create_purchase_order(
 # ---------------------------------------------------------------------------
 
 
-@router.get("/{po_id}", response_model=POOut)
+@router.get("/{po_id}", response_model=POOut, dependencies=[require_permission("procurement:read")])
 def get_purchase_order(
     po_id: UUID,
     ctx: AdminAuthDep,
@@ -214,7 +214,7 @@ def get_purchase_order(
 # ---------------------------------------------------------------------------
 
 
-@router.patch("/{po_id}", response_model=POOut)
+@router.patch("/{po_id}", response_model=POOut, dependencies=[require_permission("procurement:write")])
 def patch_purchase_order(
     po_id: UUID,
     body: POPatchIn,
@@ -303,7 +303,7 @@ def _receive_purchase_order(po: PurchaseOrder, tenant_id: UUID, operator_id: UUI
 # ---------------------------------------------------------------------------
 
 
-@router.delete("/{po_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{po_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[require_permission("procurement:write")])
 def delete_purchase_order(
     po_id: UUID,
     ctx: AdminAuthDep,
@@ -325,7 +325,7 @@ def delete_purchase_order(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/{po_id}/lines", response_model=POOut, status_code=status.HTTP_201_CREATED)
+@router.post("/{po_id}/lines", response_model=POOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("procurement:write")])
 def add_po_line(
     po_id: UUID,
     body: POLineIn,
@@ -361,7 +361,7 @@ class POLinePatchIn(BaseModel):
     unit_cost_cents: int | None = Field(default=None, ge=0)
 
 
-@router.patch("/{po_id}/lines/{line_id}", response_model=POOut)
+@router.patch("/{po_id}/lines/{line_id}", response_model=POOut, dependencies=[require_permission("procurement:write")])
 def patch_po_line(
     po_id: UUID,
     line_id: UUID,
@@ -390,7 +390,7 @@ def patch_po_line(
     return _build_po_out(po, db)
 
 
-@router.delete("/{po_id}/lines/{line_id}", response_model=POOut)
+@router.delete("/{po_id}/lines/{line_id}", response_model=POOut, dependencies=[require_permission("procurement:write")])
 def delete_po_line(
     po_id: UUID,
     line_id: UUID,

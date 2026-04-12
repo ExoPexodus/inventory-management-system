@@ -1,6 +1,35 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { OPERATOR_JWT_COOKIE, OPERATOR_TENANT_SLUG_COOKIE } from "@/lib/auth/constants";
+import { OPERATOR_JWT_COOKIE, OPERATOR_META_COOKIE, OPERATOR_TENANT_SLUG_COOKIE } from "@/lib/auth/constants";
+
+// Soft route-permission map: route segment → required permission codename.
+// The API enforces truth — middleware redirects are informational UX only.
+const ROUTE_PERMISSIONS: Record<string, string> = {
+  inventory: "inventory:read",
+  staff: "staff:read",
+  orders: "sales:read",
+  analytics: "analytics:read",
+  suppliers: "procurement:read",
+  products: "catalog:read",
+  "purchase-orders": "procurement:read",
+  shifts: "operations:read",
+  reconciliation: "operations:read",
+  audit: "audit:read",
+  reports: "reports:read",
+  integrations: "integrations:read",
+  settings: "settings:read",
+};
+
+function getPermissionsFromCookie(req: NextRequest): string[] {
+  const raw = req.cookies.get(OPERATOR_META_COOKIE)?.value;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as { permissions?: string[] };
+    return Array.isArray(parsed.permissions) ? parsed.permissions : [];
+  } catch {
+    return [];
+  }
+}
 
 const ROOT_ROUTES = new Set([
   "overview",
@@ -75,6 +104,18 @@ export function middleware(req: NextRequest) {
     const corrected = new URL(`/${tenantSlug}/${segments.slice(1).join("/")}`, req.url);
     corrected.search = req.nextUrl.search;
     return NextResponse.redirect(corrected);
+  }
+
+  // Soft permission guard — redirect to /overview if the user lacks the required permission.
+  // segments[1] is the route segment (e.g. "staff", "settings") after the tenant slug.
+  const routeSegment = segments[1] ?? "";
+  const requiredPermission = ROUTE_PERMISSIONS[routeSegment];
+  if (requiredPermission) {
+    const permissions = getPermissionsFromCookie(req);
+    if (permissions.length > 0 && !permissions.includes(requiredPermission)) {
+      const overview = new URL(`/${urlTenantSlug}/overview`, req.url);
+      return NextResponse.redirect(overview);
+    }
   }
 
   const rewritten = new URL(`/${segments.slice(1).join("/")}`, req.url);

@@ -9,12 +9,13 @@ from pydantic import BaseModel, EmailStr, Field, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep, AdminContext
+from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.auth.jwt import create_operator_access_token
 from app.db.admin_deps_db import get_db_admin
 from app.db.session import get_db
 from app.models import AdminUser, Device, EnrollmentToken, Product, Shop, ShopProductTax, Tenant
 from app.services.enrollment import hash_token
+from app.services.permission_service import get_role_permissions
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin"])
 
@@ -44,6 +45,18 @@ class AdminLoginResponse(BaseModel):
     expires_in: int
     tenant_id: UUID
     tenant_slug: str
+    role: str | None = None
+    permissions: list[str] = []
+
+
+class AdminMeResponse(BaseModel):
+    id: UUID
+    email: str
+    display_name: str | None = None
+    tenant_id: UUID | None = None
+    role: str | None = None
+    role_id: UUID | None = None
+    permissions: list[str] = []
 
 
 @router.post("/auth/login", response_model=AdminLoginResponse)
@@ -74,12 +87,47 @@ def admin_login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Operator tenant does not exist",
         )
-    access, ttl = create_operator_access_token(operator_id=user.id, tenant_id=user.tenant_id)
+    role_name = user.role.name if user.role else None
+    perms: list[str] = []
+    if user.role_id is not None:
+        perms = sorted(get_role_permissions(db, user.role_id))
+    access, ttl = create_operator_access_token(
+        operator_id=user.id,
+        tenant_id=user.tenant_id,
+        role=role_name,
+    )
     return AdminLoginResponse(
         access_token=access,
         expires_in=ttl,
         tenant_id=tenant.id,
         tenant_slug=tenant.slug,
+        role=role_name,
+        permissions=perms,
+    )
+
+
+@router.get("/me", response_model=AdminMeResponse)
+def admin_me(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> AdminMeResponse:
+    if ctx.is_legacy_token or ctx.operator_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Legacy token has no operator profile")
+    user = db.execute(
+        select(AdminUser).where(AdminUser.id == ctx.operator_id, AdminUser.is_active.is_(True))
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Operator not found")
+    role_name = user.role.name if user.role else None
+    perms: list[str] = sorted(ctx.permissions)
+    return AdminMeResponse(
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
+        tenant_id=user.tenant_id,
+        role=role_name,
+        role_id=user.role_id,
+        permissions=perms,
     )
 
 
@@ -143,7 +191,7 @@ class UpdateTenantCurrencyResponse(BaseModel):
     symbol_override: str | None = None
 
 
-@router.patch("/tenants/{tenant_id}/currency", response_model=UpdateTenantCurrencyResponse)
+@router.patch("/tenants/{tenant_id}/currency", response_model=UpdateTenantCurrencyResponse, dependencies=[require_permission("settings:write")])
 def update_tenant_currency(
     tenant_id: UUID,
     body: UpdateTenantCurrencyBody,
@@ -179,7 +227,7 @@ class MintEnrollmentResponse(BaseModel):
     expires_at: datetime
 
 
-@router.post("/enrollment-tokens", response_model=MintEnrollmentResponse)
+@router.post("/enrollment-tokens", response_model=MintEnrollmentResponse, dependencies=[require_permission("enrollment:write")])
 def mint_enrollment_token(
     body: MintEnrollmentBody,
     ctx: AdminAuthDep,
@@ -255,7 +303,7 @@ class UpdateShopDefaultTaxResponse(BaseModel):
     default_tax_rate_bps: int
 
 
-@router.patch("/shops/{shop_id}/default-tax", response_model=UpdateShopDefaultTaxResponse)
+@router.patch("/shops/{shop_id}/default-tax", response_model=UpdateShopDefaultTaxResponse, dependencies=[require_permission("catalog:write")])
 def update_shop_default_tax_rate(
     shop_id: UUID,
     body: UpdateShopDefaultTaxBody,
@@ -293,7 +341,7 @@ class ShopProductTaxOut(BaseModel):
     effective_tax_rate_bps: int | None
 
 
-@router.get("/shops/{shop_id}/product-taxes", response_model=list[ShopProductTaxOut])
+@router.get("/shops/{shop_id}/product-taxes", response_model=list[ShopProductTaxOut], dependencies=[require_permission("catalog:read")])
 def list_shop_product_taxes(
     shop_id: UUID,
     ctx: AdminAuthDep,
@@ -319,7 +367,7 @@ def list_shop_product_taxes(
     ]
 
 
-@router.put("/shops/{shop_id}/product-taxes/{product_id}", response_model=ShopProductTaxOut)
+@router.put("/shops/{shop_id}/product-taxes/{product_id}", response_model=ShopProductTaxOut, dependencies=[require_permission("catalog:write")])
 def upsert_shop_product_tax(
     shop_id: UUID,
     product_id: UUID,
@@ -369,7 +417,7 @@ def upsert_shop_product_tax(
     )
 
 
-@router.delete("/shops/{shop_id}/product-taxes/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/shops/{shop_id}/product-taxes/{product_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[require_permission("catalog:write")])
 def delete_shop_product_tax(
     shop_id: UUID,
     product_id: UUID,

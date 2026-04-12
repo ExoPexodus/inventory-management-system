@@ -27,10 +27,13 @@ from app.models import (
     AdminUser,
     EnrollmentToken,
     PaymentAllocation,
+    Permission,
     Product,
     ProductGroup,
     PurchaseOrder,
     PurchaseOrderLine,
+    Role,
+    RolePermission,
     Shop,
     ShopProductTax,
     StockAdjustment,
@@ -86,6 +89,64 @@ _QTY_CHOICES        = [1, 2, 3, 4]
 _QTY_W              = [70, 20, 7, 3]
 
 
+_ALL_PERMS = [
+    "staff:read", "staff:write",
+    "catalog:read", "catalog:write",
+    "inventory:read", "inventory:write",
+    "procurement:read", "procurement:write",
+    "sales:read", "sales:write",
+    "analytics:read",
+    "operations:read", "operations:write",
+    "settings:read", "settings:write",
+    "integrations:read", "integrations:write",
+    "operators:read", "operators:write",
+    "roles:read", "roles:write",
+    "audit:read",
+    "reports:read",
+    "notifications:read", "notifications:write",
+    "enrollment:write",
+    "shops:read", "shops:write",
+]
+_MANAGER_PERMS = [
+    "staff:read", "staff:write",
+    "catalog:read", "catalog:write",
+    "inventory:read", "inventory:write",
+    "procurement:read", "procurement:write",
+    "sales:read", "sales:write",
+    "analytics:read",
+    "operations:read", "operations:write",
+    "notifications:read", "notifications:write",
+    "audit:read",
+    "reports:read",
+    "shops:read",
+]
+_SYSTEM_ROLES = [
+    ("owner",   "Owner",   _ALL_PERMS),
+    ("manager", "Manager", _MANAGER_PERMS),
+    ("cashier", "Cashier", []),
+]
+
+
+def _seed_system_roles(db: Session, tenant_id: UUID) -> None:
+    """Create the three system roles for a tenant and wire up their permissions."""
+    perm_rows = db.execute(select(Permission)).scalars().all()
+    perm_map = {p.codename: p for p in perm_rows}
+    for name, display_name, codenames in _SYSTEM_ROLES:
+        role = Role(
+            tenant_id=tenant_id,
+            name=name,
+            display_name=display_name,
+            is_system=True,
+        )
+        db.add(role)
+        db.flush()
+        for codename in codenames:
+            perm = perm_map.get(codename)
+            if perm:
+                db.add(RolePermission(role_id=role.id, permission_id=perm.id))
+    db.flush()
+
+
 def _require_confirmation() -> None:
     if os.environ.get("IMS_DEMO_RESET_OK", "").strip() != "1":
         raise SystemExit(
@@ -97,6 +158,9 @@ def _require_confirmation() -> None:
 def _wipe_tenants(db: Session) -> None:
     """Remove all tenants (CASCADE removes shops, products, transactions, etc.). Keeps admin_users."""
     set_rls_context(db, is_admin=True, tenant_id=None)
+    # Null out role_id on admin_users first — roles are tenant-scoped and will be
+    # CASCADE-deleted with the tenant, but admin_users.role_id has ON DELETE RESTRICT.
+    db.execute(text("UPDATE admin_users SET role_id = NULL"))
     db.execute(text("DELETE FROM tenants"))
     db.commit()
 
@@ -252,6 +316,8 @@ def main() -> None:
         )
         db.add(tenant)
         db.flush()
+
+        _seed_system_roles(db, tenant.id)
 
         shop_downtown = Shop(tenant_id=tenant.id, name="Downtown Store", default_tax_rate_bps=825)
         shop_west = Shop(tenant_id=tenant.id, name="Westside Outlet", default_tax_rate_bps=725)
@@ -454,11 +520,16 @@ def main() -> None:
             expires_at=datetime.now(UTC) + timedelta(days=14),
         ))
 
-        # Bind all existing operators to showcase tenant
+        # Bind all existing operators to showcase tenant and assign owner role
+        owner_role = db.execute(
+            select(Role).where(Role.tenant_id == tenant.id, Role.name == "owner")
+        ).scalar_one_or_none()
         admins = db.execute(select(AdminUser)).scalars().all()
         for admin in admins:
             admin.tenant_id = tenant.id
             admin.is_active = True
+            if owner_role and not admin.role_id:
+                admin.role_id = owner_role.id
             if not admin.display_name:
                 admin.display_name = admin.email.split("@", 1)[0].replace(".", " ").title()
             if not admin.avatar_url:

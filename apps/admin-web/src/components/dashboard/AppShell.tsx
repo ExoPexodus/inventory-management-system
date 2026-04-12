@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/dashboard/LogoutButton";
+import { useHasPermission } from "@/lib/auth/user-context";
 
 type NotifItem = {
   id: string;
@@ -78,21 +79,21 @@ const ROOT_ROUTES = new Set([
 ]);
 
 const NAV = [
-  { href: "/overview", label: "Dashboard", icon: "dashboard" },
-  { href: "/inventory", label: "Inventory", icon: "inventory_2" },
-  { href: "/staff", label: "Staff", icon: "badge" },
-  { href: "/orders", label: "Orders", icon: "receipt_long" },
-  { href: "/analytics", label: "Analytics", icon: "analytics" },
-  { href: "/suppliers", label: "Suppliers", icon: "local_shipping" },
-  { href: "/products", label: "Products", icon: "category" },
-  { href: "/purchase-orders", label: "Purchase Orders", icon: "shopping_bag" },
-  { href: "/shifts", label: "Shifts", icon: "event_note" },
-  { href: "/reconciliation", label: "Reconciliation", icon: "account_balance" },
-  { href: "/audit", label: "Audit Log", icon: "policy" },
-  { href: "/reports", label: "Reports", icon: "description" },
-  { href: "/integrations", label: "Integrations", icon: "hub" },
-  { href: "/settings", label: "Settings", icon: "settings" },
-] as const;
+  { href: "/overview",        label: "Dashboard",       icon: "dashboard",       permission: null },
+  { href: "/inventory",       label: "Inventory",       icon: "inventory_2",     permission: "inventory:read" },
+  { href: "/staff",           label: "Staff",           icon: "badge",           permission: "staff:read" },
+  { href: "/orders",          label: "Orders",          icon: "receipt_long",    permission: "sales:read" },
+  { href: "/analytics",       label: "Analytics",       icon: "analytics",       permission: "analytics:read" },
+  { href: "/suppliers",       label: "Suppliers",       icon: "local_shipping",  permission: "procurement:read" },
+  { href: "/products",        label: "Products",        icon: "category",        permission: "catalog:read" },
+  { href: "/purchase-orders", label: "Purchase Orders", icon: "shopping_bag",    permission: "procurement:read" },
+  { href: "/shifts",          label: "Shifts",          icon: "event_note",      permission: "operations:read" },
+  { href: "/reconciliation",  label: "Reconciliation",  icon: "account_balance", permission: "operations:read" },
+  { href: "/audit",           label: "Audit Log",       icon: "policy",          permission: "audit:read" },
+  { href: "/reports",         label: "Reports",         icon: "description",     permission: "reports:read" },
+  { href: "/integrations",    label: "Integrations",    icon: "hub",             permission: "integrations:read" },
+  { href: "/settings",        label: "Settings",        icon: "settings",        permission: "settings:read" },
+];
 
 export function AppShell({ children, current }: { children: ReactNode; current?: string }) {
   const [notifOpen, setNotifOpen] = useState(false);
@@ -106,6 +107,9 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
     ? activePathRaw.slice(tenantPrefix.length) || "/"
     : activePathRaw;
 
+  const hasPermission = useHasPermission;
+  const visibleNav = NAV.filter((item) => !item.permission || hasPermission(item.permission));
+
   return (
     <div className="flex h-screen overflow-hidden">
       {/* Sidebar */}
@@ -115,7 +119,7 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
           <p className="mt-0.5 text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Management Suite</p>
         </div>
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-2">
-          {NAV.map((item) => {
+          {visibleNav.map((item) => {
             const active = activePath === item.href;
             return (
               <Link

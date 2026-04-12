@@ -11,7 +11,7 @@ import 'package:admin_mobile/main.dart';
 
 void main() {
   testWidgets('shows admin mobile shell', (WidgetTester tester) async {
-    await tester.pumpWidget(const AdminMobileApp());
-    expect(find.text('Admin Mobile'), findsOneWidget);
+    await tester.pumpWidget(const AdminApp());
+    expect(find.text('Admin'), findsOneWidget);
   });
 }

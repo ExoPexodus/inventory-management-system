@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep, AdminContext
+from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import AdminUser, Shop, ShiftClosing
 
@@ -64,7 +64,7 @@ def _rec_status(shift: ShiftClosing) -> tuple[str, str | None]:
     return "matched", None
 
 
-@router.get("", response_model=ReconciliationListResponse)
+@router.get("", response_model=ReconciliationListResponse, dependencies=[require_permission("operations:read")])
 def list_reconciliation(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -121,7 +121,7 @@ class ResolveBody(BaseModel):
     resolution_notes: str = Field(min_length=1, max_length=1000)
 
 
-@router.patch("/{shift_id}/resolve", response_model=ReconciliationRow)
+@router.patch("/{shift_id}/resolve", response_model=ReconciliationRow, dependencies=[require_permission("operations:write")])
 def resolve_reconciliation(
     shift_id: UUID,
     body: ResolveBody,
@@ -174,7 +174,7 @@ def resolve_reconciliation(
     )
 
 
-@router.patch("/{shift_id}/approve", response_model=ReconciliationRow)
+@router.patch("/{shift_id}/approve", response_model=ReconciliationRow, dependencies=[require_permission("operations:write")])
 def approve_reconciliation(
     shift_id: UUID,
     ctx: AdminAuthDep,

@@ -27,6 +27,7 @@ from app.models import (
     ProductGroup,
     PurchaseOrder,
     PurchaseOrderLine,
+    Role,
     Shop,
     StockAdjustment,
     StockMovement,
@@ -183,12 +184,15 @@ def main() -> None:
             if existing is not None:
                 bootstrap_note = f"  bootstrap_admin: skipped (already exists: {em})"
             else:
+                owner_role = db.execute(
+                    select(Role).where(Role.tenant_id == tenant.id, Role.name == "owner")
+                ).scalar_one_or_none()
                 h = bcrypt.hashpw(raw_pw.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
                 db.add(
                     AdminUser(
                         email=em,
                         password_hash=h,
-                        role="superadmin",
+                        role_id=owner_role.id if owner_role else None,
                         tenant_id=tenant.id,
                         display_name="Demo Admin",
                         avatar_url=f"https://api.dicebear.com/9.x/identicon/svg?seed={em}",

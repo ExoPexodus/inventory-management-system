@@ -99,7 +99,44 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
             value: '${sync.pendingOutboxCount}',
             icon: Icons.cloud_queue_outlined,
           ),
-          if (sync.lastOutboxFailure != null) ...[
+          if (sync.pendingOutboxCount > 0 && sync.lastOutboxFailure != null) ...[
+            const SizedBox(height: CashierSpacing.sm),
+            Material(
+              color: CashierColors.errorContainer.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(CashierRadius.quickTile),
+              child: Padding(
+                padding: const EdgeInsets.all(CashierSpacing.md),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.cloud_off_rounded, color: CashierColors.onErrorContainer),
+                    const SizedBox(width: CashierSpacing.sm),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${sync.pendingOutboxCount} event${sync.pendingOutboxCount == 1 ? '' : 's'} waiting to sync',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: CashierColors.onErrorContainer,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            sync.lastOutboxFailure!,
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: CashierColors.onErrorContainer,
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ] else if (sync.lastOutboxFailure != null) ...[
             const SizedBox(height: CashierSpacing.sm),
             Material(
               color: CashierColors.errorContainer.withValues(alpha: 0.65),

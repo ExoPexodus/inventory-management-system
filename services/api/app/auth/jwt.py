@@ -11,6 +11,7 @@ def create_operator_access_token(
     *,
     operator_id: UUID,
     tenant_id: UUID,
+    role: str | None = None,
 ) -> tuple[str, int]:
     now = int(time.time())
     ttl_sec = settings.jwt_access_expire_minutes * 60
@@ -22,6 +23,8 @@ def create_operator_access_token(
         "iat": now,
         "exp": exp,
     }
+    if role is not None:
+        payload["role"] = role
     token = jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
     return token, ttl_sec
 

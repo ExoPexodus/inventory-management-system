@@ -33,10 +33,17 @@ class OutboxService {
     return SessionStore.load();
   }
 
-  /// Sends pending outbox events in order. Stops on auth/network/server errors.
+  /// Sends pending outbox events in order.
+  /// Skips events that fail with transient errors (network/5xx), stops after
+  /// 3 consecutive failures to avoid spinning. Auth failures (401) attempt a
+  /// single token refresh before giving up.
   static Future<void> flush(InventoryApi api, SyncStateModel syncState) async {
     final pending = await OutboxDb.pendingOrdered();
+    int consecutiveErrors = 0;
+
     for (final row in pending) {
+      if (consecutiveErrors >= 3) break;
+
       var session = await SessionStore.load();
       if (session == null) break;
 
@@ -55,7 +62,14 @@ class OutboxService {
         );
       } on ApiException catch (e) {
         if (e.statusCode == 401) {
-          final next = await _refreshSession(api, session);
+          // Try refreshing the device token once.
+          SessionData? next;
+          try {
+            next = await _refreshSession(api, session);
+          } catch (_) {
+            // Refresh failed — device session is dead, stop entirely.
+            break;
+          }
           if (next == null) break;
           session = next;
           deviceId = deviceIdFromAccessToken(session.accessToken);
@@ -68,27 +82,44 @@ class OutboxService {
               events: [event],
             );
           } catch (_) {
-            break;
+            consecutiveErrors++;
+            continue;
           }
+        } else if (e.statusCode >= 500) {
+          // Server error — transient, skip this event and try the next.
+          consecutiveErrors++;
+          syncState.setLastOutboxFailure('Server error (${e.statusCode}) — will retry');
+          continue;
         } else {
-          break;
+          // 4xx (not 401) — permanent client error, drop the event.
+          await OutboxDb.deleteById(row.id);
+          syncState.setLastOutboxFailure('Event rejected (${e.statusCode}): ${e.body}');
+          consecutiveErrors = 0;
+          continue;
         }
       } catch (_) {
-        break;
+        // Network timeout or other transient error — skip this event, try next.
+        consecutiveErrors++;
+        syncState.setLastOutboxFailure('Network error — will retry when online');
+        continue;
       }
 
+      consecutiveErrors = 0;
       final results = (response['results'] as List<dynamic>).cast<Map<String, dynamic>>();
-      if (results.isEmpty) break;
-      final status = results.first['status'] as String?;
-      if (status == 'accepted' || status == 'duplicate') {
+      if (results.isEmpty) {
+        consecutiveErrors++;
+        continue;
+      }
+      final eventStatus = results.first['status'] as String?;
+      if (eventStatus == 'accepted' || eventStatus == 'duplicate') {
         await OutboxDb.deleteById(row.id);
-      } else if (status == 'rejected') {
+      } else if (eventStatus == 'rejected') {
         final detail = results.first['detail'] as String?;
         final conflict = asJsonObject(results.first['conflict']);
         await OutboxDb.deleteById(row.id);
         syncState.setLastOutboxFailure(describePushConflict(conflict, detail));
       } else {
-        break;
+        consecutiveErrors++;
       }
     }
     await syncState.refreshFromStorage();

@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep, AdminContext
+from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.config import settings
 from app.db.admin_deps_db import get_db_admin
@@ -234,14 +234,17 @@ class TenantEmailTestBody(BaseModel):
     to_email: EmailStr
 
 
-@router.get("/admin/employees", response_model=list[EmployeeOut])
+@router.get("/admin/employees", response_model=list[EmployeeOut], dependencies=[require_permission("staff:read")])
 def list_employees(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     shop_id: UUID | None = None,
+    include_inactive: bool = False,
 ) -> list[EmployeeOut]:
     tenant_id = _require_operator_tenant(ctx)
     stmt = select(Employee).where(Employee.tenant_id == tenant_id).order_by(Employee.created_at.desc())
+    if not include_inactive:
+        stmt = stmt.where(Employee.is_active.is_(True))
     if shop_id is not None:
         stmt = stmt.where(Employee.shop_id == shop_id)
     rows = db.execute(stmt).scalars().all()
@@ -264,7 +267,7 @@ def list_employees(
     ]
 
 
-@router.post("/admin/employees", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
+@router.post("/admin/employees", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("staff:write")])
 def create_employee(
     body: CreateEmployeeBody,
     ctx: AdminAuthDep,
@@ -305,7 +308,7 @@ def create_employee(
     )
 
 
-@router.get("/admin/employees/{employee_id}", response_model=EmployeeOut)
+@router.get("/admin/employees/{employee_id}", response_model=EmployeeOut, dependencies=[require_permission("staff:read")])
 def get_employee(
     employee_id: UUID,
     ctx: AdminAuthDep,
@@ -329,7 +332,7 @@ def get_employee(
     )
 
 
-@router.patch("/admin/employees/{employee_id}", response_model=EmployeeOut)
+@router.patch("/admin/employees/{employee_id}", response_model=EmployeeOut, dependencies=[require_permission("staff:write")])
 def patch_employee(
     employee_id: UUID,
     body: PatchEmployeeBody,
@@ -373,7 +376,7 @@ def patch_employee(
     )
 
 
-@router.delete("/admin/employees/{employee_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/admin/employees/{employee_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[require_permission("staff:write")])
 def delete_employee(
     employee_id: UUID,
     ctx: AdminAuthDep,
@@ -385,7 +388,33 @@ def delete_employee(
     db.commit()
 
 
-@router.post("/admin/employees/{employee_id}/invite", response_model=InviteEmployeeResponse)
+@router.patch("/admin/employees/{employee_id}/reactivate", response_model=EmployeeOut, dependencies=[require_permission("staff:write")])
+def reactivate_employee(
+    employee_id: UUID,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> EmployeeOut:
+    tenant_id = _require_operator_tenant(ctx)
+    row = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
+    row.is_active = True
+    db.commit()
+    return EmployeeOut(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        shop_id=row.shop_id,
+        name=row.name,
+        email=row.email,
+        phone=row.phone,
+        position=row.position,
+        credential_type=row.credential_type,
+        device_id=row.device_id,
+        is_active=row.is_active,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+@router.post("/admin/employees/{employee_id}/invite", response_model=InviteEmployeeResponse, dependencies=[require_permission("staff:write")])
 def invite_employee(
     employee_id: UUID,
     body: InviteMethodBody,
@@ -435,7 +464,7 @@ def invite_employee(
     )
 
 
-@router.post("/admin/employees/{employee_id}/re-enroll", response_model=InviteEmployeeResponse)
+@router.post("/admin/employees/{employee_id}/re-enroll", response_model=InviteEmployeeResponse, dependencies=[require_permission("staff:write")])
 def re_enroll_employee(
     employee_id: UUID,
     body: InviteMethodBody,
@@ -486,7 +515,7 @@ def re_enroll_employee(
     )
 
 
-@router.post("/admin/employees/{employee_id}/reset-credentials", response_model=EmployeeOut)
+@router.post("/admin/employees/{employee_id}/reset-credentials", response_model=EmployeeOut, dependencies=[require_permission("staff:write")])
 def reset_employee_credentials(
     employee_id: UUID,
     body: ResetCredentialsBody,
@@ -545,7 +574,7 @@ def employee_login(
     )
 
 
-@router.get("/admin/tenant-settings/email", response_model=TenantEmailConfigOut)
+@router.get("/admin/tenant-settings/email", response_model=TenantEmailConfigOut, dependencies=[require_permission("settings:read")])
 def get_tenant_email_settings(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -567,7 +596,7 @@ def get_tenant_email_settings(
     )
 
 
-@router.put("/admin/tenant-settings/email", response_model=TenantEmailConfigOut)
+@router.put("/admin/tenant-settings/email", response_model=TenantEmailConfigOut, dependencies=[require_permission("settings:write")])
 def put_tenant_email_settings(
     body: TenantEmailConfigPutBody,
     ctx: AdminAuthDep,
@@ -604,7 +633,7 @@ def put_tenant_email_settings(
     )
 
 
-@router.post("/admin/tenant-settings/email/test")
+@router.post("/admin/tenant-settings/email/test", dependencies=[require_permission("settings:write")])
 def test_tenant_email_settings(
     body: TenantEmailTestBody,
     ctx: AdminAuthDep,

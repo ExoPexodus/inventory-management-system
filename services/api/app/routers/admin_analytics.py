@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import extract, func, select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep, AdminContext
+from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import (
     PaymentAllocation,
@@ -202,7 +202,7 @@ class ShopRevenueOut(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.get("/summary", response_model=AnalyticsSummary)
+@router.get("/summary", response_model=AnalyticsSummary, dependencies=[require_permission("analytics:read")])
 def analytics_summary(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -246,7 +246,7 @@ def analytics_summary(
         select(StockMovement.shop_id, StockMovement.product_id)
         .join(Product, Product.id == StockMovement.product_id)
         .where(StockMovement.tenant_id == tenant_id, Product.active.is_(True))
-        .group_by(StockMovement.shop_id, StockMovement.product_id)
+        .group_by(StockMovement.shop_id, StockMovement.product_id, Product.reorder_point)
         .having(func.coalesce(func.sum(StockMovement.quantity_delta), 0) <= Product.reorder_point)
         .subquery()
     )
@@ -277,7 +277,7 @@ def analytics_summary(
     )
 
 
-@router.get("/sales-series", response_model=SalesSeriesOut)
+@router.get("/sales-series", response_model=SalesSeriesOut, dependencies=[require_permission("analytics:read")])
 def sales_series_v2(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -326,7 +326,7 @@ def sales_series_v2(
     )
 
 
-@router.get("/category-revenue", response_model=CategoryRevenueOut)
+@router.get("/category-revenue", response_model=CategoryRevenueOut, dependencies=[require_permission("analytics:read")])
 def category_revenue(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -365,7 +365,7 @@ def category_revenue(
     return CategoryRevenueOut(period_start=period_start, period_end=period_end, items=items)
 
 
-@router.get("/top-products", response_model=TopProductsOut)
+@router.get("/top-products", response_model=TopProductsOut, dependencies=[require_permission("analytics:read")])
 def top_products(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -409,7 +409,7 @@ def top_products(
     return TopProductsOut(period_start=period_start, period_end=period_end, items=items)
 
 
-@router.get("/hourly-heatmap", response_model=HourlyHeatmapOut)
+@router.get("/hourly-heatmap", response_model=HourlyHeatmapOut, dependencies=[require_permission("analytics:read")])
 def hourly_heatmap(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -459,7 +459,7 @@ def hourly_heatmap(
     )
 
 
-@router.get("/payment-methods", response_model=PaymentMethodsOut)
+@router.get("/payment-methods", response_model=PaymentMethodsOut, dependencies=[require_permission("analytics:read")])
 def payment_methods(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -496,7 +496,7 @@ def payment_methods(
     return PaymentMethodsOut(period_start=period_start, period_end=period_end, items=items)
 
 
-@router.get("/shop-revenue", response_model=ShopRevenueOut)
+@router.get("/shop-revenue", response_model=ShopRevenueOut, dependencies=[require_permission("analytics:read")])
 def shop_revenue(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -530,7 +530,7 @@ def shop_revenue(
         )
         .join(Product, Product.id == StockMovement.product_id)
         .where(StockMovement.tenant_id == tenant_id, Product.active.is_(True))
-        .group_by(StockMovement.shop_id, StockMovement.product_id)
+        .group_by(StockMovement.shop_id, StockMovement.product_id, Product.reorder_point)
         .having(func.coalesce(func.sum(StockMovement.quantity_delta), 0) <= Product.reorder_point)
         .subquery()
     )

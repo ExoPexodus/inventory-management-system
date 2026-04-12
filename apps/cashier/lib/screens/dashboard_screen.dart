@@ -208,7 +208,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final exp = feed.currencyExponent;
     final sym = feed.currencySymbolOverride;
 
-    final quick = feed.products.take(6).toList();
+    final quick = feed.products.where((p) => p.quantity > 0).take(6).toList();
     final subF = formatMinorUnits(
       cart.subtotalCents,
       code: code,
@@ -412,7 +412,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     label: p.name,
                     secondary: '${p.sku} · $price',
                     onTap: () {
-                      context.read<CartModel>().addProduct(p);
+                      final c = context.read<CartModel>();
+                      final inCart = c.lines.fold<int>(0, (sum, l) => l.productId == p.id ? sum + l.quantity : sum);
+                      if (inCart + 1 > p.quantity) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Not enough stock for this item')),
+                        );
+                        return;
+                      }
+                      c.addProduct(p);
                     },
                   );
                 },

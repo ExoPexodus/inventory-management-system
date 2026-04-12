@@ -51,11 +51,27 @@ npm run lint
 git clone -b stable --depth 1 https://github.com/flutter/flutter.git tools/flutter
 
 cd apps/cashier   # or apps/admin_mobile
-flutter pub get
-flutter analyze
-flutter test
-flutter run -d windows   # or -d chrome / -d android
+# Flutter SDK is at tools/flutter/bin/flutter (not in PATH):
+../../tools/flutter/bin/flutter pub get
+../../tools/flutter/bin/flutter analyze
+../../tools/flutter/bin/flutter build apk --release   # install with: flutter install
+../../tools/flutter/bin/flutter run -d windows        # or -d chrome / -d android
 ```
+
+### Flutter Android Build — Windows Gotcha
+
+`google_fonts` → `path_provider` → `path_provider_android 2.3.x` pulls in `jni 1.0.0`, which breaks
+Gradle on Windows (`jni_flutter:compileReleaseJavaWithJavac` error). Fix with a dependency override
+matching the cashier's working version:
+
+```yaml
+# in pubspec.yaml
+dependency_overrides:
+  path_provider_android: "2.2.22"
+```
+
+If a new Flutter package causes similar Gradle failures, diff its `pubspec.lock` against
+`apps/cashier/pubspec.lock` (known-good baseline) to find the divergent transitive dependency.
 
 ## Architecture
 

@@ -22,7 +22,7 @@ class ProductCard extends StatelessWidget {
     final theme = Theme.of(context);
     final q = product.quantity;
     final low = q > 0 && q <= lowStockThreshold;
-    final out = q == 0;
+    final out = q <= 0;
 
     return Material(
       color: CashierColors.card,

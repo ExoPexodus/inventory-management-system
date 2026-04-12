@@ -29,11 +29,13 @@ class _CashierShellState extends State<CashierShell> {
   int _index = 0;
   String? _lookupInitialQuery;
   StreamSubscription<List<ConnectivityResult>>? _conn;
+  Timer? _syncTimer;
 
   @override
   void initState() {
     super.initState();
     _conn = Connectivity().onConnectivityChanged.listen((_) => _flushOutbox());
+    _syncTimer = Timer.periodic(const Duration(seconds: 30), (_) => _flushOutbox());
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       final sync = context.read<SyncStateModel>();
@@ -42,7 +44,20 @@ class _CashierShellState extends State<CashierShell> {
       await sync.refreshFromStorage();
       await feed.hydrateSession();
       if (feed.session != null && mounted) {
-        await feed.refresh(sync: sync, catalog: catalog);
+        try {
+          await feed.refresh(sync: sync, catalog: catalog);
+        } on ApiException catch (e) {
+          // Refresh token is expired/revoked — device session is dead.
+          // Clear everything and send back to enrollment.
+          if (e.statusCode == 401 && mounted) {
+            await SessionStore.clear();
+            widget.onLoggedOut();
+            return;
+          }
+          // Other errors (server down, network) — not fatal, continue
+        } catch (_) {
+          // Network error on startup — not fatal, app still works offline
+        }
       }
       if (!mounted) return;
       _flushOutbox();
@@ -52,6 +67,7 @@ class _CashierShellState extends State<CashierShell> {
   @override
   void dispose() {
     _conn?.cancel();
+    _syncTimer?.cancel();
     super.dispose();
   }
 

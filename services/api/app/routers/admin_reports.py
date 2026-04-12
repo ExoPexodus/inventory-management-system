@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep
+from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import (
     AdminAuditLog,
@@ -55,7 +55,7 @@ def _ts() -> str:
     return datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
 
-@router.get("/export")
+@router.get("/export", dependencies=[require_permission("reports:read")])
 def export_report(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],

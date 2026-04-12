@@ -31,9 +31,14 @@ export default function StaffPage() {
   const [emailConfigured, setEmailConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showInactive, setShowInactive] = useState(false);
 
-  const refreshEmployees = useCallback(async () => {
-    const r = await fetch("/api/ims/v1/admin/employees");
+  const refreshEmployees = useCallback(async (includeInactive = false) => {
+    const url = includeInactive
+      ? "/api/ims/v1/admin/employees?include_inactive=true"
+      : "/api/ims/v1/admin/employees";
+    const r = await fetch(url);
     if (!r.ok) throw new Error(await r.text());
     const list = (await r.json()) as Employee[];
     setRows(list);
@@ -59,17 +64,21 @@ export default function StaffPage() {
     setEmailConfigured(false);
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (includeInactive?: boolean) => {
     setLoading(true);
     setError(null);
     try {
-      await Promise.all([refreshEmployees(), refreshShops(), refreshEmailConfig()]);
+      await Promise.all([
+        refreshEmployees(includeInactive ?? showInactive),
+        refreshShops(),
+        refreshEmailConfig(),
+      ]);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load staff");
     } finally {
       setLoading(false);
     }
-  }, [refreshEmailConfig, refreshEmployees, refreshShops]);
+  }, [refreshEmailConfig, refreshEmployees, refreshShops, showInactive]);
 
   useEffect(() => {
     void refresh();
@@ -78,8 +87,13 @@ export default function StaffPage() {
   const selected = rows.find((o) => o.id === selectedId) ?? null;
   const activeNow = useMemo(() => rows.filter((o) => o.is_active).length, [rows]);
   const enrolledCount = useMemo(() => rows.filter((o) => !!o.device_id).length, [rows]);
-  const pendingEnrollments = rows.length - enrolledCount;
+  const pendingEnrollments = rows.filter((o) => o.is_active && !o.device_id).length;
   const shopLabel = (shopId: string) => shops.find((s) => s.id === shopId)?.name ?? "Unknown";
+
+  function showSuccess(msg: string) {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 4000);
+  }
 
   async function deactivateSelected() {
     if (!selected) return;
@@ -90,7 +104,27 @@ export default function StaffPage() {
       window.alert("Failed to deactivate employee");
       return;
     }
+    showSuccess(`${selected.name} has been deactivated.`);
     await refresh();
+  }
+
+  async function reactivateSelected() {
+    if (!selected) return;
+    const ok = window.confirm(`Reactivate ${selected.name}?`);
+    if (!ok) return;
+    const r = await fetch(`/api/ims/v1/admin/employees/${selected.id}/reactivate`, { method: "PATCH" });
+    if (!r.ok) {
+      window.alert("Failed to reactivate employee");
+      return;
+    }
+    showSuccess(`${selected.name} has been reactivated.`);
+    await refresh();
+  }
+
+  async function handleToggleInactive() {
+    const next = !showInactive;
+    setShowInactive(next);
+    await refresh(next);
   }
 
   return (
@@ -122,13 +156,32 @@ export default function StaffPage() {
         </div>
       </div>
 
+      {successMsg ? (
+        <p className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">{successMsg}</p>
+      ) : null}
       {error ? (
         <p className="rounded-xl border border-error/20 bg-error-container/20 px-4 py-3 text-sm text-on-error-container">{error}</p>
       ) : null}
 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 space-y-3 lg:col-span-7">
-          <h2 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Employees</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Employees</h2>
+            <button
+              type="button"
+              onClick={() => void handleToggleInactive()}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+                showInactive
+                  ? "border-primary/30 bg-primary/10 text-primary"
+                  : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container"
+              }`}
+            >
+              <span className="material-symbols-outlined text-sm">
+                {showInactive ? "visibility" : "visibility_off"}
+              </span>
+              {showInactive ? "Hiding inactive" : "Show inactive"}
+            </button>
+          </div>
           {loading ? <p className="text-sm text-on-surface-variant">Loading employees...</p> : null}
           {rows.map((o) => {
             const on = selectedId === o.id;
@@ -138,7 +191,11 @@ export default function StaffPage() {
                 type="button"
                 onClick={() => setSelectedId(o.id)}
                 className={`w-full rounded-xl border p-5 text-left shadow-sm transition ${
-                  on ? "border-primary/40 bg-surface-container-low" : "border-outline-variant/10 bg-surface-container-lowest hover:border-outline-variant/20"
+                  !o.is_active
+                    ? "border-outline-variant/10 bg-surface-container-lowest opacity-50"
+                    : on
+                    ? "border-primary/40 bg-surface-container-low"
+                    : "border-outline-variant/10 bg-surface-container-lowest hover:border-outline-variant/20"
                 }`}
               >
                 <div className="flex items-center gap-4">
@@ -184,13 +241,26 @@ export default function StaffPage() {
                   <p className="text-sm text-on-surface-variant">Shop: {shopLabel(selected.shop_id)}</p>
                   <p className="text-sm text-on-surface-variant">Credential: {selected.credential_type}</p>
                   <p className="text-sm text-on-surface-variant">Device status: {selected.device_id ? "Linked" : "Not enrolled"}</p>
+                  {!selected.is_active ? (
+                    <p className="rounded-lg border border-error/20 bg-error-container/20 px-3 py-2 text-xs font-semibold text-on-error-container">
+                      This employee is deactivated.
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap gap-2 pt-2">
-                    <PrimaryButton type="button" onClick={() => setReEnrollOpen(true)}>
-                      Re-enroll / reset
-                    </PrimaryButton>
-                    <SecondaryButton type="button" onClick={() => void deactivateSelected()}>
-                      Deactivate
-                    </SecondaryButton>
+                    {selected.is_active ? (
+                      <>
+                        <PrimaryButton type="button" onClick={() => setReEnrollOpen(true)}>
+                          Re-enroll / reset
+                        </PrimaryButton>
+                        <SecondaryButton type="button" onClick={() => void deactivateSelected()}>
+                          Deactivate
+                        </SecondaryButton>
+                      </>
+                    ) : (
+                      <PrimaryButton type="button" onClick={() => void reactivateSelected()}>
+                        Reactivate
+                      </PrimaryButton>
+                    )}
                   </div>
                 </>
               ) : (

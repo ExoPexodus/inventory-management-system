@@ -13,7 +13,9 @@ from sqlalchemy import Select, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.auth.admin_deps import AdminAuthDep, AdminContext
+import bcrypt
+
+from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.services.audit_service import write_audit
 from app.models import (
@@ -21,6 +23,7 @@ from app.models import (
     Product,
     ProductGroup,
     PurchaseOrder,
+    Role,
     Shop,
     StockAdjustment,
     StockMovement,
@@ -95,7 +98,7 @@ def _admin_transactions_base_stmt(
     return stmt
 
 
-@router.get("/transactions", response_model=TransactionListResponse)
+@router.get("/transactions", response_model=TransactionListResponse, dependencies=[require_permission("sales:read")])
 def admin_list_transactions(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -159,7 +162,7 @@ class TxStatusPatch(BaseModel):
     status: str
 
 
-@router.patch("/transactions/{tx_id}/status")
+@router.patch("/transactions/{tx_id}/status", dependencies=[require_permission("sales:write")])
 def patch_transaction_status(
     tx_id: UUID,
     body: TxStatusPatch,
@@ -251,7 +254,7 @@ class DashboardSummaryOut(BaseModel):
     recent_activity: list[RecentActivityItem]
 
 
-@router.get("/dashboard-summary", response_model=DashboardSummaryOut)
+@router.get("/dashboard-summary", response_model=DashboardSummaryOut, dependencies=[require_permission("analytics:read")])
 def dashboard_summary(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -377,7 +380,7 @@ class SalesSeriesResponse(BaseModel):
     points: list[SalesSeriesPoint]
 
 
-@router.get("/analytics/sales-series", response_model=SalesSeriesResponse)
+@router.get("/analytics/sales-series", response_model=SalesSeriesResponse, dependencies=[require_permission("analytics:read")])
 def sales_series(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -444,7 +447,7 @@ class PatchSupplierBody(BaseModel):
     notes: str | None = None
 
 
-@router.get("/suppliers", response_model=list[SupplierOut])
+@router.get("/suppliers", response_model=list[SupplierOut], dependencies=[require_permission("procurement:read")])
 def list_suppliers(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -469,7 +472,7 @@ def list_suppliers(
     ]
 
 
-@router.post("/suppliers", response_model=SupplierOut)
+@router.post("/suppliers", response_model=SupplierOut, dependencies=[require_permission("procurement:write")])
 def create_supplier(
     body: CreateSupplierBody,
     ctx: AdminAuthDep,
@@ -509,7 +512,7 @@ def create_supplier(
     )
 
 
-@router.patch("/suppliers/{supplier_id}", response_model=SupplierOut)
+@router.patch("/suppliers/{supplier_id}", response_model=SupplierOut, dependencies=[require_permission("procurement:write")])
 def patch_supplier(
     supplier_id: UUID,
     body: PatchSupplierBody,
@@ -595,7 +598,7 @@ class StockMovementListResponse(BaseModel):
     next_cursor: str | None = None
 
 
-@router.get("/inventory/movements", response_model=StockMovementListResponse)
+@router.get("/inventory/movements", response_model=StockMovementListResponse, dependencies=[require_permission("inventory:read")])
 def list_stock_movements(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -655,17 +658,38 @@ def list_stock_movements(
 class OperatorOut(BaseModel):
     id: UUID
     email: str
-    role: str
+    display_name: str | None = None
+    role: str | None = None
+    role_id: UUID | None = None
     is_active: bool
     created_at: datetime
 
 
+class CreateOperatorBody(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    display_name: str | None = Field(default=None, max_length=255)
+    role_id: UUID
+
+
 class PatchOperatorBody(BaseModel):
-    role: str | None = Field(default=None, max_length=64)
+    role_id: UUID | None = None
     is_active: bool | None = None
 
 
-@router.get("/operators", response_model=list[OperatorOut])
+def _operator_out(r: AdminUser) -> OperatorOut:
+    return OperatorOut(
+        id=r.id,
+        email=r.email,
+        display_name=r.display_name,
+        role=r.role.name if r.role else None,
+        role_id=r.role_id,
+        is_active=r.is_active,
+        created_at=r.created_at,
+    )
+
+
+@router.get("/operators", response_model=list[OperatorOut], dependencies=[require_permission("operators:read")])
 def list_operators(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -674,13 +698,43 @@ def list_operators(
     rows = db.execute(
         select(AdminUser).where(AdminUser.tenant_id == tenant_id).order_by(AdminUser.created_at.desc())
     ).scalars().all()
-    return [
-        OperatorOut(id=r.id, email=r.email, role=r.role, is_active=r.is_active, created_at=r.created_at)
-        for r in rows
-    ]
+    return [_operator_out(r) for r in rows]
 
 
-@router.patch("/operators/{operator_id}", response_model=OperatorOut)
+@router.post("/operators", response_model=OperatorOut, status_code=201, dependencies=[require_permission("operators:write")])
+def create_operator(
+    body: CreateOperatorBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> OperatorOut:
+    tenant_id = _require_operator_tenant(ctx)
+    role = db.execute(
+        select(Role).where(Role.id == body.role_id, Role.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found for this tenant")
+    pw_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
+    operator = AdminUser(
+        email=body.email.strip().lower(),
+        password_hash=pw_hash,
+        display_name=body.display_name,
+        role_id=body.role_id,
+        tenant_id=tenant_id,
+        is_active=True,
+    )
+    db.add(operator)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
+    write_audit(db, ctx, action="create_operator", resource_type="admin_user", resource_id=str(operator.id))
+    db.commit()
+    db.refresh(operator)
+    return _operator_out(operator)
+
+
+@router.patch("/operators/{operator_id}", response_model=OperatorOut, dependencies=[require_permission("operators:write")])
 def patch_operator(
     operator_id: UUID,
     body: PatchOperatorBody,
@@ -693,15 +747,31 @@ def patch_operator(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operator not found")
     if row.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
-    if body.role is not None:
-        row.role = body.role.strip()
+    if body.role_id is not None:
+        role = db.execute(
+            select(Role).where(Role.id == body.role_id, Role.tenant_id == tenant_id)
+        ).scalar_one_or_none()
+        if role is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found for this tenant")
+        # Prevent removing the last owner
+        if row.role and row.role.name == "owner":
+            owner_count = db.execute(
+                select(func.count())
+                .select_from(AdminUser)
+                .join(Role, AdminUser.role_id == Role.id)
+                .where(AdminUser.tenant_id == tenant_id, Role.name == "owner", AdminUser.is_active.is_(True))
+            ).scalar_one()
+            if owner_count <= 1 and role.name != "owner":
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Cannot remove the last owner from this tenant",
+                )
+        row.role_id = body.role_id
     if body.is_active is not None:
         row.is_active = body.is_active
     db.commit()
     db.refresh(row)
-    return OperatorOut(
-        id=row.id, email=row.email, role=row.role, is_active=row.is_active, created_at=row.created_at
-    )
+    return _operator_out(row)
 
 
 class CreateShopBody(BaseModel):
@@ -720,7 +790,7 @@ class ShopSummaryOut(BaseModel):
     name: str
 
 
-@router.get("/shops", response_model=list[ShopSummaryOut])
+@router.get("/shops", response_model=list[ShopSummaryOut], dependencies=[require_permission("shops:read")])
 def admin_list_shops(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -733,7 +803,7 @@ def admin_list_shops(
     return [ShopSummaryOut(id=r.id, tenant_id=r.tenant_id, name=r.name) for r in rows]
 
 
-@router.post("/shops", response_model=CreateShopResponse)
+@router.post("/shops", response_model=CreateShopResponse, dependencies=[require_permission("shops:write")])
 def admin_create_shop(
     body: CreateShopBody,
     ctx: AdminAuthDep,
@@ -795,7 +865,7 @@ class ProductListItem(BaseModel):
     group_title: str | None = None
 
 
-@router.get("/products", response_model=list[ProductListItem])
+@router.get("/products", response_model=list[ProductListItem], dependencies=[require_permission("catalog:read")])
 def admin_list_products(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -830,7 +900,7 @@ def admin_list_products(
     ]
 
 
-@router.post("/products", response_model=CreateProductResponse)
+@router.post("/products", response_model=CreateProductResponse, dependencies=[require_permission("catalog:write")])
 def admin_create_product(
     body: CreateProductBody,
     ctx: AdminAuthDep,
@@ -891,7 +961,7 @@ class CreateProductGroupBody(BaseModel):
     notes: str | None = None
 
 
-@router.post("/product-groups", response_model=ProductGroupOut)
+@router.post("/product-groups", response_model=ProductGroupOut, dependencies=[require_permission("catalog:write")])
 def admin_create_product_group(
     body: CreateProductGroupBody,
     ctx: AdminAuthDep,
@@ -915,7 +985,7 @@ def admin_create_product_group(
     )
 
 
-@router.get("/product-groups", response_model=list[ProductGroupOut])
+@router.get("/product-groups", response_model=list[ProductGroupOut], dependencies=[require_permission("catalog:read")])
 def admin_list_product_groups(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -952,7 +1022,7 @@ class PatchProductBody(BaseModel):
     reorder_point: int | None = Field(default=None, ge=0)
 
 
-@router.patch("/products/{product_id}", response_model=CreateProductResponse)
+@router.patch("/products/{product_id}", response_model=CreateProductResponse, dependencies=[require_permission("catalog:write")])
 def admin_patch_product(
     product_id: UUID,
     body: PatchProductBody,
@@ -1047,7 +1117,7 @@ class BulkReorderPointResponse(BaseModel):
     updated_count: int
 
 
-@router.post("/products/bulk-reorder-point", response_model=BulkReorderPointResponse)
+@router.post("/products/bulk-reorder-point", response_model=BulkReorderPointResponse, dependencies=[require_permission("inventory:write")])
 def bulk_set_reorder_point(
     body: BulkReorderPointBody,
     ctx: AdminAuthDep,
@@ -1080,7 +1150,7 @@ class AdjustmentIn(BaseModel):
     notes: str | None = None
 
 
-@router.post("/inventory/adjustments", response_model=StockMovementOut, status_code=status.HTTP_201_CREATED)
+@router.post("/inventory/adjustments", response_model=StockMovementOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("inventory:write")])
 def create_stock_adjustment(
     body: AdjustmentIn,
     ctx: AdminAuthDep,

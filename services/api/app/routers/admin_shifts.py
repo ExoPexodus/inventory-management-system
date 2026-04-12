@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep, AdminContext
+from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import PaymentAllocation, Shop, ShiftClosing, Transaction
 
@@ -117,7 +117,7 @@ def _build_shift_out(db: Session, shift: ShiftClosing, shop_name: str | None) ->
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=ShiftListResponse)
+@router.get("", response_model=ShiftListResponse, dependencies=[require_permission("operations:read")])
 def list_shifts(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -162,7 +162,7 @@ class OpenShiftBody(BaseModel):
     notes: str | None = None
 
 
-@router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=ShiftOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("operations:write")])
 def open_shift(
     body: OpenShiftBody,
     ctx: AdminAuthDep,
@@ -195,7 +195,7 @@ class CloseShiftBody(BaseModel):
     notes: str | None = None
 
 
-@router.patch("/{shift_id}/close", response_model=ShiftOut)
+@router.patch("/{shift_id}/close", response_model=ShiftOut, dependencies=[require_permission("operations:write")])
 def close_shift(
     shift_id: UUID,
     body: CloseShiftBody,

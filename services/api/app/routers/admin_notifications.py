@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep, AdminContext
+from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import Notification
 
@@ -47,7 +47,7 @@ def _to_out(n: Notification) -> NotificationOut:
     )
 
 
-@router.get("", response_model=NotificationsResponse)
+@router.get("", response_model=NotificationsResponse, dependencies=[require_permission("notifications:read")])
 def list_notifications(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -86,7 +86,7 @@ def list_notifications(
     )
 
 
-@router.patch("/{notification_id}/read", response_model=NotificationOut)
+@router.patch("/{notification_id}/read", response_model=NotificationOut, dependencies=[require_permission("notifications:write")])
 def mark_read(
     notification_id: UUID,
     ctx: AdminAuthDep,
@@ -104,7 +104,7 @@ def mark_read(
     return _to_out(n)
 
 
-@router.post("/read-all")
+@router.post("/read-all", dependencies=[require_permission("notifications:write")])
 def mark_all_read(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],

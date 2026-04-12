@@ -23,6 +23,7 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
   final _passwordCtrl = TextEditingController();
   bool _busy = false;
   String? _error;
+  bool _showReEnrollPrompt = false;
   late final bool _isPasswordMode;
   String _pin = '';
 
@@ -66,7 +67,16 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
       );
       if (mounted) widget.onSuccess();
     } on ApiException catch (e) {
-      setState(() => _error = 'Server error (${e.statusCode})');
+      if (e.statusCode == 401 && e.body.contains('not linked')) {
+        setState(() {
+          _error = 'This device is no longer linked to an employee account. Re-enroll to continue.';
+          _showReEnrollPrompt = true;
+        });
+      } else if (e.statusCode == 401) {
+        setState(() => _error = 'Incorrect PIN or password.');
+      } else {
+        setState(() => _error = 'Server error (${e.statusCode})');
+      }
     } catch (e) {
       setState(() => _error = e.toString());
     } finally {
@@ -207,41 +217,61 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.only(top: CashierSpacing.md),
-                    child: Text(
-                      _error!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: theme.colorScheme.error),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.errorContainer.withValues(alpha: 0.3),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: theme.colorScheme.error),
+                      ),
                     ),
                   ),
                 ),
 
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: CashierSpacing.lg),
-                  child: CashierGradientButton(
-                    label: _busy ? 'Signing in...' : 'Sign in',
-                    onPressed: _busy ? null : _submit,
-                    icon: Icons.lock_open_rounded,
+              if (_showReEnrollPrompt)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: CashierSpacing.md),
+                    child: FilledButton.icon(
+                      onPressed: _busy ? null : _reEnroll,
+                      icon: const Icon(Icons.qr_code_scanner_rounded),
+                      label: const Text('Re-enroll this device'),
+                    ),
+                  ),
+                )
+              else ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: CashierSpacing.lg),
+                    child: CashierGradientButton(
+                      label: _busy ? 'Signing in...' : 'Sign in',
+                      onPressed: _busy ? null : _submit,
+                      icon: Icons.lock_open_rounded,
+                    ),
                   ),
                 ),
-              ),
 
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.only(top: CashierSpacing.md, bottom: 32),
-                  child: Center(
-                    child: TextButton(
-                      onPressed: _busy ? null : _reEnroll,
-                      child: Text(
-                        'Not you? Re-enroll this device',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: CashierColors.onSurfaceVariant,
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: CashierSpacing.md, bottom: 32),
+                    child: Center(
+                      child: TextButton(
+                        onPressed: _busy ? null : _reEnroll,
+                        child: Text(
+                          'Not you? Re-enroll this device',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: CashierColors.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

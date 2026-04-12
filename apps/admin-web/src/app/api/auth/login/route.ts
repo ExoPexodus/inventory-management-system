@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { OPERATOR_JWT_COOKIE, OPERATOR_TENANT_SLUG_COOKIE } from "@/lib/auth/constants";
+import { OPERATOR_JWT_COOKIE, OPERATOR_META_COOKIE, OPERATOR_TENANT_SLUG_COOKIE } from "@/lib/auth/constants";
 import { shouldUseSecureCookie } from "@/lib/auth/cookie-secure";
 import { internalApiUrl } from "@/lib/api/internal-url";
 
@@ -24,9 +24,9 @@ export async function POST(req: Request) {
   if (!r.ok) {
     return new NextResponse(text, { status: r.status, headers: { "content-type": "application/json" } });
   }
-  let json: { access_token: string; expires_in?: number; tenant_slug?: string };
+  let json: { access_token: string; expires_in?: number; tenant_slug?: string; role?: string; permissions?: string[] };
   try {
-    json = JSON.parse(text) as { access_token: string; expires_in?: number; tenant_slug?: string };
+    json = JSON.parse(text) as { access_token: string; expires_in?: number; tenant_slug?: string; role?: string; permissions?: string[] };
   } catch {
     return NextResponse.json({ detail: "bad_upstream" }, { status: 502 });
   }
@@ -42,19 +42,30 @@ export async function POST(req: Request) {
   }
   const res = NextResponse.json({ ok: true });
   const maxAge = json.expires_in ?? 3600;
+  const secure = shouldUseSecureCookie(req);
   res.cookies.set(OPERATOR_JWT_COOKIE, json.access_token, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     maxAge,
-    secure: shouldUseSecureCookie(req),
+    secure,
   });
   res.cookies.set(OPERATOR_TENANT_SLUG_COOKIE, tenantSlug, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",
     maxAge,
-    secure: shouldUseSecureCookie(req),
+    secure,
+  });
+  // Non-HttpOnly so client JS can read role + permissions for nav filtering.
+  // The API enforces truth — this is informational only.
+  const meta = JSON.stringify({ role: json.role ?? null, permissions: json.permissions ?? [] });
+  res.cookies.set(OPERATOR_META_COOKIE, meta, {
+    httpOnly: false,
+    sameSite: "lax",
+    path: "/",
+    maxAge,
+    secure,
   });
   return res;
 }

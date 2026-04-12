@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep
+from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import Tenant
 
@@ -56,7 +56,7 @@ class PatchCurrencyBody(BaseModel):
     conversion_rate: float | None = Field(default=None, ge=0)
 
 
-@router.get("/tenant-settings/currency", response_model=CurrencySettingsOut)
+@router.get("/tenant-settings/currency", response_model=CurrencySettingsOut, dependencies=[require_permission("settings:read")])
 def get_currency_settings(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -83,7 +83,7 @@ def get_currency_settings(
     )
 
 
-@router.patch("/tenant-settings/currency", response_model=CurrencySettingsOut)
+@router.patch("/tenant-settings/currency", response_model=CurrencySettingsOut, dependencies=[require_permission("settings:write")])
 def patch_currency_settings(
     body: PatchCurrencyBody,
     ctx: AdminAuthDep,

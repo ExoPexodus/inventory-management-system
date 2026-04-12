@@ -258,7 +258,7 @@ def apply_sale_completed(
     # Fire stock-low notifications for any product that crossed its reorder_point
     for prod, qty, _ in parsed_lines:
         if prod.reorder_point and prod.reorder_point > 0:
-            new_qty = current_quantity(db, tenant_id=tenant_id, product_id=prod.id)
+            new_qty = current_quantity(db, shop_id, prod.id)
             if new_qty <= prod.reorder_point:
                 db.add(
                     Notification(

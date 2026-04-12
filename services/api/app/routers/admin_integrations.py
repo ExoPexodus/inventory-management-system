@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep
+from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import ApiToken, Integration, Product, WebhookDelivery
 
@@ -115,7 +115,7 @@ def _webhook_to_out(integ: Integration) -> WebhookOut:
     )
 
 
-@router.get("/webhooks", response_model=list[WebhookOut])
+@router.get("/webhooks", response_model=list[WebhookOut], dependencies=[require_permission("integrations:read")])
 def list_webhooks(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -131,7 +131,7 @@ def list_webhooks(
     return [_webhook_to_out(i) for i in items]
 
 
-@router.post("/webhooks", response_model=WebhookOut, status_code=status.HTTP_201_CREATED)
+@router.post("/webhooks", response_model=WebhookOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("integrations:write")])
 def create_webhook(
     body: CreateWebhookBody,
     ctx: AdminAuthDep,
@@ -153,7 +153,7 @@ def create_webhook(
     return _webhook_to_out(integ)
 
 
-@router.delete("/webhooks/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/webhooks/{webhook_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[require_permission("integrations:write")])
 def delete_webhook(
     webhook_id: UUID,
     ctx: AdminAuthDep,
@@ -167,7 +167,7 @@ def delete_webhook(
     db.commit()
 
 
-@router.get("/webhooks/{webhook_id}/deliveries", response_model=list[WebhookDeliveryOut])
+@router.get("/webhooks/{webhook_id}/deliveries", response_model=list[WebhookDeliveryOut], dependencies=[require_permission("integrations:read")])
 def list_deliveries(
     webhook_id: UUID,
     ctx: AdminAuthDep,
@@ -213,7 +213,7 @@ def _token_to_out(t: ApiToken) -> ApiTokenOut:
     )
 
 
-@router.get("/api-tokens", response_model=list[ApiTokenOut])
+@router.get("/api-tokens", response_model=list[ApiTokenOut], dependencies=[require_permission("integrations:read")])
 def list_api_tokens(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -227,7 +227,7 @@ def list_api_tokens(
     return [_token_to_out(t) for t in items]
 
 
-@router.post("/api-tokens", response_model=ApiTokenCreatedOut, status_code=status.HTTP_201_CREATED)
+@router.post("/api-tokens", response_model=ApiTokenCreatedOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("integrations:write")])
 def create_api_token(
     body: CreateApiTokenBody,
     ctx: AdminAuthDep,
@@ -259,7 +259,7 @@ def create_api_token(
     return ApiTokenCreatedOut(**out.model_dump(), token=raw)
 
 
-@router.delete("/api-tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/api-tokens/{token_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[require_permission("integrations:write")])
 def revoke_api_token(
     token_id: UUID,
     ctx: AdminAuthDep,
@@ -284,7 +284,7 @@ class ImportResult(BaseModel):
     errors: list[str]
 
 
-@router.post("/products/import-csv", response_model=ImportResult)
+@router.post("/products/import-csv", response_model=ImportResult, dependencies=[require_permission("integrations:write")])
 async def import_products_csv(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],

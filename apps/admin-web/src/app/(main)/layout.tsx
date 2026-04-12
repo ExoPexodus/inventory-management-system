@@ -1,11 +1,20 @@
 import { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { CurrencyProvider } from "@/lib/currency-context";
+import { OPERATOR_META_COOKIE } from "@/lib/auth/constants";
+import { parseMetaCookie } from "@/lib/auth/parse-meta-cookie";
+import { UserProvider } from "@/lib/auth/user-context";
 
-export default function MainLayout({ children }: { children: ReactNode }) {
+export default async function MainLayout({ children }: { children: ReactNode }) {
+  const jar = await cookies();
+  const rawMeta = jar.get(OPERATOR_META_COOKIE)?.value;
+  const { role, permissions } = parseMetaCookie(rawMeta);
   return (
-    <DashboardChrome>
-      <CurrencyProvider>{children}</CurrencyProvider>
-    </DashboardChrome>
+    <UserProvider role={role} permissions={permissions}>
+      <DashboardChrome>
+        <CurrencyProvider>{children}</CurrencyProvider>
+      </DashboardChrome>
+    </UserProvider>
   );
 }

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep
+from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import AdminAuditLog, AdminUser
 
@@ -32,7 +32,7 @@ class AuditListResponse(BaseModel):
     next_cursor: str | None
 
 
-@router.get("", response_model=AuditListResponse)
+@router.get("", response_model=AuditListResponse, dependencies=[require_permission("audit:read")])
 def list_audit_log(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
