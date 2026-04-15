@@ -20,6 +20,7 @@ from app.db.admin_deps_db import get_db_admin
 from app.services.audit_service import write_audit
 from app.models import (
     AdminUser,
+    Employee,
     Product,
     ProductGroup,
     PurchaseOrder,
@@ -131,6 +132,14 @@ def admin_list_transactions(
         next_cur = _encode_cursor(last.created_at, last.id)
 
     labels = _product_labels_for_lines(db, rows)
+
+    # Build employee name lookup for all referenced employee IDs
+    employee_ids = {t.employee_id for t in rows if t.employee_id is not None}
+    employee_names: dict[UUID, str] = {}
+    if employee_ids:
+        emps = db.execute(select(Employee).where(Employee.id.in_(employee_ids))).scalars().all()
+        employee_names = {e.id: e.name for e in emps}
+
     items: list[TransactionOut] = []
     for t in rows:
         items.append(
@@ -147,6 +156,7 @@ def admin_list_transactions(
                 payments=[
                     PaymentOut(tender_type=p.tender_type, amount_cents=p.amount_cents) for p in t.payments
                 ],
+                cashier_name=employee_names.get(t.employee_id) if t.employee_id else None,
             )
         )
     return TransactionListResponse(items=items, next_cursor=next_cur)
@@ -728,7 +738,7 @@ def create_operator(
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
-    write_audit(db, ctx, action="create_operator", resource_type="admin_user", resource_id=str(operator.id))
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_operator", resource_type="admin_user", resource_id=str(operator.id))
     db.commit()
     db.refresh(operator)
     return _operator_out(operator)

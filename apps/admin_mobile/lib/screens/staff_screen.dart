@@ -43,7 +43,7 @@ class _StaffScreenState extends State<StaffScreen> {
       if (!mounted) return;
       setState(() { _employees = list; _loading = false; });
     } on ApiException catch (e) {
-      if (e.statusCode == 401) { await SessionStore.clear(); if (mounted) widget.onLogout(); return; }
+      if (e.statusCode == 401) { await SessionStore.clearLogin(); if (mounted) widget.onLogout(); return; }
       if (mounted) setState(() { _error = 'Failed to load (${e.statusCode})'; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = 'Connection error'; _loading = false; });

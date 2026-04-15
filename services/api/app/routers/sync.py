@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.db.session import get_db
-from app.models import Product, ProductGroup, Shop, ShopProductTax, Tenant
+from app.models import Employee, Product, ProductGroup, Shop, ShopProductTax, Tenant
 from app.services.stock import current_quantity
 from app.services.sync_push import process_push_batch
 from app.services.tax import effective_tax_bps_for_product
@@ -19,6 +19,7 @@ router = APIRouter(prefix="/v1/sync", tags=["Sync"])
 class TenantOfflinePolicyOut(BaseModel):
     tier: str
     max_offline_minutes: int
+    employee_session_timeout_minutes: int
 
 
 class TenantCurrencyOut(BaseModel):
@@ -56,6 +57,7 @@ class SyncPullResponse(BaseModel):
     policy: TenantOfflinePolicyOut
     currency: TenantCurrencyOut
     shop_default_tax_rate_bps: int
+    employee_active: bool | None = None
 
 
 class PushBatchRequest(BaseModel):
@@ -145,6 +147,15 @@ def sync_pull(
             )
         )
 
+    # Check active status of the employee linked to this device (if any).
+    linked_employee = db.execute(
+        select(Employee).where(
+            Employee.tenant_id == auth.tenant_id,
+            Employee.device_id == auth.device_id,
+        )
+    ).scalar_one_or_none()
+    employee_active: bool | None = None if linked_employee is None else linked_employee.is_active
+
     return SyncPullResponse(
         cursor=cursor or "0",
         products=product_dtos,
@@ -152,6 +163,7 @@ def sync_pull(
         policy=TenantOfflinePolicyOut(
             tier=tenant.offline_tier,
             max_offline_minutes=tenant.max_offline_minutes,
+            employee_session_timeout_minutes=tenant.employee_session_timeout_minutes,
         ),
         currency=TenantCurrencyOut(
             code=tenant.default_currency_code,
@@ -161,6 +173,7 @@ def sync_pull(
             conversion_rate=tenant.currency_conversion_rate,
         ),
         shop_default_tax_rate_bps=shop_row.default_tax_rate_bps,
+        employee_active=employee_active,
     )
 
 

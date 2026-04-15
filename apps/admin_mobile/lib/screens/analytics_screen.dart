@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../admin_tokens.dart';
 import '../models/analytics.dart';
+import '../models/currency.dart';
 import '../services/admin_api.dart';
 import '../services/session_store.dart';
 import '../widgets/metric_card.dart';
@@ -54,19 +56,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         _loading = false;
       });
     } on ApiException catch (e) {
-      if (e.statusCode == 401) { await SessionStore.clear(); if (mounted) widget.onLogout(); return; }
+      if (e.statusCode == 401) { await SessionStore.clearLogin(); if (mounted) widget.onLogout(); return; }
       if (mounted) setState(() { _error = 'Failed to load (${e.statusCode})'; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = 'Connection error'; _loading = false; });
     }
   }
 
-  String _formatMoney(int cents) {
-    final dollars = cents / 100.0;
-    if (dollars >= 1000000) return '\$${(dollars / 1000000).toStringAsFixed(1)}M';
-    if (dollars >= 1000) return '\$${(dollars / 1000).toStringAsFixed(1)}K';
-    return '\$${dollars.toStringAsFixed(2)}';
-  }
 
   String _formatDelta(double? pct) {
     if (pct == null) return '';
@@ -77,6 +73,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currency = context.watch<CurrencyModel>();
     final summary = _summary;
 
     return Scaffold(
@@ -157,7 +154,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         width: 160,
                         child: AdminMetricCard(
                           title: 'Revenue',
-                          value: summary != null ? _formatMoney(summary.grossCents) : '--',
+                          value: summary != null ? currency.formatAbbreviated(summary.grossCents) : '--',
                           icon: Icons.attach_money_rounded,
                           trend: summary != null ? _formatDelta(summary.deltaPct) : null,
                           trendPositive: summary != null && (summary.deltaPct ?? 0) >= 0,
@@ -168,7 +165,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         width: 160,
                         child: AdminMetricCard(
                           title: 'Avg. Ticket',
-                          value: summary != null ? _formatMoney(summary.avgTicketCents) : '--',
+                          value: summary != null ? currency.formatAbbreviated(summary.avgTicketCents) : '--',
                           icon: Icons.confirmation_number_outlined,
                         ),
                       ),
@@ -218,7 +215,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         ),
                         child: RevenueBarChart(
                           points: _series,
-                          formatValue: _formatMoney,
+                          formatValue: currency.formatAbbreviated,
                         ),
                       ),
                     ],
@@ -281,7 +278,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                           ),
                                         ),
                                         Text(
-                                          _formatMoney(cat.grossCents),
+                                          currency.formatAbbreviated(cat.grossCents),
                                           style: theme.textTheme.titleMedium?.copyWith(
                                             fontWeight: FontWeight.bold,
                                           ),
@@ -361,7 +358,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                           ),
                                         ),
                                         Text(
-                                          _formatMoney(prod.grossCents),
+                                          currency.formatAbbreviated(prod.grossCents),
                                           style: theme.textTheme.titleMedium?.copyWith(
                                             fontWeight: FontWeight.bold,
                                           ),

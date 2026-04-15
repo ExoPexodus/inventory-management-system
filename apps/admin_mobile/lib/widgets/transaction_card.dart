@@ -101,6 +101,19 @@ class TransactionCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (tx.cashierName != null) ...[
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Icon(Icons.badge_outlined, size: 12, color: AdminColors.onSurfaceVariant),
+                          const SizedBox(width: 3),
+                          Text(
+                            tx.cashierName!,
+                            style: theme.textTheme.labelSmall?.copyWith(color: AdminColors.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),

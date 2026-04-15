@@ -54,6 +54,7 @@ class Transaction {
     required this.createdAt,
     required this.shopId,
     required this.deviceId,
+    this.cashierName,
     this.lines = const [],
     this.payments = const [],
   });
@@ -65,6 +66,7 @@ class Transaction {
   final String createdAt;
   final String shopId;
   final String deviceId;
+  final String? cashierName;
   final List<TransactionLine> lines;
   final List<PaymentAllocation> payments;
 
@@ -84,6 +86,7 @@ class Transaction {
         createdAt: j['created_at'] as String? ?? '',
         shopId: j['shop_id'] as String? ?? '',
         deviceId: j['device_id'] as String? ?? '',
+        cashierName: j['cashier_name'] as String?,
         lines: (j['lines'] as List<dynamic>?)
                 ?.map((e) => TransactionLine.fromJson(e as Map<String, dynamic>))
                 .toList() ??

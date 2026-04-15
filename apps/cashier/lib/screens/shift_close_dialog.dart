@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../cashier_tokens.dart';
 import '../services/inventory_api.dart';
+import '../services/policy_store.dart';
 import '../util/money_format.dart';
 
 class ShiftCloseDialog extends StatefulWidget {
@@ -29,11 +30,27 @@ class _ShiftCloseDialogState extends State<ShiftCloseDialog> {
   String? _error;
   Map<String, dynamic>? _summary;
   bool _summaryLoading = true;
+  String _currencyCode = 'USD';
+  int _currencyExponent = 2;
+  String? _currencySymbolOverride;
 
   @override
   void initState() {
     super.initState();
     _loadSummary();
+    _loadCurrency();
+  }
+
+  Future<void> _loadCurrency() async {
+    final code = await PolicyStore.getCurrencyCode();
+    final exponent = await PolicyStore.getCurrencyExponent();
+    final symbolOverride = await PolicyStore.getCurrencySymbolOverride();
+    if (!mounted) return;
+    setState(() {
+      _currencyCode = code;
+      _currencyExponent = exponent;
+      _currencySymbolOverride = symbolOverride;
+    });
   }
 
   @override
@@ -64,7 +81,7 @@ class _ShiftCloseDialogState extends State<ShiftCloseDialog> {
       setState(() => _error = 'Enter a valid cash amount');
       return;
     }
-    final cents = (dollars * 100).round();
+    final cents = majorToMinorUnits(dollars, _currencyExponent);
     setState(() { _saving = true; _error = null; });
     try {
       await widget.api.closeShift(
@@ -98,7 +115,7 @@ class _ShiftCloseDialogState extends State<ShiftCloseDialog> {
     final theme = Theme.of(context);
     final txCount = _summary?['transaction_count'] as int? ?? 0;
     final totalCents = _summary?['total_cents'] as int? ?? 0;
-    final totalLabel = formatMinorUnits(totalCents, code: 'USD', exponent: 2);
+    final totalLabel = formatMinorUnits(totalCents, code: _currencyCode, exponent: _currencyExponent, symbolOverride: _currencySymbolOverride);
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -143,10 +160,10 @@ class _ShiftCloseDialogState extends State<ShiftCloseDialog> {
               TextField(
                 controller: _cashController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Cash counted in drawer *',
                   hintText: 'e.g. 47.50',
-                  prefixText: '\$ ',
+                  prefixText: '${currencySymbol(_currencyCode, symbolOverride: _currencySymbolOverride)} ',
                 ),
               ),
               const SizedBox(height: CashierSpacing.sm),

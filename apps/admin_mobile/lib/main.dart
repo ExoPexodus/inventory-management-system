@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'models/currency.dart';
 import 'models/session.dart';
 import 'screens/app_shell.dart';
+import 'screens/enrollment_screen.dart';
 import 'screens/login_screen.dart';
+import 'services/admin_api.dart';
 import 'services/session_store.dart';
 import 'theme.dart';
 
@@ -26,6 +31,7 @@ class AdminApp extends StatelessWidget {
   }
 }
 
+/// Three states: unenrolled → enrolled (login) → logged in (app shell).
 class _StartupGate extends StatefulWidget {
   const _StartupGate();
 
@@ -35,31 +41,61 @@ class _StartupGate extends StatefulWidget {
 
 class _StartupGateState extends State<_StartupGate> {
   bool _loading = true;
+  bool _enrolled = false;
+  String? _baseUrl;
   AdminSession? _session;
+  final _currency = CurrencyModel();
 
   @override
   void initState() {
     super.initState();
-    _checkSession();
+    _checkState();
   }
 
-  Future<void> _checkSession() async {
+  Future<void> _checkState() async {
+    final enrolled = await SessionStore.isEnrolled();
+    final baseUrl = await SessionStore.getBaseUrl();
     final session = await SessionStore.load();
+    if (session != null) {
+      unawaited(_currency.load(AdminApi(session.baseUrl, session.token)));
+    }
     if (mounted) {
       setState(() {
+        _enrolled = enrolled;
+        _baseUrl = baseUrl;
         _session = session;
         _loading = false;
       });
     }
   }
 
+  void _onEnrolled() {
+    _checkState();
+  }
+
   Future<void> _onLogin() async {
     final session = await SessionStore.load();
+    if (session != null) {
+      unawaited(_currency.load(AdminApi(session.baseUrl, session.token)));
+    }
     if (mounted) setState(() => _session = session);
   }
 
-  void _onLogout() {
-    setState(() => _session = null);
+  void _onLogout() async {
+    await SessionStore.clearLogin();
+    _currency.reset();
+    if (mounted) setState(() => _session = null);
+  }
+
+  void _onResetDevice() async {
+    await SessionStore.clearEnrollment();
+    if (mounted) {
+      setState(() {
+        _enrolled = false;
+        _baseUrl = null;
+        _session = null;
+      });
+    }
   }
 
   @override
@@ -69,11 +105,27 @@ class _StartupGateState extends State<_StartupGate> {
         body: Center(child: CircularProgressIndicator()),
       );
     }
-    if (_session == null) {
-      return LoginScreen(onSuccess: _onLogin);
+
+    // State 1: Not enrolled → show QR scanner
+    if (!_enrolled || _baseUrl == null) {
+      return EnrollmentScreen(onSuccess: _onEnrolled);
     }
-    return ChangeNotifierProvider(
-      create: (_) => AppShellModel(),
+
+    // State 2: Enrolled but not logged in → show login
+    if (_session == null) {
+      return LoginScreen(
+        baseUrl: _baseUrl!,
+        onSuccess: _onLogin,
+        onResetDevice: _onResetDevice,
+      );
+    }
+
+    // State 3: Logged in → show app
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AppShellModel()),
+        ChangeNotifierProvider.value(value: _currency),
+      ],
       child: AppShell(session: _session!, onLogout: _onLogout),
     );
   }

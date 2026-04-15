@@ -8,7 +8,9 @@ import 'package:uuid/uuid.dart';
 import '../cashier_tokens.dart';
 import '../models/cart_model.dart';
 import '../models/catalog_model.dart';
+import '../models/shift_model.dart';
 import '../models/sync_state_model.dart';
+import '../services/authenticated_api.dart';
 import '../services/inventory_api.dart';
 import '../services/outbox_service.dart';
 import '../services/session_store.dart';
@@ -67,21 +69,6 @@ class _CartScreenState extends State<CartScreen> {
     return api.ping(timeoutMs: 2500);
   }
 
-  Future<SessionData?> _refreshSessionIfNeeded(
-    InventoryApi api,
-    SessionData s,
-  ) async {
-    final body = await api.refresh(refreshToken: s.refreshToken);
-    await SessionStore.save(
-      baseUrl: s.baseUrl,
-      accessToken: body['access_token'] as String,
-      refreshToken: body['refresh_token'] as String,
-      tenantId: body['tenant_id'] as String,
-      shopIds: (body['shop_ids'] as List<dynamic>).map((x) => x.toString()).toList(),
-    );
-    return SessionStore.load();
-  }
-
   Future<void> _finishQueuedSale(BuildContext context, CartModel cart) async {
     cart.clear();
     // Do not block cashier flow on a slow/failed refresh when offline.
@@ -97,6 +84,13 @@ class _CartScreenState extends State<CartScreen> {
 
   Future<void> _submit(BuildContext context, CartModel cart) async {
     if (cart.lines.isEmpty || _submitting) return;
+
+    if (!context.read<ShiftModel>().hasActiveShift) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Open a shift from the Home tab before processing sales.')),
+      );
+      return;
+    }
 
     final session = await SessionStore.load();
     if (session == null) {
@@ -178,28 +172,22 @@ class _CartScreenState extends State<CartScreen> {
     if (!context.mounted) return;
     setState(() => _submitting = true);
     try {
-      final api = InventoryApi(session.baseUrl);
-
-      Future<Map<String, dynamic>> doPush(SessionData s) {
-        final d = deviceIdFromAccessToken(s.accessToken) ?? deviceId;
-        return api.syncPush(
-          accessToken: s.accessToken,
-          deviceId: d,
-          idempotencyKey: idempotencyKey,
-          events: [event],
-          timeoutMs: _tender == 'cash' ? 2500 : null,
-        );
-      }
+      final auth = context.read<AuthenticatedApi>();
 
       late Map<String, dynamic> response;
       try {
-        response = await doPush(session);
+        response = await auth.run((api, s) {
+          final d = deviceIdFromAccessToken(s.accessToken) ?? deviceId;
+          return api.syncPush(
+            accessToken: s.accessToken,
+            deviceId: d,
+            idempotencyKey: idempotencyKey,
+            events: [event],
+            timeoutMs: _tender == 'cash' ? 2500 : null,
+          );
+        });
       } on ApiException catch (e) {
-        if (e.statusCode == 401) {
-          final next = await _refreshSessionIfNeeded(api, session);
-          if (next == null) rethrow;
-          response = await doPush(next);
-        } else if (_tender == 'cash' && e.statusCode >= 500) {
+        if (_tender == 'cash' && e.statusCode >= 500) {
           await OutboxService.enqueue(
             clientMutationId: clientMutationId,
             idempotencyKey: idempotencyKey,
@@ -297,6 +285,8 @@ class _CartScreenState extends State<CartScreen> {
       exponent: _currencyExponent,
       symbolOverride: _currencySymbolOverride,
     );
+
+    final hasShift = context.watch<ShiftModel>().hasActiveShift;
 
     return Scaffold(
       body: CustomScrollView(
@@ -497,7 +487,9 @@ class _CartScreenState extends State<CartScreen> {
       ),
       bottomNavigationBar: cart.lines.isEmpty
           ? null
-          : Container(
+          : !hasShift
+              ? const _NoShiftBar()
+              : Container(
               padding: EdgeInsets.fromLTRB(
                 CashierSpacing.gutter,
                 CashierSpacing.md,
@@ -577,6 +569,50 @@ class _CartScreenState extends State<CartScreen> {
                 ],
               ),
             ),
+    );
+  }
+}
+
+class _NoShiftBar extends StatelessWidget {
+  const _NoShiftBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        CashierSpacing.gutter,
+        CashierSpacing.md,
+        CashierSpacing.gutter,
+        CashierSpacing.md + MediaQuery.of(context).padding.bottom,
+      ),
+      decoration: BoxDecoration(
+        color: CashierColors.surfaceContainerLow.withValues(alpha: 0.96),
+        boxShadow: [
+          BoxShadow(
+            color: CashierColors.onSurface.withValues(alpha: 0.06),
+            blurRadius: 24,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.schedule_outlined, size: 32, color: CashierColors.onSurfaceVariant),
+          const SizedBox(height: CashierSpacing.sm),
+          Text(
+            'No active shift',
+            style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Open a shift from the Home tab before processing sales.',
+            style: theme.textTheme.bodySmall?.copyWith(color: CashierColors.onSurfaceVariant),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 }

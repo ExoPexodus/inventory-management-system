@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Device,
     Notification,
     PaymentAllocation,
     Product,
@@ -206,10 +207,14 @@ def apply_sale_completed(
                 },
             )
 
+    device_row = db.get(Device, device_id) if device_id else None
+    employee_id = device_row.employee_id if device_row else None
+
     txn = Transaction(
         tenant_id=tenant_id,
         shop_id=shop_id,
         device_id=device_id,
+        employee_id=employee_id,
         total_cents=grand_total,
         tax_cents=tax_cents,
         client_mutation_id=client_mutation_id,

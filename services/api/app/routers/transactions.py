@@ -43,6 +43,7 @@ class TransactionOut(BaseModel):
     created_at: datetime
     lines: list[TransactionLineOut]
     payments: list[PaymentOut]
+    cashier_name: str | None = None
 
 
 class TransactionListResponse(BaseModel):

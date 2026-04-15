@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import AdminUser, Shop, ShiftClosing
+from app.services.audit_service import write_audit
 
 router = APIRouter(prefix="/v1/admin/reconciliation", tags=["Admin Reconciliation"])
 
@@ -150,6 +151,7 @@ def resolve_reconciliation(
     resolution_line = f"\n[RESOLVED by {operator_email} on {timestamp}]: {body.resolution_notes}"
     shift.notes = (shift.notes or "") + resolution_line
 
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="resolve_reconciliation", resource_type="shift", resource_id=str(shift_id))
     db.commit()
     db.refresh(shift)
 
@@ -194,6 +196,7 @@ def approve_reconciliation(
 
     shift.reviewed_by = ctx.operator_id
     shift.reviewed_at = datetime.now(UTC)
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="approve_reconciliation", resource_type="shift", resource_id=str(shift_id))
     db.commit()
     db.refresh(shift)
 

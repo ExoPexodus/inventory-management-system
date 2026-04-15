@@ -99,6 +99,7 @@ class Tenant(Base):
     currency_conversion_rate: Mapped[Optional[float]] = mapped_column(nullable=True)
     offline_tier: Mapped[str] = mapped_column(String(32), default="strict")
     max_offline_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    employee_session_timeout_minutes: Mapped[int] = mapped_column(Integer, default=30)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     shops: Mapped[list[Shop]] = relationship(back_populates="tenant")
@@ -258,6 +259,9 @@ class Transaction(Base):
     )
     device_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("devices.id", ondelete="SET NULL"), nullable=True
+    )
+    employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
     )
     kind: Mapped[str] = mapped_column(String(32), default="sale")
     status: Mapped[str] = mapped_column(String(32), default="posted")

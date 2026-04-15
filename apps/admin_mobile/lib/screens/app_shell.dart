@@ -79,7 +79,7 @@ class AppShell extends StatelessWidget {
   final VoidCallback onLogout;
 
   Future<void> _logout(BuildContext context) async {
-    await SessionStore.clear();
+    await SessionStore.clearLogin();
     onLogout();
   }
 

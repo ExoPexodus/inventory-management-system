@@ -83,6 +83,26 @@ class AdminApi {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  static Future<Map<String, dynamic>> enroll({
+    required String baseUrl,
+    required String enrollmentToken,
+    required String deviceFingerprint,
+    required String platform,
+  }) async {
+    final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final res = await http.post(
+      Uri.parse('$base/v1/devices/enroll'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'enrollment_token': enrollmentToken,
+        'device_fingerprint': deviceFingerprint,
+        'platform': platform,
+      }),
+    );
+    if (res.statusCode >= 400) throw ApiException(res.statusCode, res.body);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   Future<bool> ping() async {
     try {
       final res = await http.get(_uri('/v1/health')).timeout(const Duration(seconds: 3));
@@ -91,6 +111,12 @@ class AdminApi {
       return false;
     }
   }
+
+  // ── Currency ─────────────────────────────────────────────────────────
+
+  /// Returns currency settings for the tenant: code, symbol, exponent.
+  Future<Map<String, dynamic>> getCurrencySettings() =>
+      _get('/v1/admin/tenant-settings/currency');
 
   // ── Analytics ────────────────────────────────────────────────────────
 

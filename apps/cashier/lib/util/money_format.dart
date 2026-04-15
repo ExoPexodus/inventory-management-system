@@ -1,3 +1,17 @@
+/// Returns the display symbol for the given currency code, respecting any
+/// tenant-configured override. Suitable for use as an input field prefix.
+String currencySymbol(String code, {String? symbolOverride}) {
+  if (symbolOverride != null && symbolOverride.isNotEmpty) return symbolOverride;
+  return _symbolForCode(code);
+}
+
+/// Converts a major-unit decimal amount (e.g. 47.50) to integer minor units
+/// (e.g. 4750 for exponent=2, 47 for exponent=0).
+int majorToMinorUnits(double major, int exponent) {
+  if (exponent <= 0) return major.round();
+  return (major * _pow10(exponent)).round();
+}
+
 String _symbolForCode(String code) {
   switch (code.toUpperCase()) {
     case 'USD':

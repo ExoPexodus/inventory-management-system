@@ -63,6 +63,7 @@ const ROOT_ROUTES = new Set([
   "overview",
   "inventory",
   "staff",
+  "team",
   "orders",
   "analytics",
   "suppliers",
@@ -81,7 +82,7 @@ const ROOT_ROUTES = new Set([
 const NAV = [
   { href: "/overview",        label: "Dashboard",       icon: "dashboard",       permission: null },
   { href: "/inventory",       label: "Inventory",       icon: "inventory_2",     permission: "inventory:read" },
-  { href: "/staff",           label: "Staff",           icon: "badge",           permission: "staff:read" },
+  { href: "/team",            label: "Team",            icon: "groups",          permission: "staff:read" },
   { href: "/orders",          label: "Orders",          icon: "receipt_long",    permission: "sales:read" },
   { href: "/analytics",       label: "Analytics",       icon: "analytics",       permission: "analytics:read" },
   { href: "/suppliers",       label: "Suppliers",       icon: "local_shipping",  permission: "procurement:read" },

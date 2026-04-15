@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'package:provider/provider.dart';
+
 import '../admin_tokens.dart';
 import '../models/analytics.dart';
+import '../models/currency.dart';
 import '../models/employee.dart';
 import '../services/admin_api.dart';
 import '../services/session_store.dart';
@@ -69,7 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
       });
     } on ApiException catch (e) {
       if (e.statusCode == 401) {
-        await SessionStore.clear();
+        await SessionStore.clearLogin();
         if (mounted) widget.onLogout();
         return;
       }
@@ -77,14 +80,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } catch (e) {
       if (mounted) setState(() { _error = 'Connection error. Pull to refresh.'; _loading = false; });
     }
-  }
-
-  String _formatMoney(int cents) {
-    final dollars = cents / 100.0;
-    if (dollars >= 1000) {
-      return '\$${(dollars / 1000).toStringAsFixed(1)}K';
-    }
-    return '\$${dollars.toStringAsFixed(2)}';
   }
 
   String _formatDelta(double? pct) {
@@ -105,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currency = context.watch<CurrencyModel>();
     final today = DateFormat('EEEE, MMMM d, y').format(DateTime.now());
     final summary = _summary;
     final recentSeries = _series.length > 6 ? _series.sublist(_series.length - 6) : _series;
@@ -210,7 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     AdminMetricCard(
                       title: 'Revenue Today',
-                      value: summary != null ? _formatMoney(summary.grossCents) : '--',
+                      value: summary != null ? currency.formatAbbreviated(summary.grossCents) : '--',
                       icon: Icons.attach_money_rounded,
                       trend: summary != null ? _formatDelta(summary.deltaPct) : null,
                       trendPositive: summary != null && (summary.deltaPct ?? 0) >= 0,
@@ -259,7 +255,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         child: RevenueBarChart(
                           points: recentSeries,
-                          formatValue: _formatMoney,
+                          formatValue: currency.formatAbbreviated,
                         ),
                       ),
                     ],

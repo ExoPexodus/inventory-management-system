@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
+from app.services.audit_service import write_audit
 from app.models import (
     Product,
     PurchaseOrder,
@@ -188,6 +189,7 @@ def create_purchase_order(
         created_by=ctx.operator_id,
     )
     db.add(po)
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_purchase_order", resource_type="purchase_order", resource_id=str(po.id))
     db.commit()
     db.refresh(po)
     return _build_po_out(po, db)
@@ -250,6 +252,7 @@ def patch_purchase_order(
         po.status = new_status
 
     po.updated_at = datetime.now(UTC)
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_purchase_order", resource_type="purchase_order", resource_id=str(po_id))
     db.commit()
     db.refresh(po)
     return _build_po_out(po, db)
@@ -316,6 +319,7 @@ def delete_purchase_order(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Only draft purchase orders can be deleted",
         )
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="delete_purchase_order", resource_type="purchase_order", resource_id=str(po_id))
     db.delete(po)
     db.commit()
 
@@ -351,6 +355,7 @@ def add_po_line(
     )
     db.add(line)
     po.updated_at = datetime.now(UTC)
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="add_po_line", resource_type="purchase_order", resource_id=str(po_id))
     db.commit()
     db.refresh(po)
     return _build_po_out(po, db)
@@ -385,6 +390,7 @@ def patch_po_line(
     if "unit_cost_cents" in patch:
         line.unit_cost_cents = patch["unit_cost_cents"]
     po.updated_at = datetime.now(UTC)
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_po_line", resource_type="purchase_order", resource_id=str(po_id))
     db.commit()
     db.refresh(po)
     return _build_po_out(po, db)
@@ -409,6 +415,7 @@ def delete_po_line(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Line not found")
     db.delete(line)
     po.updated_at = datetime.now(UTC)
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="delete_po_line", resource_type="purchase_order", resource_id=str(po_id))
     db.commit()
     db.refresh(po)
     return _build_po_out(po, db)

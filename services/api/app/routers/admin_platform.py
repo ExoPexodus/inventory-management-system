@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import Tenant
+from app.services.audit_service import write_audit
 
 router = APIRouter(prefix="/v1/admin", tags=["Admin Platform"])
 
@@ -84,6 +85,7 @@ def get_currency_settings(
 
 
 @router.patch("/tenant-settings/currency", response_model=CurrencySettingsOut, dependencies=[require_permission("settings:write")])
+
 def patch_currency_settings(
     body: PatchCurrencyBody,
     ctx: AdminAuthDep,
@@ -116,6 +118,7 @@ def patch_currency_settings(
             )
         tenant.currency_conversion_rate = body.conversion_rate
 
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_currency_settings", resource_type="tenant", resource_id=str(tenant_id))
     db.commit()
     db.refresh(tenant)
 
@@ -131,4 +134,57 @@ def patch_currency_settings(
             {"code": k, "symbol": v["symbol"], "name": v["name"], "exponent": v["exponent"]}
             for k, v in SUPPORTED_CURRENCIES.items()
         ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Device security settings
+# ---------------------------------------------------------------------------
+
+
+class DeviceSecurityOut(BaseModel):
+    max_offline_minutes: int
+    employee_session_timeout_minutes: int
+
+
+class PatchDeviceSecurityBody(BaseModel):
+    max_offline_minutes: int | None = Field(default=None, ge=1, le=1440)
+    employee_session_timeout_minutes: int | None = Field(default=None, ge=1, le=1440)
+
+
+@router.get("/tenant-settings/device-security", response_model=DeviceSecurityOut, dependencies=[require_permission("settings:read")])
+def get_device_security(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> DeviceSecurityOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return DeviceSecurityOut(
+        max_offline_minutes=tenant.max_offline_minutes,
+        employee_session_timeout_minutes=tenant.employee_session_timeout_minutes,
+    )
+
+
+@router.patch("/tenant-settings/device-security", response_model=DeviceSecurityOut, dependencies=[require_permission("settings:write")])
+def patch_device_security(
+    body: PatchDeviceSecurityBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> DeviceSecurityOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    if body.max_offline_minutes is not None:
+        tenant.max_offline_minutes = body.max_offline_minutes
+    if body.employee_session_timeout_minutes is not None:
+        tenant.employee_session_timeout_minutes = body.employee_session_timeout_minutes
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_device_security_settings", resource_type="tenant", resource_id=str(tenant_id))
+    db.commit()
+    db.refresh(tenant)
+    return DeviceSecurityOut(
+        max_offline_minutes=tenant.max_offline_minutes,
+        employee_session_timeout_minutes=tenant.employee_session_timeout_minutes,
     )

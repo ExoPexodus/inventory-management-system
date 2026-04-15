@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../admin_tokens.dart';
+import '../models/currency.dart';
 import '../models/transaction.dart';
 import '../services/admin_api.dart';
 import '../services/session_store.dart';
@@ -71,7 +73,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         _loadingMore = false;
       });
     } on ApiException catch (e) {
-      if (e.statusCode == 401) { await SessionStore.clear(); if (mounted) widget.onLogout(); return; }
+      if (e.statusCode == 401) { await SessionStore.clearLogin(); if (mounted) widget.onLogout(); return; }
       if (mounted) setState(() { _error = 'Failed to load (${e.statusCode})'; _loading = false; _loadingMore = false; });
     } catch (e) {
       if (mounted) setState(() { _error = 'Connection error'; _loading = false; _loadingMore = false; });
@@ -92,14 +94,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
     _load(append: true);
   }
 
-  String _formatMoney(int cents) {
-    final dollars = cents / 100.0;
-    return '\$${dollars.toStringAsFixed(2)}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final currency = context.watch<CurrencyModel>();
 
     return Scaffold(
       appBar: AppBar(
@@ -230,13 +228,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                 final tx = _transactions[i];
                                 return TransactionCard(
                                   transaction: tx,
-                                  formatMoney: _formatMoney,
+                                  formatMoney: currency.format,
                                   onTap: () => Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (_) => OrderDetailScreen(
                                         transaction: tx,
-                                        formatMoney: _formatMoney,
+                                        formatMoney: currency.format,
                                       ),
                                     ),
                                   ),

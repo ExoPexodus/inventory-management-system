@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import PaymentAllocation, Shop, ShiftClosing, Transaction
+from app.services.audit_service import write_audit
 
 router = APIRouter(prefix="/v1/admin/shifts", tags=["Admin Shifts"])
 
@@ -185,6 +186,7 @@ def open_shift(
         notes=body.notes,
     )
     db.add(shift)
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="open_shift", resource_type="shift", resource_id=str(body.shop_id))
     db.commit()
     db.refresh(shift)
     return _build_shift_out(db, shift, shop.name)
@@ -228,6 +230,7 @@ def close_shift(
     if ctx.operator_id:
         shift.closed_by = ctx.operator_id
 
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="close_shift", resource_type="shift", resource_id=str(shift_id))
     db.commit()
     db.refresh(shift)
 

@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart';
 
+import '../config/cashier_timings.dart';
+import '../services/authenticated_api.dart';
+import '../services/debug_log.dart';
 import '../services/inventory_api.dart';
 import '../services/outbox_service.dart';
 import '../services/session_store.dart';
@@ -17,9 +20,11 @@ class InventoryFeedModel extends ChangeNotifier {
   bool _loading = true;
   String? _error;
   SessionData? _session;
+  bool _employeeDeactivated = false;
 
   List<ProductRow> get products => List.unmodifiable(_products);
   String? get policyTier => _policyTier;
+  bool get employeeDeactivated => _employeeDeactivated;
   String get currencyCode => _currencyCode;
   int get currencyExponent => _currencyExponent;
   String? get currencySymbolOverride => _currencySymbolOverride;
@@ -36,12 +41,14 @@ class InventoryFeedModel extends ChangeNotifier {
 
   /// Full sync pull; updates [CatalogModel] and storage; flushes outbox.
   Future<void> refresh({
+    required AuthenticatedApi auth,
     required SyncStateModel sync,
     required CatalogModel catalog,
   }) async {
     final s = await SessionStore.load();
     _session = s;
     if (s == null) {
+      DebugLog.log('SYNC', 'refresh aborted: no session');
       _loading = false;
       notifyListeners();
       return;
@@ -51,34 +58,15 @@ class InventoryFeedModel extends ChangeNotifier {
     _loading = true;
     notifyListeners();
 
+    DebugLog.log('SYNC', 'pull start base=${s.baseUrl} shop=${s.defaultShopId}');
     try {
-      final api = InventoryApi(s.baseUrl);
-      Map<String, dynamic> data;
-      try {
-        data = await api.syncPull(
-          accessToken: s.accessToken,
-          shopId: s.defaultShopId,
-        );
-      } on ApiException catch (e) {
-        if (e.statusCode == 401) {
-          final body = await api.refresh(refreshToken: s.refreshToken);
-          await SessionStore.save(
-            baseUrl: s.baseUrl,
-            accessToken: body['access_token'] as String,
-            refreshToken: body['refresh_token'] as String,
-            tenantId: body['tenant_id'] as String,
-            shopIds: (body['shop_ids'] as List<dynamic>).map((x) => x.toString()).toList(),
-          );
-          _session = await SessionStore.load();
-          final s2 = _session!;
-          data = await api.syncPull(
-            accessToken: s2.accessToken,
-            shopId: s2.defaultShopId,
-          );
-        } else {
-          rethrow;
-        }
-      }
+      final data = await auth.run((api, session) => api.syncPull(
+            accessToken: session.accessToken,
+            shopId: session.defaultShopId,
+          ));
+      DebugLog.log('SYNC', 'pull ok');
+      // Keep _session in sync in case auth.run refreshed tokens mid-call.
+      _session = await SessionStore.load();
       final products = (data['products'] as List<dynamic>).cast<Map<String, dynamic>>();
       final snaps = (data['stock_snapshots'] as List<dynamic>).cast<Map<String, dynamic>>();
       final qtyByProduct = <String, int>{};
@@ -92,16 +80,26 @@ class InventoryFeedModel extends ChangeNotifier {
       }
       final policy = data['policy'] as Map<String, dynamic>?;
       final currency = data['currency'] as Map<String, dynamic>?;
+      final employeeActive = data['employee_active'] as bool?;
       _products = rows;
       _policyTier = policy?['tier'] as String?;
       _currencyCode = (currency?['code'] as String?) ?? 'USD';
       _currencyExponent = (currency?['exponent'] as int?) ?? 2;
       _currencySymbolOverride = currency?['symbol_override'] as String?;
       _shopDefaultTaxRateBps = (data['shop_default_tax_rate_bps'] as num?)?.toInt() ?? 0;
+      // employeeActive == false means the linked employee was deactivated in admin.
+      _employeeDeactivated = employeeActive == false;
       _loading = false;
       notifyListeners();
 
       await SessionStore.setLastSyncNow();
+      // Persist policy limits so the app can enforce them after a cold start.
+      final maxOffline = (policy?['max_offline_minutes'] as num?)?.toInt() ??
+          CashierTimings.defaultOfflineLimitMinutes;
+      final sessionTimeout = (policy?['employee_session_timeout_minutes'] as num?)?.toInt() ??
+          CashierTimings.defaultSessionTimeoutMinutes;
+      await SessionStore.saveMaxOfflineMinutes(maxOffline);
+      await SessionStore.saveSessionTimeoutMinutes(sessionTimeout);
       await SessionStore.setCurrency(
         code: _currencyCode,
         exponent: _currencyExponent,
@@ -109,11 +107,10 @@ class InventoryFeedModel extends ChangeNotifier {
       );
       catalog.applyFromProducts(rows);
       await sync.refreshFromStorage();
-      final active = await SessionStore.load();
-      if (active != null) {
-        await OutboxService.flush(InventoryApi(active.baseUrl), sync);
-      }
-    } catch (e) {
+      await OutboxService.flush(auth, sync);
+    } catch (e, st) {
+      DebugLog.log('SYNC', 'refresh error: $e');
+      debugPrint('$st');
       _error = e.toString();
       _loading = false;
       notifyListeners();
@@ -135,6 +132,7 @@ class InventoryFeedModel extends ChangeNotifier {
     _loading = false;
     _error = null;
     _session = null;
+    _employeeDeactivated = false;
     notifyListeners();
   }
 }

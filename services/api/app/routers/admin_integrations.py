@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import ApiToken, Integration, Product, WebhookDelivery
+from app.services.audit_service import write_audit
 
 router = APIRouter(prefix="/v1/admin/integrations", tags=["Admin Integrations"])
 
@@ -148,6 +149,8 @@ def create_webhook(
         status="active",
     )
     db.add(integ)
+    db.flush()
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_webhook", resource_type="webhook", resource_id=str(integ.id))
     db.commit()
     db.refresh(integ)
     return _webhook_to_out(integ)
@@ -164,6 +167,7 @@ def delete_webhook(
     if integ is None or integ.tenant_id != tenant_id or integ.type != "webhook":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Webhook not found")
     integ.status = "revoked"
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="revoke_webhook", resource_type="webhook", resource_id=str(webhook_id))
     db.commit()
 
 
@@ -253,6 +257,8 @@ def create_api_token(
         created_by=ctx.operator_id,
     )
     db.add(tok)
+    db.flush()
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_api_token", resource_type="api_token", resource_id=str(tok.id))
     db.commit()
     db.refresh(tok)
     out = _token_to_out(tok)
@@ -270,6 +276,7 @@ def revoke_api_token(
     if tok is None or tok.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Token not found")
     tok.revoked_at = datetime.now(UTC)
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="revoke_api_token", resource_type="api_token", resource_id=str(token_id))
     db.commit()
 
 
@@ -382,5 +389,6 @@ async def import_products_csv(
             db.add(prod)
             inserted += 1
 
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="import_products_csv", resource_type="product", after={"inserted": inserted, "updated": updated})
     db.commit()
     return ImportResult(inserted=inserted, updated=updated, errors=[])

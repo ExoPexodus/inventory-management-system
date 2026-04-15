@@ -14,6 +14,7 @@ from app.auth.jwt import create_operator_access_token
 from app.db.admin_deps_db import get_db_admin
 from app.db.session import get_db
 from app.models import AdminUser, Device, EnrollmentToken, Product, Shop, ShopProductTax, Tenant
+from app.services.audit_service import write_audit
 from app.services.enrollment import hash_token
 from app.services.permission_service import get_role_permissions
 
@@ -75,6 +76,9 @@ def admin_login(
     except ValueError:
         ok = False
     if not ok:
+        if user.tenant_id:
+            write_audit(db, tenant_id=user.tenant_id, operator_id=user.id, action="login_failure", resource_type="auth")
+            db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     if user.tenant_id is None:
         raise HTTPException(
@@ -91,6 +95,8 @@ def admin_login(
     perms: list[str] = []
     if user.role_id is not None:
         perms = sorted(get_role_permissions(db, user.role_id))
+    write_audit(db, tenant_id=user.tenant_id, operator_id=user.id, action="login_success", resource_type="auth")
+    db.commit()
     access, ttl = create_operator_access_token(
         operator_id=user.id,
         tenant_id=user.tenant_id,
@@ -207,6 +213,7 @@ def update_tenant_currency(
     tenant.default_currency_code = body.code.upper()
     tenant.currency_exponent = body.exponent
     tenant.currency_symbol_override = body.symbol_override
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_tenant_currency", resource_type="tenant", resource_id=str(tenant_id))
     db.commit()
     return UpdateTenantCurrencyResponse(
         tenant_id=tenant.id,
@@ -250,6 +257,7 @@ def mint_enrollment_token(
             expires_at=expires_at,
         )
     )
+    write_audit(db, tenant_id=body.tenant_id, operator_id=ctx.operator_id, action="create_enrollment_token", resource_type="enrollment_token", resource_id=str(body.shop_id))
     db.commit()
     return MintEnrollmentResponse(enrollment_token=raw, expires_at=expires_at)
 
@@ -317,6 +325,7 @@ def update_shop_default_tax_rate(
     if shop.tenant_id != operator_tenant:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cross-tenant access is forbidden")
     shop.default_tax_rate_bps = body.default_tax_rate_bps
+    write_audit(db, tenant_id=operator_tenant, operator_id=ctx.operator_id, action="update_shop_default_tax", resource_type="shop", resource_id=str(shop_id))
     db.commit()
     return UpdateShopDefaultTaxResponse(shop_id=shop.id, default_tax_rate_bps=shop.default_tax_rate_bps)
 
@@ -405,6 +414,7 @@ def upsert_shop_product_tax(
             effective_tax_rate_bps=bps,
         )
         db.add(row)
+    write_audit(db, tenant_id=shop.tenant_id, operator_id=ctx.operator_id, action="upsert_product_tax", resource_type="shop_product_tax", resource_id=f"{shop_id}/{product_id}")
     db.commit()
     db.refresh(row)
     return ShopProductTaxOut(

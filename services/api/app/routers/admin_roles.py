@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import AdminUser, Permission, Role, RolePermission
+from app.services.audit_service import write_audit
 from app.services.permission_service import invalidate_role_cache
 
 router = APIRouter(prefix="/v1/admin/roles", tags=["Admin Roles"])
@@ -149,6 +150,7 @@ def create_role(
     for perm in perm_rows:
         db.add(RolePermission(role_id=role.id, permission_id=perm.id))
 
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_role", resource_type="role", resource_id=str(role.id))
     db.commit()
     db.refresh(role)
     return _role_out(role, db)
@@ -191,6 +193,7 @@ def update_role(
         for perm in perm_rows:
             db.add(RolePermission(role_id=role.id, permission_id=perm.id))
 
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_role", resource_type="role", resource_id=str(role_id))
     db.commit()
     db.refresh(role)
     invalidate_role_cache(role_id)
@@ -224,6 +227,7 @@ def delete_role(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Cannot delete role: {assigned_count} operator(s) are assigned to it. Reassign them first.",
         )
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="delete_role", resource_type="role", resource_id=str(role_id))
     db.delete(role)
     db.commit()
     invalidate_role_cache(role_id)

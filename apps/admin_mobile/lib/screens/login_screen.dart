@@ -6,9 +6,16 @@ import '../services/admin_api.dart';
 import '../services/session_store.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onSuccess});
+  const LoginScreen({
+    super.key,
+    required this.baseUrl,
+    required this.onSuccess,
+    required this.onResetDevice,
+  });
 
+  final String baseUrl;
   final Future<void> Function() onSuccess;
+  final VoidCallback onResetDevice;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -16,7 +23,6 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _urlCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _busy = false;
@@ -24,21 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _loadSavedUrl();
-  }
-
-  Future<void> _loadSavedUrl() async {
-    final saved = await SessionStore.getSavedBaseUrl();
-    if (saved != null && mounted) {
-      _urlCtrl.text = saved;
-    }
-  }
-
-  @override
   void dispose() {
-    _urlCtrl.dispose();
     _emailCtrl.dispose();
     _passwordCtrl.dispose();
     super.dispose();
@@ -52,7 +44,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
     try {
       final data = await AdminApi.login(
-        baseUrl: _urlCtrl.text.trim(),
+        baseUrl: widget.baseUrl,
         email: _emailCtrl.text.trim(),
         password: _passwordCtrl.text,
       );
@@ -65,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await SessionStore.save(AdminSession(
         token: token,
         email: _emailCtrl.text.trim(),
-        baseUrl: _urlCtrl.text.trim(),
+        baseUrl: widget.baseUrl,
         role: role,
         permissions: permissions,
       ));
@@ -77,7 +69,7 @@ class _LoginScreenState extends State<LoginScreen> {
             : 'Server error (${e.statusCode})';
       });
     } catch (e) {
-      setState(() => _error = 'Could not connect. Check the URL.');
+      setState(() => _error = 'Could not connect to server.');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -97,7 +89,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SizedBox(height: 48),
-                  // Logo / brand
                   Container(
                     width: 64,
                     height: 64,
@@ -105,31 +96,22 @@ class _LoginScreenState extends State<LoginScreen> {
                       color: AdminColors.primary,
                       borderRadius: BorderRadius.circular(AdminRadius.quickTile),
                     ),
-                    child: const Icon(Icons.store_rounded, color: Colors.white, size: 32),
+                    child: const Icon(Icons.store_rounded,
+                        color: Colors.white, size: 32),
                   ),
                   const SizedBox(height: 24),
                   Text(
                     'Admin Dashboard',
-                    style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
+                    style: theme.textTheme.headlineSmall
+                        ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     'Sign in to manage your business',
-                    style: theme.textTheme.bodyMedium?.copyWith(color: AdminColors.onSurfaceVariant),
+                    style: theme.textTheme.bodyMedium
+                        ?.copyWith(color: AdminColors.onSurfaceVariant),
                   ),
                   const SizedBox(height: 32),
-                  TextFormField(
-                    controller: _urlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'API Base URL',
-                      hintText: 'http://192.168.1.x:8001',
-                      prefixIcon: Icon(Icons.dns_rounded),
-                    ),
-                    keyboardType: TextInputType.url,
-                    autocorrect: false,
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter the API URL' : null,
-                  ),
-                  const SizedBox(height: AdminSpacing.md),
                   TextFormField(
                     controller: _emailCtrl,
                     decoration: const InputDecoration(
@@ -138,7 +120,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     keyboardType: TextInputType.emailAddress,
                     autocorrect: false,
-                    validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter your email' : null,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? 'Enter your email' : null,
                   ),
                   const SizedBox(height: AdminSpacing.md),
                   TextFormField(
@@ -147,24 +130,31 @@ class _LoginScreenState extends State<LoginScreen> {
                       labelText: 'Password',
                       prefixIcon: const Icon(Icons.lock_outline_rounded),
                       suffixIcon: IconButton(
-                        icon: Icon(_obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
-                        onPressed: () => setState(() => _obscure = !_obscure),
+                        icon: Icon(_obscure
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined),
+                        onPressed: () =>
+                            setState(() => _obscure = !_obscure),
                       ),
                     ),
                     obscureText: _obscure,
-                    validator: (v) => (v == null || v.isEmpty) ? 'Enter your password' : null,
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Enter your password' : null,
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: AdminSpacing.md),
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AdminColors.errorContainer.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(AdminRadius.chip),
+                        color:
+                            AdminColors.errorContainer.withValues(alpha: 0.4),
+                        borderRadius:
+                            BorderRadius.circular(AdminRadius.chip),
                       ),
                       child: Text(
                         _error!,
-                        style: TextStyle(color: AdminColors.onErrorContainer),
+                        style:
+                            TextStyle(color: AdminColors.onErrorContainer),
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -176,9 +166,21 @@ class _LoginScreenState extends State<LoginScreen> {
                         ? const SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
                           )
                         : const Text('Sign in'),
+                  ),
+                  const SizedBox(height: AdminSpacing.lg),
+                  Center(
+                    child: TextButton(
+                      onPressed: widget.onResetDevice,
+                      child: Text(
+                        'Switch device',
+                        style: theme.textTheme.bodySmall
+                            ?.copyWith(color: AdminColors.onSurfaceVariant),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 48),
                 ],

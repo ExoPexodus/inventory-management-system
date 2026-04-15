@@ -251,7 +251,7 @@ export default function OrdersPage() {
       <section className="overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-sm">
         <div className="border-b border-outline-variant/10 px-6 py-4">
           <h3 className="font-headline text-lg font-bold text-on-surface">Transaction ledger</h3>
-          <p className="mt-0.5 text-sm text-on-surface-variant">Immutable audit view — amounts in USD.</p>
+          <p className="mt-0.5 text-sm text-on-surface-variant">Immutable audit view — amounts in {currency.code}.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">

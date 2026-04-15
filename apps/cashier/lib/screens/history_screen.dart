@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import '../cashier_tokens.dart';
-import '../services/inventory_api.dart';
-import '../services/session_store.dart' show SessionData, SessionStore;
+import '../services/authenticated_api.dart';
+import '../services/session_store.dart' show SessionStore;
 import '../util/datetime_format.dart';
 import '../util/money_format.dart';
 import '../widgets/archive_section_header.dart';
@@ -53,54 +54,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
       if (_nextCursor == null || _loadingMore) return;
       setState(() => _loadingMore = true);
     }
-    final s = await SessionStore.load();
-    if (s == null) {
-      setState(() {
-        _loading = false;
-        _loadingMore = false;
-        _error = 'No session';
-      });
-      return;
-    }
-    final api = InventoryApi(s.baseUrl);
+    final auth = context.read<AuthenticatedApi>();
     try {
       _currencyCode = await SessionStore.getCurrencyCode();
       _currencyExponent = await SessionStore.getCurrencyExponent();
       _currencySymbolOverride = await SessionStore.getCurrencySymbolOverride();
 
-      Future<TransactionListPage> fetch(SessionData sess, {String? cursor}) {
-        return api.listTransactions(
-          accessToken: sess.accessToken,
-          shopId: sess.defaultShopId,
-          limit: 30,
-          cursor: cursor,
-          status: _statusFilter,
-          q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
-        );
-      }
-
-      SessionData active = s;
-      TransactionListPage page;
-      try {
-        page = await fetch(active, cursor: reset ? null : _nextCursor);
-      } on ApiException catch (e) {
-        if (e.statusCode == 401) {
-          final body = await api.refresh(refreshToken: s.refreshToken);
-          await SessionStore.save(
-            baseUrl: s.baseUrl,
-            accessToken: body['access_token'] as String,
-            refreshToken: body['refresh_token'] as String,
-            tenantId: body['tenant_id'] as String,
-            shopIds: (body['shop_ids'] as List<dynamic>).map((x) => x.toString()).toList(),
-          );
-          final s2 = await SessionStore.load();
-          if (s2 == null) rethrow;
-          active = s2;
-          page = await fetch(active, cursor: reset ? null : _nextCursor);
-        } else {
-          rethrow;
-        }
-      }
+      final cursor = reset ? null : _nextCursor;
+      final page = await auth.run((api, sess) => api.listTransactions(
+            accessToken: sess.accessToken,
+            shopId: sess.defaultShopId,
+            limit: 30,
+            cursor: cursor,
+            status: _statusFilter,
+            q: _searchCtrl.text.trim().isEmpty ? null : _searchCtrl.text.trim(),
+          ));
       if (!mounted) return;
       setState(() {
         if (reset) {

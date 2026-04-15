@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../cashier_tokens.dart';
 import '../models/sync_state_model.dart';
+import '../services/authenticated_api.dart';
 import '../services/inventory_api.dart';
 import '../services/outbox_service.dart';
 import '../services/session_store.dart';
@@ -55,9 +56,8 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
     setState(() => _flushing = true);
     try {
       final sync = context.read<SyncStateModel>();
-      final s = await SessionStore.load();
-      if (s == null) return;
-      await OutboxService.flush(InventoryApi(s.baseUrl), sync);
+      final auth = context.read<AuthenticatedApi>();
+      await OutboxService.flush(auth, sync);
       await sync.refreshFromStorage();
       await _refreshConnectivity();
       if (!mounted) return;

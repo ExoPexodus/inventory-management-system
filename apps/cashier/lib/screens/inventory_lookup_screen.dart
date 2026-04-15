@@ -7,6 +7,7 @@ import '../models/cart_model.dart';
 import '../models/catalog_model.dart';
 import '../models/inventory_feed_model.dart';
 import '../models/sync_state_model.dart';
+import '../services/authenticated_api.dart';
 import '../services/inventory_api.dart';
 import '../util/money_format.dart';
 import '../widgets/archive_section_header.dart';
@@ -122,6 +123,7 @@ class _InventoryLookupScreenState extends State<InventoryLookupScreen> {
   Future<void> _pull() async {
     final feed = context.read<InventoryFeedModel>();
     await feed.refresh(
+      auth: context.read<AuthenticatedApi>(),
       sync: context.read<SyncStateModel>(),
       catalog: context.read<CatalogModel>(),
     );

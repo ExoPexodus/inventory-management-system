@@ -6,6 +6,8 @@ import '../cashier_tokens.dart';
 import '../models/cart_model.dart';
 import '../models/inventory_feed_model.dart';
 import '../models/sync_state_model.dart';
+import '../models/shift_model.dart';
+import '../services/authenticated_api.dart';
 import '../services/inventory_api.dart';
 import '../services/session_store.dart';
 import '../util/datetime_format.dart';
@@ -85,55 +87,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadDashData() async {
-    final s = await SessionStore.load();
-    if (s == null || !mounted) return;
+    if (!mounted) return;
     setState(() => _dashLoading = true);
-    final api = InventoryApi(s.baseUrl);
+    final auth = context.read<AuthenticatedApi>();
     try {
-      Future<TransactionListPage> tx() => api.listTransactions(
+      final page = await auth.run((api, s) => api.listTransactions(
             accessToken: s.accessToken,
             shopId: s.defaultShopId,
             limit: 5,
-          );
-
-      Future<Map<String, dynamic>> sh() => api.shiftSummary(
+          ));
+      final shiftBody = await auth.run((api, s) => api.shiftSummary(
             accessToken: s.accessToken,
             shopId: s.defaultShopId,
-          );
-
-      late TransactionListPage page;
-      late Map<String, dynamic> shiftBody;
-      Map<String, dynamic>? activeShift;
-      try {
-        page = await tx();
-        shiftBody = await sh();
-        activeShift = await api.getActiveShift(accessToken: s.accessToken);
-      } on ApiException catch (e) {
-        if (e.statusCode == 401) {
-          final body = await api.refresh(refreshToken: s.refreshToken);
-          await SessionStore.save(
-            baseUrl: s.baseUrl,
-            accessToken: body['access_token'] as String,
-            refreshToken: body['refresh_token'] as String,
-            tenantId: body['tenant_id'] as String,
-            shopIds: (body['shop_ids'] as List<dynamic>).map((x) => x.toString()).toList(),
-          );
-          final s2 = await SessionStore.load();
-          if (s2 == null) rethrow;
-          page = await api.listTransactions(
-            accessToken: s2.accessToken,
-            shopId: s2.defaultShopId,
-            limit: 5,
-          );
-          shiftBody = await api.shiftSummary(
-            accessToken: s2.accessToken,
-            shopId: s2.defaultShopId,
-          );
-          activeShift = await api.getActiveShift(accessToken: s2.accessToken);
-        } else {
-          rethrow;
-        }
-      }
+          ));
+      final activeShift =
+          await auth.run((api, s) => api.getActiveShift(accessToken: s.accessToken));
       if (!mounted) return;
       setState(() {
         _recentTx = page.items;
@@ -141,6 +109,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _activeShift = activeShift;
         _dashLoading = false;
       });
+      // Publish shift state so CartScreen can gate checkout.
+      if (mounted) context.read<ShiftModel>().update(activeShift);
     } catch (_) {
       if (mounted) setState(() => _dashLoading = false);
     }

@@ -20,6 +20,7 @@ from app.config import settings
 from app.db.admin_deps_db import get_db_admin
 from app.db.session import get_db
 from app.models import Employee, EnrollmentToken, Shop, TenantEmailConfig
+from app.services.audit_service import write_audit
 from app.services.email_service import decrypt_secret, encrypt_secret, send_tenant_email
 from app.services.enrollment import hash_token
 
@@ -287,10 +288,12 @@ def create_employee(
     )
     db.add(row)
     try:
-        db.commit()
+        db.flush()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee email already exists") from None
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_employee", resource_type="employee", resource_id=str(row.id))
+    db.commit()
     db.refresh(row)
     return EmployeeOut(
         id=row.id,
@@ -354,6 +357,7 @@ def patch_employee(
         row.shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=patch["shop_id"])
     if "is_active" in patch and patch["is_active"] is not None:
         row.is_active = patch["is_active"]
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_employee", resource_type="employee", resource_id=str(employee_id))
     try:
         db.commit()
     except IntegrityError:
@@ -385,6 +389,7 @@ def delete_employee(
     tenant_id = _require_operator_tenant(ctx)
     row = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
     row.is_active = False
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="deactivate_employee", resource_type="employee", resource_id=str(employee_id))
     db.commit()
 
 
@@ -397,6 +402,7 @@ def reactivate_employee(
     tenant_id = _require_operator_tenant(ctx)
     row = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
     row.is_active = True
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="reactivate_employee", resource_type="employee", resource_id=str(employee_id))
     db.commit()
     return EmployeeOut(
         id=row.id,
@@ -453,6 +459,7 @@ def invite_employee(
             ),
         )
         email_sent = True
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="invite_employee", resource_type="employee", resource_id=str(employee_id))
     db.commit()
     return InviteEmployeeResponse(
         employee_id=employee.id,
@@ -504,6 +511,7 @@ def re_enroll_employee(
             ),
         )
         email_sent = True
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="re_enroll_employee", resource_type="employee", resource_id=str(employee_id))
     db.commit()
     return InviteEmployeeResponse(
         employee_id=employee.id,
@@ -526,6 +534,7 @@ def reset_employee_credentials(
     row = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
     row.credential_type = body.credential_type
     row.credential_hash = _hash_credential(body.credential.strip())
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="reset_credentials", resource_type="employee", resource_id=str(employee_id))
     db.commit()
     db.refresh(row)
     return EmployeeOut(
@@ -550,6 +559,19 @@ def employee_login(
     auth: Annotated[DeviceAuth, Depends(get_device_auth)],
     db: Annotated[Session, Depends(get_db)],
 ) -> EmployeeLoginResponse:
+    # First check if this device has a deactivated employee linked (before filtering by is_active).
+    deactivated_stmt = select(Employee).where(
+        Employee.tenant_id == auth.tenant_id,
+        Employee.device_id == auth.device_id,
+        Employee.is_active.is_(False),
+    )
+    if body.employee_id is not None:
+        deactivated_stmt = deactivated_stmt.where(Employee.id == body.employee_id)
+    if body.email is not None:
+        deactivated_stmt = deactivated_stmt.where(Employee.email == str(body.email).strip().lower())
+    if db.execute(deactivated_stmt).scalar_one_or_none() is not None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
+
     stmt = select(Employee).where(
         Employee.tenant_id == auth.tenant_id,
         Employee.device_id == auth.device_id,
@@ -618,6 +640,7 @@ def put_tenant_email_settings(
     row.from_email = str(body.from_email).strip().lower()
     row.from_name = body.from_name.strip() if body.from_name else None
     row.is_active = body.is_active
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_email_settings", resource_type="tenant_email_config")
     db.commit()
     db.refresh(row)
     return TenantEmailConfigOut(

@@ -159,7 +159,7 @@ export default function ShiftsPage() {
     if (!closeShift) return;
     const dollars = parseFloat(cashCountStr);
     if (isNaN(dollars) || dollars < 0) { setCloseErr("Enter a valid cash amount"); return; }
-    const cents = Math.round(dollars * 100);
+    const cents = Math.round(dollars * Math.pow(10, currency.exponent));
     setCloseSaving(true);
     setCloseErr(null);
     const r = await fetch(`/api/ims/v1/admin/shifts/${closeShift.id}/close`, {
@@ -368,7 +368,7 @@ export default function ShiftsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-on-surface">
-                  Cash counted (USD)
+                  Cash counted ({currency.code})
                   <TextInput
                     type="number"
                     min="0"
