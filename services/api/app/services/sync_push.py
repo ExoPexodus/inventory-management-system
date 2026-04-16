@@ -1,13 +1,14 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+import uuid
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Device,
+    Employee,
     Notification,
     PaymentAllocation,
     Product,
@@ -207,8 +208,13 @@ def apply_sale_completed(
                 },
             )
 
-    device_row = db.get(Device, device_id) if device_id else None
-    employee_id = device_row.employee_id if device_row else None
+    employee_id: uuid.UUID | None = None
+    if device_id is not None:
+        emp_row = db.execute(
+            select(Employee).where(Employee.device_id == device_id)
+        ).scalar_one_or_none()
+        if emp_row is not None:
+            employee_id = emp_row.id
 
     txn = Transaction(
         tenant_id=tenant_id,
