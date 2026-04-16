@@ -86,6 +86,13 @@ def _upsert_cache(db: Session, tenant_id: UUID, data: dict) -> TenantLicenseCach
     period_end = data.get("current_period_end")
     cache.current_period_end = datetime.fromisoformat(period_end) if period_end else None
 
+    # Sync download_token onto the Tenant row so admin-web can use it
+    download_token = data.get("download_token")
+    if download_token:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant and tenant.download_token != download_token:
+            tenant.download_token = download_token
+
     db.flush()
     return cache
 

@@ -42,6 +42,7 @@ class LicenseResponse(BaseModel):
     current_period_end: str | None
     grace_period_days: int
     is_in_grace_period: bool
+    download_token: str | None = None
 
 
 def _verify_hmac(request: Request, tenant_id: UUID) -> None:

@@ -189,6 +189,7 @@ def build_license_state(db: Session, tenant_id: UUID) -> dict | None:
     if sub is None:
         return None
 
+    tenant = db.get(PlatformTenant, tenant_id)
     plan = db.get(Plan, sub.plan_id)
 
     # Active addons
@@ -230,6 +231,7 @@ def build_license_state(db: Session, tenant_id: UUID) -> dict | None:
         "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
         "grace_period_days": sub.grace_period_days,
         "is_in_grace_period": is_in_grace,
+        "download_token": tenant.download_token if tenant else None,
     }
 
 

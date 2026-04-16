@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/ui/primitives";
 
 type DownloadInfo = {
   download_token: string | null;
-  download_url_template: string;
+  download_base_url: string | null;
 };
 
 function AppCard({ name, icon, description, downloadUrl }: { name: string; icon: string; description: string; downloadUrl: string | null }) {
@@ -59,9 +59,7 @@ export default function DownloadsPage() {
     void load();
   }, []);
 
-  const publicUrl = info?.download_token
-    ? `${window.location.origin}/downloads/${info.download_token}`
-    : null;
+  const publicUrl = info?.download_base_url ?? null;
 
   const handleCopy = () => {
     if (publicUrl) {
@@ -78,23 +76,16 @@ export default function DownloadsPage() {
         title="App Downloads"
         subtitle="Share the download link with your team so they can install the mobile apps."
         action={
-          <Link
-            href="/billing"
-            className="inline-flex items-center gap-2 rounded-lg border border-outline-variant/20 bg-surface-container px-5 py-2.5 text-sm font-semibold text-on-surface transition hover:bg-surface-container-high"
-          >
-            <span className="material-symbols-outlined text-lg">arrow_back</span>
-            Back to Billing
+          <Link href="/billing" className="inline-flex items-center gap-2 rounded-lg border border-outline-variant/20 bg-surface-container px-5 py-2.5 text-sm font-semibold text-on-surface transition hover:bg-surface-container-high">
+            <span className="material-symbols-outlined text-lg">arrow_back</span>Back to Billing
           </Link>
         }
       />
 
       {loading ? (
-        <div className="flex justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
+        <div className="flex justify-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
       ) : (
         <>
-          {/* Share link section */}
           {publicUrl ? (
             <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Public download link</p>
@@ -102,14 +93,10 @@ export default function DownloadsPage() {
                 Share this link with your team. No login required — anyone with the link can download the apps.
               </p>
               <div className="mt-4 flex gap-2">
-                <div className="flex-1 rounded-lg border border-outline-variant/20 bg-surface-container px-4 py-2.5 font-mono text-sm text-on-surface">
+                <div className="flex-1 overflow-x-auto rounded-lg border border-outline-variant/20 bg-surface-container px-4 py-2.5 font-mono text-sm text-on-surface">
                   {publicUrl}
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-outline-variant/20 bg-surface-container px-4 py-2.5 text-sm font-semibold text-on-surface transition hover:bg-surface-container-high"
-                >
+                <button type="button" onClick={handleCopy} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-outline-variant/20 bg-surface-container px-4 py-2.5 text-sm font-semibold text-on-surface transition hover:bg-surface-container-high">
                   <span className="material-symbols-outlined text-lg">{copied ? "check" : "content_copy"}</span>
                   {copied ? "Copied!" : "Copy"}
                 </button>
@@ -118,13 +105,10 @@ export default function DownloadsPage() {
           ) : (
             <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-8 text-center shadow-sm">
               <span className="material-symbols-outlined text-4xl text-on-surface-variant">link_off</span>
-              <p className="mt-2 text-sm text-on-surface-variant">
-                No download link configured. Contact support to set up app distribution.
-              </p>
+              <p className="mt-2 text-sm text-on-surface-variant">Download link will be available once your subscription is synced. Please refresh in a few minutes.</p>
             </section>
           )}
 
-          {/* App cards */}
           <section>
             <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Available apps</h3>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -132,13 +116,13 @@ export default function DownloadsPage() {
                 name="Cashier POS"
                 icon="point_of_sale"
                 description="Offline-first point-of-sale app for your staff. Handles sales, inventory lookup, and shift management."
-                downloadUrl={publicUrl ? `${publicUrl}` : null}
+                downloadUrl={publicUrl ? `${publicUrl}/cashier/latest` : null}
               />
               <AppCard
                 name="Admin Mobile"
                 icon="admin_panel_settings"
                 description="Mobile companion for store owners. View orders, analytics, and manage staff on the go."
-                downloadUrl={publicUrl ? `${publicUrl}` : null}
+                downloadUrl={publicUrl ? `${publicUrl}/admin_mobile/latest` : null}
               />
             </div>
           </section>
