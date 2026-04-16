@@ -220,19 +220,15 @@ export default function TenantDetailPage() {
 
       {/* Change plan modal */}
       {showChangePlan && sub ? (
-        <Modal title="Change plan" onClose={() => setShowChangePlan(false)}>
-          <div className="space-y-3">
-            {plans.map(p => (
-              <button key={p.id} onClick={() => { setShowChangePlan(false); alert("Plan change requires creating a new subscription. Cancel the current one first, then create a new one with the desired plan."); }} className={`w-full rounded-lg border p-4 text-left transition ${p.codename === sub.plan_codename ? "border-primary/30 bg-primary/5" : "border-outline-variant/10 hover:bg-surface-container-high"}`}>
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold">{p.display_name}</span>
-                  {p.codename === sub.plan_codename ? <Badge text="Current" color="bg-primary text-on-primary" /> : null}
-                </div>
-                <p className="mt-1 text-xs text-on-surface-variant">{fmtPrice(p.base_price_cents, p.currency_code)}/mo &middot; {p.max_shops} shops &middot; {p.max_employees} emp</p>
-              </button>
-            ))}
-          </div>
-        </Modal>
+        <ChangePlanModal
+          plans={plans}
+          currentPlanCodename={sub.plan_codename}
+          billingCycle={sub.billing_cycle}
+          gracePeriodDays={sub.grace_period_days}
+          tenantId={id}
+          onClose={() => setShowChangePlan(false)}
+          onDone={() => { setShowChangePlan(false); void load(); }}
+        />
       ) : null}
 
       {/* Manual payment modal */}
@@ -356,6 +352,113 @@ function ManualPayForm({ tenantId, onDone }: { tenantId: string; onDone: () => v
       <button onClick={handleSubmit} disabled={saving} className="ink-gradient w-full rounded-lg py-2.5 text-sm font-semibold text-on-primary disabled:opacity-50">
         {saving ? "Recording..." : "Record payment"}
       </button>
+    </div>
+  );
+}
+
+
+function ChangePlanModal({ plans, currentPlanCodename, billingCycle, gracePeriodDays, tenantId, onClose, onDone }: {
+  plans: PlanOpt[];
+  currentPlanCodename: string;
+  billingCycle: string;
+  gracePeriodDays: number;
+  tenantId: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [selected, setSelected] = useState<PlanOpt | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function handleConfirm() {
+    if (!selected) return;
+    setSaving(true);
+    // Step 1: Cancel current subscription
+    await fetch(`/api/platform/v1/platform/tenants/${tenantId}/subscription/cancel`, { method: "POST" });
+    // Step 2: Create new subscription on selected plan
+    const r = await fetch(`/api/platform/v1/platform/tenants/${tenantId}/subscription`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        plan_id: selected.id,
+        billing_cycle: billingCycle,
+        is_trial: false,
+        grace_period_days: gracePeriodDays,
+      }),
+    });
+    setSaving(false);
+    if (r.ok) {
+      onDone();
+    } else {
+      const d = await r.json().catch(() => ({}));
+      alert(d.detail || "Failed to change plan");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-surface p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+        {!confirming ? (
+          <>
+            <h3 className="font-headline text-lg font-bold text-on-surface">Change plan</h3>
+            <p className="mt-1 text-sm text-on-surface-variant">Select the new plan for this tenant.</p>
+            <div className="mt-4 space-y-3">
+              {plans.map(p => {
+                const isCurrent = p.codename === currentPlanCodename;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => { if (!isCurrent) { setSelected(p); setConfirming(true); } }}
+                    className={`w-full rounded-lg border p-4 text-left transition ${isCurrent ? "border-primary/30 bg-primary/5 cursor-default" : "border-outline-variant/10 hover:bg-surface-container-high cursor-pointer"}`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{p.display_name}</span>
+                      {isCurrent ? <Badge text="Current" color="bg-primary text-on-primary" /> : null}
+                    </div>
+                    <p className="mt-1 text-xs text-on-surface-variant">
+                      {fmtPrice(p.base_price_cents, p.currency_code)}/mo &middot; {p.max_shops} shop{p.max_shops > 1 ? "s" : ""} &middot; {p.max_employees} emp &middot; {p.storage_limit_mb} MB
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={onClose} className="mt-4 w-full rounded-lg border border-outline-variant/20 py-2 text-sm font-semibold text-on-surface-variant">Cancel</button>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-error-container">
+                <span className="material-symbols-outlined text-error">swap_horiz</span>
+              </div>
+              <h3 className="font-headline text-lg font-bold text-on-surface">Confirm plan change</h3>
+            </div>
+            <div className="mt-4 rounded-lg border border-outline-variant/10 bg-surface-container p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-on-surface-variant">Current plan</p>
+                  <p className="font-semibold text-on-surface capitalize">{currentPlanCodename}</p>
+                </div>
+                <span className="material-symbols-outlined text-on-surface-variant">arrow_forward</span>
+                <div className="text-right">
+                  <p className="text-xs text-on-surface-variant">New plan</p>
+                  <p className="font-semibold text-primary">{selected?.display_name}</p>
+                </div>
+              </div>
+            </div>
+            <div className="mt-4 rounded-lg border border-error/20 bg-error-container/30 px-4 py-3">
+              <p className="text-sm text-on-error-container">
+                This will <strong>cancel the current subscription</strong> and create a new one on the <strong>{selected?.display_name}</strong> plan. The billing cycle ({billingCycle}) and grace period ({gracePeriodDays}d) will be preserved.
+              </p>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setConfirming(false)} className="rounded-lg border border-outline-variant/20 px-5 py-2 text-sm font-semibold text-on-surface-variant">Back</button>
+              <button onClick={handleConfirm} disabled={saving} className="ink-gradient rounded-lg px-6 py-2 text-sm font-semibold text-on-primary disabled:opacity-50">
+                {saving ? "Changing..." : "Confirm change"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
