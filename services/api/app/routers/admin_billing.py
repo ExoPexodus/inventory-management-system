@@ -216,10 +216,11 @@ def get_billing_status(
 ) -> BillingStatusOut:
     tenant_id = _require_tenant(ctx)
 
-    # Sync fresh license data from platform on every billing page load
+    # Try to sync fresh data from platform; if unreachable, cached data is used as-is
     from app.services.license_service import sync_tenant_license
-    sync_tenant_license(db, tenant_id)
-    db.commit()
+    result = sync_tenant_license(db, tenant_id)
+    if result is not None:
+        db.commit()
     cache = db.execute(
         select(TenantLicenseCache).where(TenantLicenseCache.tenant_id == tenant_id)
     ).scalar_one_or_none()
