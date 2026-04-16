@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.db.session import get_db
-from app.models import Employee, Product, ProductGroup, Shop, ShopProductTax, Tenant
+from app.models import Employee, Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache
 from app.services.stock import current_quantity
 from app.services.sync_push import process_push_batch
 from app.services.tax import effective_tax_bps_for_product
@@ -58,6 +58,9 @@ class SyncPullResponse(BaseModel):
     currency: TenantCurrencyOut
     shop_default_tax_rate_bps: int
     employee_active: bool | None = None
+    license_status: str | None = None
+    license_trial_ends_at: str | None = None
+    license_grace_ends_at: str | None = None
 
 
 class PushBatchRequest(BaseModel):
@@ -77,6 +80,24 @@ class AppliedEventResult(BaseModel):
 class PushBatchResponse(BaseModel):
     results: list[AppliedEventResult]
     new_cursor: str
+
+
+def _license_fields(db: Session, tenant_id: UUID) -> dict:
+    """Build license fields for the sync pull response from local cache."""
+    cache = db.execute(
+        select(TenantLicenseCache).where(TenantLicenseCache.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if cache is None:
+        return {}
+
+    result: dict[str, str | None] = {"license_status": cache.subscription_status}
+    if cache.trial_ends_at:
+        result["license_trial_ends_at"] = cache.trial_ends_at.isoformat()
+    if cache.is_in_grace_period and cache.current_period_end:
+        from datetime import timedelta
+        grace_end = cache.current_period_end + timedelta(days=cache.grace_period_days)
+        result["license_grace_ends_at"] = grace_end.isoformat()
+    return result
 
 
 @router.get("/pull", response_model=SyncPullResponse)
@@ -174,6 +195,7 @@ def sync_pull(
         ),
         shop_default_tax_rate_bps=shop_row.default_tax_rate_bps,
         employee_active=employee_active,
+        **_license_fields(db, auth.tenant_id),
     )
 
 

@@ -100,6 +100,7 @@ class Tenant(Base):
     offline_tier: Mapped[str] = mapped_column(String(32), default="strict")
     max_offline_minutes: Mapped[int] = mapped_column(Integer, default=60)
     employee_session_timeout_minutes: Mapped[int] = mapped_column(Integer, default=30)
+    download_token: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     shops: Mapped[list[Shop]] = relationship(back_populates="tenant")
@@ -621,3 +622,32 @@ class ApiToken(Base):
         UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# License cache (synced from platform service)
+# ---------------------------------------------------------------------------
+
+
+class TenantLicenseCache(Base):
+    __tablename__ = "tenant_license_cache"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    subscription_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    plan_codename: Mapped[str] = mapped_column(String(64), nullable=False)
+    billing_cycle: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    active_addons: Mapped[Optional[list]] = mapped_column(JSONB, default=list)
+    max_shops: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    max_employees: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    storage_limit_mb: Mapped[int] = mapped_column(Integer, default=500, nullable=False)
+    trial_ends_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_period_end: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    grace_period_days: Mapped[int] = mapped_column(Integer, default=7)
+    is_in_grace_period: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

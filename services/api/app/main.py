@@ -5,6 +5,7 @@ from app.routers import (
     admin,
     admin_analytics,
     admin_audit,
+    admin_billing,
     admin_catalog,
     admin_inventory,
     admin_integrations,
@@ -65,6 +66,7 @@ app.include_router(admin_notifications.router)
 app.include_router(admin_reconciliation.router)
 app.include_router(admin_shifts.router)
 app.include_router(admin_platform.router)
+app.include_router(admin_billing.router)
 app.include_router(tenants.router)
 app.include_router(shops.router)
 app.include_router(inventory.router)

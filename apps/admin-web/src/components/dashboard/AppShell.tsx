@@ -75,6 +75,7 @@ const ROOT_ROUTES = new Set([
   "reports",
   "integrations",
   "settings",
+  "billing",
   "entries",
   "login",
 ]);
@@ -93,6 +94,7 @@ const NAV = [
   { href: "/audit",           label: "Audit Log",       icon: "policy",          permission: "audit:read" },
   { href: "/reports",         label: "Reports",         icon: "description",     permission: "reports:read" },
   { href: "/integrations",    label: "Integrations",    icon: "hub",             permission: "integrations:read" },
+  { href: "/billing",         label: "Billing",         icon: "payments",        permission: "settings:read" },
   { href: "/settings",        label: "Settings",        icon: "settings",        permission: "settings:read" },
 ];
 

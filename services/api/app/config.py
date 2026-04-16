@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     public_api_url: str = "http://localhost:8001"
     # Set in production for dashboard / automation; protects /v1/admin/*.
     admin_api_token: str | None = None
+    # Platform service connection (billing / license control plane)
+    platform_api_url: str = ""
+    platform_api_secret: str = ""
+    license_sync_interval_seconds: int = 300
 
 
 settings = Settings()

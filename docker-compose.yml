@@ -37,6 +37,8 @@ services:
       ADMIN_BOOTSTRAP_EMAIL: ${ADMIN_BOOTSTRAP_EMAIL:-dev@gmail.com}
       ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-123}
       PUBLIC_API_URL: ${PUBLIC_API_URL:-http://localhost:8001}
+      PLATFORM_API_URL: ${PLATFORM_API_URL:-http://platform:8000}
+      PLATFORM_API_SECRET: ${PLATFORM_API_SECRET:-platform-dev-jwt-secret}
     ports:
       # Default 8001 avoids clashing with other stacks on :8000 (override with API_PUBLISH_PORT).
       - "${API_PUBLISH_PORT:-8001}:8000"
@@ -55,6 +57,8 @@ services:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-ims}:${POSTGRES_PASSWORD:-ims_dev_change_me}@postgres:5432/${POSTGRES_DB:-ims}
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
+      PLATFORM_API_URL: ${PLATFORM_API_URL:-http://platform:8000}
+      PLATFORM_API_SECRET: ${PLATFORM_API_SECRET:-platform-dev-jwt-secret}
     depends_on:
       redis:
         condition: service_healthy
@@ -73,5 +77,73 @@ services:
       api:
         condition: service_started
 
+  # ── Platform service (billing / license control plane) ──────────────
+
+  platform-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${PLATFORM_POSTGRES_USER:-platform}
+      POSTGRES_PASSWORD: ${PLATFORM_POSTGRES_PASSWORD:-platform_dev_change_me}
+      POSTGRES_DB: ${PLATFORM_POSTGRES_DB:-platform}
+    ports:
+      - "5433:5432"
+    volumes:
+      - platform_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PLATFORM_POSTGRES_USER:-platform} -d ${PLATFORM_POSTGRES_DB:-platform}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  platform:
+    build:
+      context: ./services/platform
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${PLATFORM_POSTGRES_USER:-platform}:${PLATFORM_POSTGRES_PASSWORD:-platform_dev_change_me}@platform-postgres:5432/${PLATFORM_POSTGRES_DB:-platform}
+      REDIS_URL: redis://redis:6379/1
+      JWT_SECRET: ${PLATFORM_JWT_SECRET:-platform-dev-jwt-secret}
+      MAIN_API_URL: http://api:8000
+      STORAGE_PATH: /data/uploads
+    ports:
+      - "${PLATFORM_PUBLISH_PORT:-8002}:8000"
+    volumes:
+      - platform_uploads:/data/uploads
+    depends_on:
+      platform-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  platform-worker:
+    build:
+      context: ./services/platform
+      dockerfile: Dockerfile
+    command: python -m app.worker
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${PLATFORM_POSTGRES_USER:-platform}:${PLATFORM_POSTGRES_PASSWORD:-platform_dev_change_me}@platform-postgres:5432/${PLATFORM_POSTGRES_DB:-platform}
+      REDIS_URL: redis://redis:6379/1
+      JWT_SECRET: ${PLATFORM_JWT_SECRET:-platform-dev-jwt-secret}
+    depends_on:
+      platform-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  platform-web:
+    build:
+      context: ./apps/platform-web
+      dockerfile: Dockerfile
+    environment:
+      API_INTERNAL_URL: http://platform:8000
+      COOKIE_SECURE: "${COOKIE_SECURE:-false}"
+    ports:
+      - "${PLATFORM_WEB_PUBLISH_PORT:-3200}:3000"
+    depends_on:
+      platform:
+        condition: service_started
+
 volumes:
   ims_pgdata:
+  platform_pgdata:
+  platform_uploads:
