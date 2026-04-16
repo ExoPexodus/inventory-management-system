@@ -92,8 +92,10 @@ export default function TenantDetailPage() {
       <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Subscription</h2>
-          {!sub ? (
-            <button onClick={() => setShowCreateSub(true)} className="ink-gradient rounded-lg px-4 py-2 text-xs font-semibold text-on-primary">Create subscription</button>
+          {!sub || sub.status === "cancelled" || sub.status === "expired" ? (
+            <button onClick={() => setShowCreateSub(true)} className="ink-gradient rounded-lg px-4 py-2 text-xs font-semibold text-on-primary">
+              {sub ? "New subscription" : "Create subscription"}
+            </button>
           ) : null}
         </div>
 
