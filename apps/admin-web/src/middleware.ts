@@ -17,6 +17,7 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   audit: "audit:read",
   reports: "reports:read",
   integrations: "integrations:read",
+  billing: "settings:read",
   settings: "settings:read",
 };
 
@@ -45,6 +46,7 @@ const ROOT_ROUTES = new Set([
   "audit",
   "reports",
   "integrations",
+  "billing",
   "settings",
   "entries",
   "login",
