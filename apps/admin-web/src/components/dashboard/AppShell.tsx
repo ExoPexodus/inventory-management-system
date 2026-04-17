@@ -106,6 +106,7 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
   const entryMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!entryMenuOpen) return;
     function handleOutside(e: MouseEvent) {
       if (entryMenuRef.current && !entryMenuRef.current.contains(e.target as Node)) {
         setEntryMenuOpen(false);
@@ -113,7 +114,8 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
     }
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
-  }, []);
+  }, [entryMenuOpen]);
+
   const pathname = usePathname();
   const activePathRaw = current ?? pathname;
   const segments = activePathRaw.split("/").filter(Boolean);
