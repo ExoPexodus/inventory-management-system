@@ -111,7 +111,7 @@ export default function EntriesPage() {
       <div className="grid grid-cols-12 gap-6">
         <form onSubmit={addProduct} className="col-span-12 space-y-6 lg:col-span-7">
           {msg ? (
-            <Badge tone={msg.includes("failed") ? "danger" : "good"}>{msg}</Badge>
+            <Badge tone={msg === "Product created" || msg === "Group created" ? "good" : "danger"}>{msg}</Badge>
           ) : null}
 
           {/* Product Details */}
