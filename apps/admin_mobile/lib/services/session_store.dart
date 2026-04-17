@@ -21,6 +21,11 @@ class SessionStore {
   static const _keyRole = 'admin_role';
   static const _keyPermissions = 'admin_permissions';
 
+  // Local PIN state (mirrors server — server holds the real hash)
+  static const _keyPinEnabled = 'admin_pin_enabled';
+  // Last-known email (persists across logout so PIN login can still display it).
+  static const _keyLastEmail = 'admin_last_email';
+
   // ── Enrollment ──────────────────────────────────────────────────────
 
   /// Check if the device has been enrolled via QR code.
@@ -50,12 +55,19 @@ class SessionStore {
     return prefs.getString(_keyBaseUrl);
   }
 
+  /// Get the device access token (used to authenticate PIN login calls).
+  static Future<String?> getDeviceToken() async {
+    return _storage.read(key: _keyDeviceToken);
+  }
+
   /// Clear enrollment — full device reset.
   static Future<void> clearEnrollment() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_keyBaseUrl);
     await prefs.remove(_keyTenantId);
     await prefs.remove(_keyEnrolled);
+    await prefs.remove(_keyPinEnabled);
+    await prefs.remove(_keyLastEmail);
     await _storage.delete(key: _keyDeviceToken);
     await _storage.delete(key: _keyRefreshToken);
     // Also clear login state
@@ -74,8 +86,17 @@ class SessionStore {
       await prefs.remove(_keyRole);
     }
     await prefs.setString(_keyPermissions, jsonEncode(session.permissions));
+    if (session.email.isNotEmpty) {
+      await prefs.setString(_keyLastEmail, session.email);
+    }
     await _storage.write(key: _keyToken, value: session.token);
     await _storage.write(key: _keyEmail, value: session.email);
+  }
+
+  /// Returns the last email used to sign in on this device (for PIN login display).
+  static Future<String?> getLastEmail() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyLastEmail);
   }
 
   /// Load operator session (returns null if not logged in).
@@ -114,4 +135,22 @@ class SessionStore {
 
   /// Legacy compat — alias for getBaseUrl.
   static Future<String?> getSavedBaseUrl() => getBaseUrl();
+
+  // ── PIN quick-unlock ────────────────────────────────────────────────
+
+  /// Whether the user has opted into PIN quick-unlock on this device.
+  static Future<bool> isPinEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyPinEnabled) ?? false;
+  }
+
+  /// Mark PIN quick-unlock as enabled on this device (call after /set-pin succeeds).
+  static Future<void> setPinEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (enabled) {
+      await prefs.setBool(_keyPinEnabled, true);
+    } else {
+      await prefs.remove(_keyPinEnabled);
+    }
+  }
 }

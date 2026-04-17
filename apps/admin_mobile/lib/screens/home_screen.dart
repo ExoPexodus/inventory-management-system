@@ -10,6 +10,7 @@ import '../models/employee.dart';
 import '../services/admin_api.dart';
 import '../services/session_store.dart';
 import '../widgets/metric_card.dart';
+import '../widgets/pin_setup_sheet.dart';
 import '../widgets/revenue_bar_chart.dart';
 import '../widgets/section_header.dart';
 import 'app_shell.dart';
@@ -82,6 +83,85 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _showManagePinDialog() async {
+    final session = await SessionStore.load();
+    if (session == null || !mounted) return;
+    final hasPin = await SessionStore.isPinEnabled();
+    if (!mounted) return;
+    final action = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Manage PIN'),
+        content: Text(hasPin
+            ? 'Quick-unlock PIN is enabled on this device.'
+            : 'You haven\'t set a PIN on this device yet.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Close'),
+          ),
+          if (hasPin)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, 'reset'),
+              child: const Text('Clear PIN'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, 'set'),
+            child: Text(hasPin ? 'Change PIN' : 'Set PIN'),
+          ),
+        ],
+      ),
+    );
+    if (action == null || !mounted) return;
+    final api = AdminApi(session.baseUrl, session.token);
+    if (action == 'reset') {
+      try {
+        await api.resetPin();
+        await SessionStore.setPinEnabled(false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PIN cleared')),
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not clear PIN')),
+          );
+        }
+      }
+      return;
+    }
+    if (action == 'set') {
+      final pin = await showModalBottomSheet<String>(
+        context: context,
+        isScrollControlled: true,
+        isDismissible: true,
+        builder: (ctx) => const PinSetupSheet(
+          title: 'Choose a PIN',
+          subtitle: 'Use 4–8 digits. Remember it — you\'ll use it to sign in.',
+          cancelLabel: 'Cancel',
+        ),
+      );
+      if (pin == null || pin.isEmpty || !mounted) return;
+      try {
+        await api.setPin(pin);
+        await SessionStore.setPinEnabled(true);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('PIN saved')),
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not save PIN')),
+          );
+        }
+      }
+    }
+  }
+
   String _formatDelta(double? pct) {
     if (pct == null) return '';
     final sign = pct >= 0 ? '+' : '';
@@ -140,10 +220,34 @@ class _HomeScreenState extends State<HomeScreen> {
                             style: theme.textTheme.titleMedium?.copyWith(color: Colors.white),
                           ),
                         ),
-                        IconButton(
-                          onPressed: () => showLogoutDialog(context, widget.onLogout),
-                          icon: const Icon(Icons.logout_rounded, color: Colors.white70),
-                          tooltip: 'Sign out',
+                        PopupMenuButton<String>(
+                          icon: const Icon(Icons.more_vert_rounded, color: Colors.white70),
+                          tooltip: 'Account',
+                          onSelected: (v) {
+                            if (v == 'logout') {
+                              showLogoutDialog(context, widget.onLogout);
+                            } else if (v == 'pin') {
+                              _showManagePinDialog();
+                            }
+                          },
+                          itemBuilder: (ctx) => const [
+                            PopupMenuItem(
+                              value: 'pin',
+                              child: ListTile(
+                                leading: Icon(Icons.pin_outlined),
+                                title: Text('Manage PIN'),
+                                dense: true,
+                              ),
+                            ),
+                            PopupMenuItem(
+                              value: 'logout',
+                              child: ListTile(
+                                leading: Icon(Icons.logout_rounded),
+                                title: Text('Sign out'),
+                                dense: true,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
