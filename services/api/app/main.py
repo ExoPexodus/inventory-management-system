@@ -20,6 +20,7 @@ from app.routers import (
     admin_suppliers,
     admin_web,
     audit,
+    auth,
     device_shifts,
     devices,
     health,
@@ -48,6 +49,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(devices.router)
 app.include_router(sync.router)
 app.include_router(transactions.router)

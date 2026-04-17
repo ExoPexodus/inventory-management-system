@@ -103,6 +103,36 @@ class AdminApi {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
+  /// PIN login — uses the device access token to authenticate a PIN against
+  /// the user bound to the enrolled device. Returns operator JWT on success.
+  static Future<Map<String, dynamic>> pinLogin({
+    required String baseUrl,
+    required String deviceToken,
+    required String pin,
+  }) async {
+    final base = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final res = await http.post(
+      Uri.parse('$base/v1/auth/pin-login'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $deviceToken',
+      },
+      body: jsonEncode({'pin': pin}),
+    );
+    if (res.statusCode >= 400) throw ApiException(res.statusCode, res.body);
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
+  /// Sets or rotates the current user's PIN. Requires operator JWT.
+  Future<void> setPin(String pin) async {
+    await _post('/v1/auth/set-pin', {'pin': pin});
+  }
+
+  /// Clears the current user's PIN (forces password fallback next login).
+  Future<void> resetPin() async {
+    await _post('/v1/auth/reset-pin', {});
+  }
+
   Future<bool> ping() async {
     try {
       final res = await http.get(_uri('/v1/health')).timeout(const Duration(seconds: 3));

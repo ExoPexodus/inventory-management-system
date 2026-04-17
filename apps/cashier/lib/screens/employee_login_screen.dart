@@ -69,6 +69,8 @@ class _EmployeeLoginScreenState extends State<EmployeeLoginScreen> {
     } on ApiException catch (e) {
       if (e.statusCode == 403 && e.body.contains('deactivated')) {
         setState(() => _error = 'Your account has been deactivated. Please contact your administrator to reactivate it.');
+      } else if (e.statusCode == 403 && e.body.contains('cashier app access')) {
+        setState(() => _error = 'Your role no longer grants cashier app access. Contact your administrator.');
       } else if (e.statusCode == 401 && e.body.contains('not linked')) {
         setState(() {
           _error = 'This device is no longer linked to an employee account. Re-enroll to continue.';
