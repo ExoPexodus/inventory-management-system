@@ -102,6 +102,18 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
   const [notifOpen, setNotifOpen] = useState(false);
   const { items: notifItems, unread, loading: notifLoading, markAllRead, markRead } = useNotifications(notifOpen);
   const panelRef = useRef<HTMLDivElement>(null);
+  const [entryMenuOpen, setEntryMenuOpen] = useState(false);
+  const entryMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (entryMenuRef.current && !entryMenuRef.current.contains(e.target as Node)) {
+        setEntryMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, []);
   const pathname = usePathname();
   const activePathRaw = current ?? pathname;
   const segments = activePathRaw.split("/").filter(Boolean);
@@ -143,13 +155,36 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
           })}
         </nav>
         <div className="shrink-0 space-y-3 px-3 pb-4 pt-2">
-          <Link
-            href={`${tenantPrefix}/entries`}
-            className="ink-gradient flex w-full items-center justify-center gap-2 rounded-lg py-3 text-[13px] font-bold text-on-primary shadow-md transition-all hover:opacity-90 active:scale-[0.98]"
-          >
-            <span className="material-symbols-outlined text-lg leading-none" aria-hidden="true">add_circle</span>
-            New Entry
-          </Link>
+          <div ref={entryMenuRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setEntryMenuOpen((o) => !o)}
+              className="ink-gradient flex w-full items-center justify-center gap-2 rounded-lg py-3 text-[13px] font-bold text-on-primary shadow-md transition-all hover:opacity-90 active:scale-[0.98]"
+            >
+              <span className="material-symbols-outlined text-lg leading-none" aria-hidden="true">add_circle</span>
+              New Entry
+            </button>
+            {entryMenuOpen && (
+              <div className="absolute bottom-full left-0 right-0 mb-1 overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest shadow-lg">
+                <Link
+                  href={`${tenantPrefix}/entries`}
+                  onClick={() => setEntryMenuOpen(false)}
+                  className="flex items-center gap-2 px-4 py-3 text-[13px] font-medium text-on-surface hover:bg-surface-container"
+                >
+                  <span className="material-symbols-outlined text-[18px]" aria-hidden="true">inventory_2</span>
+                  Create Product
+                </Link>
+                <Link
+                  href={`${tenantPrefix}/shops`}
+                  onClick={() => setEntryMenuOpen(false)}
+                  className="flex items-center gap-2 border-t border-outline-variant/10 px-4 py-3 text-[13px] font-medium text-on-surface hover:bg-surface-container"
+                >
+                  <span className="material-symbols-outlined text-[18px]" aria-hidden="true">store</span>
+                  Create Shop
+                </Link>
+              </div>
+            )}
+          </div>
           <div className="flex items-center gap-3 rounded-lg px-3 py-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-on-primary">
               A
