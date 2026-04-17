@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
 import {
   Avatar,
   Badge,
@@ -139,6 +140,9 @@ function InviteUserDialog({
   const [busy, setBusy] = useState(false);
   const [createdUser, setCreatedUser] = useState<TeamUser | null>(null);
   const [qrToken, setQrToken] = useState<string | null>(null);
+  const [qrPayload, setQrPayload] = useState<Record<string, unknown> | null>(null);
+  const [qrExpires, setQrExpires] = useState<string | null>(null);
+  const [qrAppTarget, setQrAppTarget] = useState<"cashier" | "admin_mobile">("cashier");
 
   useEffect(() => {
     if (open) {
@@ -147,6 +151,7 @@ function InviteUserDialog({
       setShopId("");
       setPassword(""); setPin(""); setErr(null); setBusy(false);
       setCreatedUser(null); setQrToken(null);
+      setQrPayload(null); setQrExpires(null);
     }
   }, [open, roles]);
 
@@ -192,15 +197,22 @@ function InviteUserDialog({
 
       // If user has any device-based access, generate enrollment QR
       if (needsCashier || rolePerms.includes("admin_mobile:access")) {
-        const appTarget = needsCashier ? "cashier" : "admin_mobile";
+        const appTarget: "cashier" | "admin_mobile" = needsCashier ? "cashier" : "admin_mobile";
         const enrollR = await fetch(`/api/ims/v1/admin/employees/${created.id}/invite`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ method: "qr", ttl_hours: 168, app_target: appTarget }),
         });
         if (enrollR.ok) {
-          const enrollData = await enrollR.json() as { enrollment_token?: string };
+          const enrollData = await enrollR.json() as {
+            enrollment_token?: string;
+            qr_payload?: Record<string, unknown>;
+            expires_at?: string;
+          };
           if (enrollData.enrollment_token) setQrToken(enrollData.enrollment_token);
+          if (enrollData.qr_payload) setQrPayload(enrollData.qr_payload);
+          if (enrollData.expires_at) setQrExpires(enrollData.expires_at);
+          setQrAppTarget(appTarget);
         }
       }
 
@@ -221,13 +233,34 @@ function InviteUserDialog({
             </p>
           </div>
 
-          {qrToken && (
-            <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4">
-              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Enrollment token</p>
-              <p className="mt-2 break-all font-mono text-xs text-on-surface">{qrToken}</p>
-              <p className="mt-2 text-xs text-on-surface-variant">
-                Share this token with the user — they can scan the QR or paste it into the app to enroll their device.
-              </p>
+          {(qrPayload || qrToken) && (
+            <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                  Enrollment QR — {qrAppTarget === "cashier" ? "Cashier app" : "Admin mobile app"}
+                </p>
+                {qrExpires && (
+                  <p className="mt-1 text-xs text-on-surface-variant">
+                    Expires {new Date(qrExpires).toLocaleString()}
+                  </p>
+                )}
+              </div>
+              {qrPayload && (
+                <div className="flex items-center gap-4">
+                  <div className="shrink-0 rounded-lg bg-white p-2">
+                    <QRCodeSVG value={JSON.stringify(qrPayload)} size={168} />
+                  </div>
+                  <p className="text-xs text-on-surface-variant">
+                    Open the {qrAppTarget === "cashier" ? "cashier" : "admin mobile"} app on the user&apos;s device and scan this code to enroll. The QR embeds the server URL, enrollment token and user ID — credentials are set separately and never embedded.
+                  </p>
+                </div>
+              )}
+              {qrToken && (
+                <details className="text-xs">
+                  <summary className="cursor-pointer text-on-surface-variant hover:text-on-surface">Show enrollment token (for manual entry)</summary>
+                  <p className="mt-2 break-all rounded border border-outline-variant/20 bg-surface-container-lowest p-2 font-mono text-on-surface">{qrToken}</p>
+                </details>
+              )}
             </div>
           )}
 
@@ -315,6 +348,9 @@ function EditUserModal({ open, onClose, user, roles, permissionsByRole, onSaved 
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [enrollToken, setEnrollToken] = useState<string | null>(null);
+  const [enrollQr, setEnrollQr] = useState<Record<string, unknown> | null>(null);
+  const [enrollExpires, setEnrollExpires] = useState<string | null>(null);
+  const [enrollAppTarget, setEnrollAppTarget] = useState<"cashier" | "admin_mobile">("cashier");
   const [resetMode, setResetMode] = useState<"pin" | "password" | null>(null);
   const [resetValue, setResetValue] = useState("");
 
@@ -324,6 +360,8 @@ function EditUserModal({ open, onClose, user, roles, permissionsByRole, onSaved 
       setErr(null);
       setNotice(null);
       setEnrollToken(null);
+      setEnrollQr(null);
+      setEnrollExpires(null);
       setResetMode(null);
       setResetValue("");
     }
@@ -370,14 +408,14 @@ function EditUserModal({ open, onClose, user, roles, permissionsByRole, onSaved 
     else { const d = (await r.json()) as { detail?: string }; setErr(d.detail ?? "Failed"); }
   }
 
-  async function reEnroll() {
+  async function reEnroll(appTarget: "cashier" | "admin_mobile") {
     if (!user) return;
-    const appTarget = hasCashierAccess ? "cashier" : "admin_mobile";
     if (!confirm(
-      `Generate a new enrollment token for ${user.name}? ` +
-      `Their current device will be unlinked and they'll need to re-scan the QR on the ${appTarget === "cashier" ? "cashier" : "admin mobile"} app.`,
+      `Generate a new enrollment QR for ${user.name}? ` +
+      `Their current device will be unlinked and they'll need to re-scan on the ${appTarget === "cashier" ? "cashier" : "admin mobile"} app.`,
     )) return;
     setBusy(true); setErr(null); setNotice(null);
+    setEnrollToken(null); setEnrollQr(null); setEnrollExpires(null);
     try {
       const r = await fetch(`/api/ims/v1/admin/employees/${user.id}/re-enroll`, {
         method: "POST",
@@ -389,11 +427,16 @@ function EditUserModal({ open, onClose, user, roles, permissionsByRole, onSaved 
         setErr(d.detail ?? `Error ${r.status}`);
         return;
       }
-      const data = (await r.json()) as { enrollment_token?: string };
-      if (data.enrollment_token) {
-        setEnrollToken(data.enrollment_token);
-        setNotice("New enrollment token generated. Share it with the user below.");
-      }
+      const data = (await r.json()) as {
+        enrollment_token?: string;
+        qr_payload?: Record<string, unknown>;
+        expires_at?: string;
+      };
+      setEnrollToken(data.enrollment_token ?? null);
+      setEnrollQr(data.qr_payload ?? null);
+      setEnrollExpires(data.expires_at ?? null);
+      setEnrollAppTarget(appTarget);
+      setNotice("New enrollment QR generated. Have the user scan it to re-enroll their device.");
       onSaved();
     } finally {
       setBusy(false);
@@ -452,13 +495,22 @@ function EditUserModal({ open, onClose, user, roles, permissionsByRole, onSaved 
                 <p className="text-sm font-semibold text-on-surface">Re-enroll device</p>
                 <p className="text-xs text-on-surface-variant">
                   {user.device_id
-                    ? "Unlink the current device and generate a fresh enrollment token."
-                    : "Generate a new enrollment token for this user's device."}
+                    ? "Unlink the current device and generate a fresh enrollment QR."
+                    : "Generate an enrollment QR for this user's device."}
                 </p>
               </div>
-              <SecondaryButton type="button" onClick={() => void reEnroll()} disabled={busy}>
-                Re-enroll
-              </SecondaryButton>
+              <div className="flex gap-2">
+                {hasCashierAccess && (
+                  <SecondaryButton type="button" onClick={() => void reEnroll("cashier")} disabled={busy}>
+                    {hasAdminMobileAccess ? "For cashier" : "Re-enroll"}
+                  </SecondaryButton>
+                )}
+                {hasAdminMobileAccess && (
+                  <SecondaryButton type="button" onClick={() => void reEnroll("admin_mobile")} disabled={busy}>
+                    {hasCashierAccess ? "For admin mobile" : "Re-enroll"}
+                  </SecondaryButton>
+                )}
+              </div>
             </div>
           )}
 
@@ -526,13 +578,34 @@ function EditUserModal({ open, onClose, user, roles, permissionsByRole, onSaved 
           </div>
         )}
 
-        {enrollToken && (
-          <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4">
-            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Enrollment token</p>
-            <p className="mt-2 break-all font-mono text-xs text-on-surface">{enrollToken}</p>
-            <p className="mt-2 text-xs text-on-surface-variant">
-              Share this with the user — paste into the app or scan the QR to enroll their device.
-            </p>
+        {(enrollQr || enrollToken) && (
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                Enrollment QR — {enrollAppTarget === "cashier" ? "Cashier app" : "Admin mobile app"}
+              </p>
+              {enrollExpires && (
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  Expires {new Date(enrollExpires).toLocaleString()}
+                </p>
+              )}
+            </div>
+            {enrollQr && (
+              <div className="flex items-center gap-4">
+                <div className="shrink-0 rounded-lg bg-white p-2">
+                  <QRCodeSVG value={JSON.stringify(enrollQr)} size={168} />
+                </div>
+                <p className="text-xs text-on-surface-variant">
+                  Open the {enrollAppTarget === "cashier" ? "cashier" : "admin mobile"} app on the user&apos;s device and scan this code to complete enrollment. The QR contains the server URL, enrollment token and user ID — credentials are never embedded.
+                </p>
+              </div>
+            )}
+            {enrollToken && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-on-surface-variant hover:text-on-surface">Show enrollment token (for manual entry)</summary>
+                <p className="mt-2 break-all rounded border border-outline-variant/20 bg-surface-container-lowest p-2 font-mono text-on-surface">{enrollToken}</p>
+              </details>
+            )}
           </div>
         )}
 
