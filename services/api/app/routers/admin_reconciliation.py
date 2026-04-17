@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
-from app.models import AdminUser, Shop, ShiftClosing
+from app.models import Shop, ShiftClosing, User
 from app.services.audit_service import write_audit
 
 router = APIRouter(prefix="/v1/admin/reconciliation", tags=["Admin Reconciliation"])
@@ -60,7 +60,7 @@ def _rec_status(shift: ShiftClosing) -> tuple[str, str | None]:
     if shift.discrepancy_cents != 0:
         return "variance", None
     # Zero variance — check if manager has reviewed
-    if shift.reviewed_by is None:
+    if shift.reviewed_by_user_id is None:
         return "pending_review", None
     return "matched", None
 
@@ -112,7 +112,7 @@ def list_reconciliation(
             opened_at=shift.opened_at.isoformat(),
             closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
             resolution_note=resolution_note,
-            reviewed_by=str(shift.reviewed_by) if shift.reviewed_by else None,
+            reviewed_by=str(shift.reviewed_by_user_id) if shift.reviewed_by_user_id else None,
         ))
 
     return ReconciliationListResponse(items=items)
@@ -142,7 +142,7 @@ def resolve_reconciliation(
     # Fetch operator email for the resolution note
     operator_email = "operator"
     if ctx.operator_id:
-        op = db.get(AdminUser, ctx.operator_id)
+        op = db.get(User, ctx.user_id)
         if op:
             operator_email = op.email
 
@@ -172,7 +172,7 @@ def resolve_reconciliation(
         opened_at=shift.opened_at.isoformat(),
         closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
         resolution_note=resolution_note,
-        reviewed_by=str(shift.reviewed_by) if shift.reviewed_by else None,
+        reviewed_by=str(shift.reviewed_by_user_id) if shift.reviewed_by_user_id else None,
     )
 
 
@@ -194,7 +194,7 @@ def approve_reconciliation(
     if shift.discrepancy_cents != 0:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Use resolve for shifts with variance")
 
-    shift.reviewed_by = ctx.operator_id
+    shift.reviewed_by_user_id = ctx.operator_id
     shift.reviewed_at = datetime.now(UTC)
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="approve_reconciliation", resource_type="shift", resource_id=str(shift_id))
     db.commit()
@@ -217,5 +217,5 @@ def approve_reconciliation(
         opened_at=shift.opened_at.isoformat(),
         closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
         resolution_note=resolution_note,
-        reviewed_by=str(shift.reviewed_by) if shift.reviewed_by else None,
+        reviewed_by=str(shift.reviewed_by_user_id) if shift.reviewed_by_user_id else None,
     )

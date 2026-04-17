@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.jwt import create_access_token
 from app.db.rls import set_rls_context
-from app.models import Device, Employee, EnrollmentToken, Shop
+from app.models import Device, EnrollmentToken, Shop, User
 
 
 def hash_token(raw: str) -> str:
@@ -48,14 +48,18 @@ def enroll_device(
     db.add(device)
     row.used_at = datetime.now(UTC)
     db.flush()
-    employee_name: str | None = None
-    employee_credential_type: str | None = None
-    if row.employee_id is not None:
-        employee = db.get(Employee, row.employee_id)
-        if employee is not None and employee.tenant_id == row.tenant_id:
-            employee.device_id = device.id
-            employee_name = employee.name
-            employee_credential_type = employee.credential_type
+    user_name: str | None = None
+    user_credential_type: str | None = None
+    if row.user_id is not None:
+        user = db.get(User, row.user_id)
+        if user is not None and user.tenant_id == row.tenant_id:
+            user.device_id = device.id
+            user_name = user.name
+            # Derive credential type from which hash is set
+            if user.pin_hash:
+                user_credential_type = "pin"
+            elif user.password_hash:
+                user_credential_type = "password"
 
     access, ttl = create_access_token(
         device_id=device.id,
@@ -63,7 +67,7 @@ def enroll_device(
         shop_ids=[row.shop_id],
     )
     db.commit()
-    return access, refresh_raw, device.tenant_id, [row.shop_id], ttl, row.employee_id, employee_name, employee_credential_type
+    return access, refresh_raw, device.tenant_id, [row.shop_id], ttl, row.user_id, user_name, user_credential_type
 
 
 def refresh_device_tokens(

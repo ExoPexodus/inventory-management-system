@@ -19,8 +19,6 @@ from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.services.audit_service import write_audit
 from app.models import (
-    AdminUser,
-    Employee,
     Product,
     ProductGroup,
     PurchaseOrder,
@@ -31,6 +29,7 @@ from app.models import (
     Supplier,
     Transaction,
     TransactionLine,
+    User,
 )
 from app.routers.transactions import (
     PaymentOut,
@@ -133,12 +132,12 @@ def admin_list_transactions(
 
     labels = _product_labels_for_lines(db, rows)
 
-    # Build employee name lookup for all referenced employee IDs
-    employee_ids = {t.employee_id for t in rows if t.employee_id is not None}
-    employee_names: dict[UUID, str] = {}
-    if employee_ids:
-        emps = db.execute(select(Employee).where(Employee.id.in_(employee_ids))).scalars().all()
-        employee_names = {e.id: e.name for e in emps}
+    # Build user name lookup for all referenced user IDs (cashiers)
+    user_ids = {t.user_id for t in rows if t.user_id is not None}
+    user_names: dict[UUID, str] = {}
+    if user_ids:
+        users = db.execute(select(User).where(User.id.in_(user_ids))).scalars().all()
+        user_names = {u.id: u.name for u in users}
 
     items: list[TransactionOut] = []
     for t in rows:
@@ -156,7 +155,7 @@ def admin_list_transactions(
                 payments=[
                     PaymentOut(tender_type=p.tender_type, amount_cents=p.amount_cents) for p in t.payments
                 ],
-                cashier_name=employee_names.get(t.employee_id) if t.employee_id else None,
+                cashier_name=user_names.get(t.user_id) if t.user_id else None,
             )
         )
     return TransactionListResponse(items=items, next_cursor=next_cur)
@@ -687,11 +686,11 @@ class PatchOperatorBody(BaseModel):
     is_active: bool | None = None
 
 
-def _operator_out(r: AdminUser) -> OperatorOut:
+def _operator_out(r: User) -> OperatorOut:
     return OperatorOut(
         id=r.id,
         email=r.email,
-        display_name=r.display_name,
+        display_name=r.name,
         role=r.role.name if r.role else None,
         role_id=r.role_id,
         is_active=r.is_active,
@@ -704,9 +703,21 @@ def list_operators(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> list[OperatorOut]:
+    """Lists tenant users with admin_web or admin_mobile access (operators)."""
     tenant_id = _require_operator_tenant(ctx)
+    # Only show users whose role has admin web/mobile access
+    from app.models import Permission, RolePermission
     rows = db.execute(
-        select(AdminUser).where(AdminUser.tenant_id == tenant_id).order_by(AdminUser.created_at.desc())
+        select(User)
+        .join(Role, User.role_id == Role.id)
+        .join(RolePermission, RolePermission.role_id == Role.id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            User.tenant_id == tenant_id,
+            Permission.codename.in_(["admin_web:access", "admin_mobile:access"]),
+        )
+        .distinct()
+        .order_by(User.created_at.desc())
     ).scalars().all()
     return [_operator_out(r) for r in rows]
 
@@ -724,10 +735,10 @@ def create_operator(
     if role is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found for this tenant")
     pw_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
-    operator = AdminUser(
+    operator = User(
         email=body.email.strip().lower(),
         password_hash=pw_hash,
-        display_name=body.display_name,
+        name=body.display_name or body.email.strip().lower(),
         role_id=body.role_id,
         tenant_id=tenant_id,
         is_active=True,
@@ -738,7 +749,7 @@ def create_operator(
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_operator", resource_type="admin_user", resource_id=str(operator.id))
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="create_operator", resource_type="user", resource_id=str(operator.id))
     db.commit()
     db.refresh(operator)
     return _operator_out(operator)
@@ -752,7 +763,7 @@ def patch_operator(
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> OperatorOut:
     tenant_id = _require_operator_tenant(ctx)
-    row = db.get(AdminUser, operator_id)
+    row = db.get(User, operator_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operator not found")
     if row.tenant_id != tenant_id:
@@ -767,9 +778,9 @@ def patch_operator(
         if row.role and row.role.name == "owner":
             owner_count = db.execute(
                 select(func.count())
-                .select_from(AdminUser)
-                .join(Role, AdminUser.role_id == Role.id)
-                .where(AdminUser.tenant_id == tenant_id, Role.name == "owner", AdminUser.is_active.is_(True))
+                .select_from(User)
+                .join(Role, User.role_id == Role.id)
+                .where(User.tenant_id == tenant_id, Role.name == "owner", User.is_active.is_(True))
             ).scalar_one()
             if owner_count <= 1 and role.name != "owner":
                 raise HTTPException(
@@ -1190,8 +1201,8 @@ def create_stock_adjustment(
         quantity_delta=body.quantity_delta,
         reason_code=body.reason,
         notes=body.notes,
-        approved_by=ctx.operator_id,
-        created_by=ctx.operator_id,
+        approved_by_user_id=ctx.user_id,
+        created_by_user_id=ctx.user_id,
         status="approved",
     )
     db.add(adj)

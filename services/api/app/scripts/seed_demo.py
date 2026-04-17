@@ -21,7 +21,6 @@ from sqlalchemy import select
 from app.db.rls import set_rls_context
 from app.db.session import SessionLocal
 from app.models import (
-    AdminUser,
     EnrollmentToken,
     Product,
     ProductGroup,
@@ -35,6 +34,7 @@ from app.models import (
     Tenant,
     TransferOrder,
     TransferOrderLine,
+    User,
 )
 from app.services.enrollment import hash_token
 
@@ -180,25 +180,30 @@ def main() -> None:
         raw_pw = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "").strip()
         bootstrap_note = ""
         if em and raw_pw:
-            existing = db.execute(select(AdminUser.id).where(AdminUser.email == em)).scalar_one_or_none()
+            existing = db.execute(
+                select(User.id).where(User.tenant_id == tenant.id, User.email == em)
+            ).scalar_one_or_none()
             if existing is not None:
                 bootstrap_note = f"  bootstrap_admin: skipped (already exists: {em})"
             else:
                 owner_role = db.execute(
                     select(Role).where(Role.tenant_id == tenant.id, Role.name == "owner")
                 ).scalar_one_or_none()
-                h = bcrypt.hashpw(raw_pw.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
-                db.add(
-                    AdminUser(
-                        email=em,
-                        password_hash=h,
-                        role_id=owner_role.id if owner_role else None,
-                        tenant_id=tenant.id,
-                        display_name="Demo Admin",
-                        avatar_url=f"https://api.dicebear.com/9.x/identicon/svg?seed={em}",
+                if owner_role is None:
+                    bootstrap_note = "  bootstrap_admin: skipped (no owner role found — run migrations first)"
+                else:
+                    h = bcrypt.hashpw(raw_pw.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
+                    db.add(
+                        User(
+                            email=em,
+                            password_hash=h,
+                            role_id=owner_role.id,
+                            tenant_id=tenant.id,
+                            name="Demo Admin",
+                            avatar_url=f"https://api.dicebear.com/9.x/identicon/svg?seed={em}",
+                        )
                     )
-                )
-                bootstrap_note = f"  bootstrap_admin: created ({em})"
+                    bootstrap_note = f"  bootstrap_admin: created ({em})"
 
         db.commit()
 

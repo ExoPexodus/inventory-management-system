@@ -24,7 +24,6 @@ from sqlalchemy.orm import Session
 from app.db.rls import set_rls_context
 from app.db.session import SessionLocal
 from app.models import (
-    AdminUser,
     EnrollmentToken,
     PaymentAllocation,
     Permission,
@@ -44,6 +43,7 @@ from app.models import (
     TransferOrderLine,
     Transaction,
     TransactionLine,
+    User,
 )
 from app.services.enrollment import hash_token
 from app.services.tax import sale_tax_totals
@@ -520,18 +520,19 @@ def main() -> None:
             expires_at=datetime.now(UTC) + timedelta(days=14),
         ))
 
-        # Bind all existing operators to showcase tenant and assign owner role
+        # Bind all existing users with admin access to showcase tenant and assign owner role
         owner_role = db.execute(
             select(Role).where(Role.tenant_id == tenant.id, Role.name == "owner")
         ).scalar_one_or_none()
-        admins = db.execute(select(AdminUser)).scalars().all()
+        # Pick users that currently have a password (admin-style users); new User model
+        admins = db.execute(select(User).where(User.password_hash.is_not(None))).scalars().all()
         for admin in admins:
             admin.tenant_id = tenant.id
             admin.is_active = True
             if owner_role and not admin.role_id:
                 admin.role_id = owner_role.id
-            if not admin.display_name:
-                admin.display_name = admin.email.split("@", 1)[0].replace(".", " ").title()
+            if not admin.name:
+                admin.name = admin.email.split("@", 1)[0].replace(".", " ").title()
             if not admin.avatar_url:
                 admin.avatar_url = f"https://api.dicebear.com/9.x/identicon/svg?seed={admin.email}"
 

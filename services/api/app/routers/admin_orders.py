@@ -186,7 +186,7 @@ def create_purchase_order(
         supplier_id=body.supplier_id,
         notes=body.notes,
         expected_delivery_date=body.expected_delivery_date,
-        created_by=ctx.operator_id,
+        created_by_user_id=ctx.user_id,
     )
     db.add(po)
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_purchase_order", resource_type="purchase_order", resource_id=str(po.id))

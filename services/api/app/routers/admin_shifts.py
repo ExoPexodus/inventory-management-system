@@ -227,8 +227,8 @@ def close_shift(
     shift.discrepancy_cents = body.reported_cash_cents - expected
     if body.notes:
         shift.notes = (shift.notes or "") + ("\n" if shift.notes else "") + body.notes
-    if ctx.operator_id:
-        shift.closed_by = ctx.operator_id
+    if ctx.user_id:
+        shift.closed_by_user_id = ctx.user_id
 
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="close_shift", resource_type="shift", resource_id=str(shift_id))
     db.commit()

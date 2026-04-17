@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
-from app.models import AdminUser, Permission, Role, RolePermission
+from app.models import Permission, Role, RolePermission, User
 from app.services.audit_service import write_audit
 from app.services.permission_service import invalidate_role_cache
 
@@ -220,7 +220,7 @@ def delete_role(
         )
     # Check for operators assigned to this role
     assigned_count = db.execute(
-        select(func.count()).select_from(AdminUser).where(AdminUser.role_id == role_id)
+        select(func.count()).select_from(User).where(User.role_id == role_id)
     ).scalar_one()
     if assigned_count > 0:
         raise HTTPException(

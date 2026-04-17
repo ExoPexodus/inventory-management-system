@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.config import settings
 from app.db.admin_deps_db import get_db_admin
-from app.models import Employee, Shop, Tenant, TenantLicenseCache
+from app.models import Shop, Tenant, TenantLicenseCache, User
 from app.services.audit_service import write_audit
 
 logger = logging.getLogger(__name__)
@@ -265,7 +265,7 @@ def get_billing_usage(
     tenant_id = _require_tenant(ctx)
     shops_used = db.execute(select(func.count(Shop.id)).where(Shop.tenant_id == tenant_id)).scalar_one()
     employees_used = db.execute(
-        select(func.count(Employee.id)).where(Employee.tenant_id == tenant_id, Employee.is_active.is_(True))
+        select(func.count(User.id)).where(User.tenant_id == tenant_id, User.is_active.is_(True))
     ).scalar_one()
     cache = db.execute(select(TenantLicenseCache).where(TenantLicenseCache.tenant_id == tenant_id)).scalar_one_or_none()
 

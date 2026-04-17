@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.db.session import get_db
-from app.models import Employee, Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache
+from app.models import Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache, User
 from app.services.stock import current_quantity
 from app.services.sync_push import process_push_batch
 from app.services.tax import effective_tax_bps_for_product
@@ -170,9 +170,9 @@ def sync_pull(
 
     # Check active status of the employee linked to this device (if any).
     linked_employee = db.execute(
-        select(Employee).where(
-            Employee.tenant_id == auth.tenant_id,
-            Employee.device_id == auth.device_id,
+        select(User).where(
+            User.tenant_id == auth.tenant_id,
+            User.device_id == auth.device_id,
         )
     ).scalar_one_or_none()
     employee_active: bool | None = None if linked_employee is None else linked_employee.is_active

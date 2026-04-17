@@ -8,7 +8,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
-    Employee,
     Notification,
     PaymentAllocation,
     Product,
@@ -17,6 +16,7 @@ from app.models import (
     StockMovement,
     Transaction,
     TransactionLine,
+    User,
 )
 from app.db.rls import set_rls_context
 from app.services.stock import current_quantity
@@ -208,19 +208,19 @@ def apply_sale_completed(
                 },
             )
 
-    employee_id: uuid.UUID | None = None
+    user_id: uuid.UUID | None = None
     if device_id is not None:
-        emp_row = db.execute(
-            select(Employee).where(Employee.device_id == device_id)
+        user_row = db.execute(
+            select(User).where(User.device_id == device_id)
         ).scalar_one_or_none()
-        if emp_row is not None:
-            employee_id = emp_row.id
+        if user_row is not None:
+            user_id = user_row.id
 
     txn = Transaction(
         tenant_id=tenant_id,
         shop_id=shop_id,
         device_id=device_id,
-        employee_id=employee_id,
+        user_id=user_id,
         total_cents=grand_total,
         tax_cents=tax_cents,
         client_mutation_id=client_mutation_id,

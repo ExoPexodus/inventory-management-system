@@ -16,13 +16,12 @@ from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import (
     AdminAuditLog,
-    AdminUser,
-    Employee,
     Product,
     StockMovement,
     Supplier,
     Transaction,
     TransactionLine,
+    User,
 )
 
 router = APIRouter(prefix="/v1/admin/reports", tags=["Admin Reports"])
@@ -217,18 +216,18 @@ def _export_suppliers(db: Session, tenant_id) -> StreamingResponse:
 
 def _export_staff(db: Session, tenant_id) -> StreamingResponse:
     members = db.execute(
-        select(Employee)
-        .where(Employee.tenant_id == tenant_id)
-        .order_by(Employee.name)
+        select(User)
+        .where(User.tenant_id == tenant_id)
+        .order_by(User.name)
     ).scalars().all()
 
-    headers = ["id", "name", "email", "position", "is_active", "created_at"]
+    headers = ["id", "name", "email", "role", "is_active", "created_at"]
     rows = [
         [
             str(m.id),
             m.name,
             m.email,
-            m.position,
+            m.role.name if m.role else "",
             m.is_active,
             m.created_at.isoformat() if m.created_at else "",
         ]
@@ -251,10 +250,10 @@ def _export_audit(db: Session, tenant_id, from_date, to_date) -> StreamingRespon
 
     logs = db.execute(stmt).scalars().all()
 
-    op_ids = {r.operator_id for r in logs if r.operator_id}
+    op_ids = {r.user_id for r in logs if r.user_id}
     op_emails: dict = {}
     if op_ids:
-        ops = db.execute(select(AdminUser).where(AdminUser.id.in_(op_ids))).scalars().all()
+        ops = db.execute(select(User).where(User.id.in_(op_ids))).scalars().all()
         op_emails = {o.id: o.email for o in ops}
 
     headers = ["id", "created_at", "actor", "action", "resource_type", "resource_id", "ip_address"]
@@ -262,7 +261,7 @@ def _export_audit(db: Session, tenant_id, from_date, to_date) -> StreamingRespon
         [
             str(r.id),
             r.created_at.isoformat(),
-            op_emails.get(r.operator_id, "system") if r.operator_id else "system",
+            op_emails.get(r.user_id, "system") if r.user_id else "system",
             r.action,
             r.resource_type,
             r.resource_id or "",

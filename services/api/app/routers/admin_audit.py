@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
-from app.models import AdminAuditLog, AdminUser
+from app.models import AdminAuditLog, User
 
 router = APIRouter(prefix="/v1/admin/audit-log", tags=["Admin Audit"])
 
@@ -81,17 +81,17 @@ def list_audit_log(
     has_more = len(rows) > limit
     rows = rows[:limit]
 
-    # Resolve operator emails in one query
-    op_ids = {r.operator_id for r in rows if r.operator_id}
+    # Resolve user emails in one query
+    op_ids = {r.user_id for r in rows if r.user_id}
     op_emails: dict[UUID, str] = {}
     if op_ids:
-        ops = db.execute(select(AdminUser).where(AdminUser.id.in_(op_ids))).scalars().all()
+        ops = db.execute(select(User).where(User.id.in_(op_ids))).scalars().all()
         op_emails = {o.id: o.email for o in ops}
 
     items = [
         AuditEventOut(
             id=r.id,
-            actor=op_emails.get(r.operator_id, "system") if r.operator_id else "system",
+            actor=op_emails.get(r.user_id, "system") if r.user_id else "system",
             action=r.action,
             resource_type=r.resource_type,
             resource_id=r.resource_id,

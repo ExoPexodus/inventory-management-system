@@ -128,16 +128,16 @@ def require_within_limit(resource: str):
             return license_ctx  # unknown resource — allow
 
         # Count current usage
-        from app.models import Employee, Shop
+        from app.models import Shop, User
         if resource == "max_shops":
             count = db.execute(
                 select(func.count(Shop.id)).where(Shop.tenant_id == license_ctx.tenant_id)
             ).scalar_one()
         elif resource == "max_employees":
             count = db.execute(
-                select(func.count(Employee.id)).where(
-                    Employee.tenant_id == license_ctx.tenant_id,
-                    Employee.is_active.is_(True),
+                select(func.count(User.id)).where(
+                    User.tenant_id == license_ctx.tenant_id,
+                    User.is_active.is_(True),
                 )
             ).scalar_one()
         else:

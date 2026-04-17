@@ -26,7 +26,7 @@ def write_audit(
     """Append an audit record to the current session (no separate commit)."""
     log = AdminAuditLog(
         tenant_id=tenant_id,
-        operator_id=operator_id,
+        user_id=operator_id,  # kwarg kept as operator_id for backward-compat with callers
         action=action,
         resource_type=resource_type,
         resource_id=str(resource_id) if resource_id else None,

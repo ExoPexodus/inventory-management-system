@@ -65,25 +65,46 @@ class RolePermission(Base):
     permission: Mapped["Permission"] = relationship()
 
 
-class AdminUser(Base):
-    __tablename__ = "admin_users"
-    __table_args__ = (UniqueConstraint("email", name="uq_admin_users_email"),)
+class User(Base):
+    """Unified user model — replaces legacy Employee + AdminUser tables.
+
+    Access to different app surfaces is derived from the role's permissions:
+    - cashier_app:access   → can PIN-login on cashier devices
+    - admin_web:access     → can log into admin-web with email+password
+    - admin_mobile:access  → can enroll/log into admin_mobile (PIN + password fallback)
+
+    A single user can hold multiple access permissions simultaneously.
+    """
+
+    __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    shop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shops.id", ondelete="SET NULL"), nullable=True
+    )
+    role_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="RESTRICT"), nullable=False
+    )
+    device_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="SET NULL"), nullable=True
+    )
     email: Mapped[str] = mapped_column(String(255), nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    role_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("roles.id", ondelete="RESTRICT"), nullable=True
-    )
-    display_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    tenant_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True
-    )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    pin_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
-    role: Mapped[Optional["Role"]] = relationship()
+    role: Mapped["Role"] = relationship()
 
 
 class Tenant(Base):
@@ -155,39 +176,13 @@ class EnrollmentToken(Base):
     shop_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False
     )
-    employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    app_target: Mapped[str] = mapped_column(String(32), default="cashier", server_default="cashier")
     token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class Employee(Base):
-    __tablename__ = "employees"
-    __table_args__ = (UniqueConstraint("tenant_id", "email", name="uq_employee_tenant_email"),)
-
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
-    )
-    shop_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False)
-    phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    position: Mapped[str] = mapped_column(String(64), default="cashier", server_default="cashier")
-    credential_type: Mapped[str] = mapped_column(String(32), default="pin", server_default="pin")
-    credential_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    device_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("devices.id", ondelete="SET NULL"), nullable=True
-    )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
 
 
 class TenantEmailConfig(Base):
@@ -269,8 +264,8 @@ class Transaction(Base):
     device_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("devices.id", ondelete="SET NULL"), nullable=True
     )
-    employee_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("employees.id", ondelete="SET NULL"), nullable=True
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     kind: Mapped[str] = mapped_column(String(32), default="sale")
     status: Mapped[str] = mapped_column(String(32), default="posted")
@@ -373,8 +368,8 @@ class PurchaseOrder(Base):
     status: Mapped[str] = mapped_column(String(32), default="draft", server_default="draft")
     expected_delivery_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -411,11 +406,11 @@ class StockAdjustment(Base):
     quantity_delta: Mapped[int] = mapped_column(Integer, nullable=False)
     reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
-    approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    approved_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     status: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -435,8 +430,8 @@ class TransferOrder(Base):
         UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False
     )
     status: Mapped[str] = mapped_column(String(32), default="draft", server_default="draft")
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -500,12 +495,12 @@ class ShiftClosing(Base):
     reported_cash_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     discrepancy_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     status: Mapped[str] = mapped_column(String(32), default="open", server_default="open")
-    closed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    closed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    reviewed_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     reviewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
@@ -521,8 +516,8 @@ class ReportExport(Base):
     filters: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     file_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending")
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -540,8 +535,8 @@ class AdminAuditLog(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
-    operator_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     action: Mapped[str] = mapped_column(String(128), nullable=False)
     resource_type: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -626,8 +621,8 @@ class ApiToken(Base):
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("admin_users.id", ondelete="SET NULL"), nullable=True
+    created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

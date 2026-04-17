@@ -1,10 +1,8 @@
 from app.models.tables import (
     AdminAuditLog,
-    AdminUser,
     ApiToken,
     Base,
     Device,
-    Employee,
     EnrollmentToken,
     Integration,
     Notification,
@@ -30,16 +28,15 @@ from app.models.tables import (
     TransferOrderLine,
     Transaction,
     TransactionLine,
+    User,
     WebhookDelivery,
 )
 
 __all__ = [
     "AdminAuditLog",
-    "AdminUser",
     "ApiToken",
     "Base",
     "Device",
-    "Employee",
     "EnrollmentToken",
     "Integration",
     "Notification",
@@ -65,5 +62,6 @@ __all__ = [
     "TransferOrderLine",
     "Transaction",
     "TransactionLine",
+    "User",
     "WebhookDelivery",
 ]

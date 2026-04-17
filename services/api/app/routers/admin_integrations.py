@@ -254,7 +254,7 @@ def create_api_token(
         token_prefix=prefix,
         scopes=body.scopes or [],
         expires_at=expires,
-        created_by=ctx.operator_id,
+        created_by_user_id=ctx.user_id,
     )
     db.add(tok)
     db.flush()

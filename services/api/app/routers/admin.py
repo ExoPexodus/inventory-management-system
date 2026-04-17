@@ -13,7 +13,7 @@ from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.auth.jwt import create_operator_access_token
 from app.db.admin_deps_db import get_db_admin
 from app.db.session import get_db
-from app.models import AdminUser, Device, EnrollmentToken, Product, Shop, ShopProductTax, Tenant
+from app.models import Device, EnrollmentToken, Product, Shop, ShopProductTax, Tenant, User
 from app.services.audit_service import write_audit
 from app.services.enrollment import hash_token
 from app.services.permission_service import get_role_permissions
@@ -66,9 +66,9 @@ def admin_login(
     db: Annotated[Session, Depends(get_db)],
 ) -> AdminLoginResponse:
     user = db.execute(
-        select(AdminUser).where(AdminUser.email == body.email.strip().lower(), AdminUser.is_active.is_(True))
+        select(User).where(User.email == body.email.strip().lower(), User.is_active.is_(True))
     ).scalar_one_or_none()
-    if user is None:
+    if user is None or user.password_hash is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     raw_pw = body.password.strip().encode("utf-8")
     try:
@@ -76,25 +76,24 @@ def admin_login(
     except ValueError:
         ok = False
     if not ok:
-        if user.tenant_id:
-            write_audit(db, tenant_id=user.tenant_id, operator_id=user.id, action="login_failure", resource_type="auth")
-            db.commit()
+        write_audit(db, tenant_id=user.tenant_id, operator_id=user.id, action="login_failure", resource_type="auth")
+        db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
-    if user.tenant_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Operator is not assigned to a tenant",
-        )
     tenant = db.get(Tenant, user.tenant_id)
     if tenant is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Operator tenant does not exist",
+            detail="User tenant does not exist",
+        )
+    # Enforce admin_web:access OR admin_mobile:access permission
+    perms_set = get_role_permissions(db, user.role_id) if user.role_id else frozenset()
+    if not perms_set.intersection({"admin_web:access", "admin_mobile:access"}):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your role does not grant admin access. Contact your administrator.",
         )
     role_name = user.role.name if user.role else None
-    perms: list[str] = []
-    if user.role_id is not None:
-        perms = sorted(get_role_permissions(db, user.role_id))
+    perms: list[str] = sorted(perms_set)
     write_audit(db, tenant_id=user.tenant_id, operator_id=user.id, action="login_success", resource_type="auth")
     db.commit()
     access, ttl = create_operator_access_token(
@@ -117,19 +116,19 @@ def admin_me(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db)],
 ) -> AdminMeResponse:
-    if ctx.is_legacy_token or ctx.operator_id is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Legacy token has no operator profile")
+    if ctx.is_legacy_token or ctx.user_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Legacy token has no user profile")
     user = db.execute(
-        select(AdminUser).where(AdminUser.id == ctx.operator_id, AdminUser.is_active.is_(True))
+        select(User).where(User.id == ctx.user_id, User.is_active.is_(True))
     ).scalar_one_or_none()
     if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Operator not found")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     role_name = user.role.name if user.role else None
     perms: list[str] = sorted(ctx.permissions)
     return AdminMeResponse(
         id=user.id,
         email=user.email,
-        display_name=user.display_name,
+        display_name=user.name,
         tenant_id=user.tenant_id,
         role=role_name,
         role_id=user.role_id,

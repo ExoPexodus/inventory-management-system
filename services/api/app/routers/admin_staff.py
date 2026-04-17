@@ -1,4 +1,9 @@
-"""Admin staff and employee onboarding endpoints."""
+"""Admin staff and employee onboarding endpoints.
+
+After the Employee+AdminUser → User merge, "employees" are Users whose role grants
+cashier_app:access. Their credentials live in the `pin_hash` or `password_hash`
+columns (both nullable, set at enrollment time).
+"""
 
 from __future__ import annotations
 
@@ -19,10 +24,11 @@ from app.auth.deps import DeviceAuth, get_device_auth
 from app.config import settings
 from app.db.admin_deps_db import get_db_admin
 from app.db.session import get_db
-from app.models import Employee, EnrollmentToken, Shop, TenantEmailConfig
+from app.models import EnrollmentToken, Role, Shop, TenantEmailConfig, User
 from app.services.audit_service import write_audit
 from app.services.email_service import decrypt_secret, encrypt_secret, send_tenant_email
 from app.services.enrollment import hash_token
+from app.services.permission_service import get_role_permissions
 
 router = APIRouter(prefix="/v1", tags=["Admin Staff"])
 
@@ -45,7 +51,9 @@ def _hash_credential(raw: str) -> str:
     return bcrypt.hashpw(raw.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
 
 
-def _credential_valid(raw: str, hashed: str) -> bool:
+def _credential_valid(raw: str, hashed: str | None) -> bool:
+    if not hashed:
+        return False
     try:
         return bcrypt.checkpw(raw.encode("utf-8"), hashed.encode("ascii"))
     except ValueError:
@@ -73,8 +81,22 @@ def _resolve_shop_for_employee(
     )
 
 
-def _get_employee_for_tenant(db: Session, *, tenant_id: UUID, employee_id: UUID) -> Employee:
-    row = db.get(Employee, employee_id)
+def _resolve_role_for_position(db: Session, tenant_id: UUID, position: str) -> UUID:
+    """Map an employee 'position' string to a matching role. Creates the role if missing."""
+    pos = position.strip().lower()
+    role = db.execute(
+        select(Role).where(Role.tenant_id == tenant_id, Role.name == pos)
+    ).scalar_one_or_none()
+    if role is None:
+        # Create a custom role with no permissions — admin configures permissions later
+        role = Role(tenant_id=tenant_id, name=pos, display_name=pos.replace("_", " ").title(), is_system=False)
+        db.add(role)
+        db.flush()
+    return role.id
+
+
+def _get_employee_for_tenant(db: Session, *, tenant_id: UUID, employee_id: UUID) -> User:
+    row = db.get(User, employee_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
     if row.tenant_id != tenant_id:
@@ -87,8 +109,9 @@ def _create_enrollment_token(
     *,
     tenant_id: UUID,
     shop_id: UUID,
-    employee_id: UUID,
+    user_id: UUID,
     ttl_hours: int,
+    app_target: str = "cashier",
 ) -> tuple[str, datetime]:
     raw = secrets.token_urlsafe(24)
     expires_at = datetime.now(UTC) + timedelta(hours=ttl_hours)
@@ -96,7 +119,8 @@ def _create_enrollment_token(
         EnrollmentToken(
             tenant_id=tenant_id,
             shop_id=shop_id,
-            employee_id=employee_id,
+            user_id=user_id,
+            app_target=app_target,
             token_hash=hash_token(raw),
             expires_at=expires_at,
         )
@@ -105,19 +129,35 @@ def _create_enrollment_token(
     return raw, expires_at
 
 
-def _qr_payload(*, employee_id: UUID, token: str) -> dict[str, str | int]:
+def _qr_payload(*, user_id: UUID, token: str, app_target: str = "cashier") -> dict[str, str | int]:
     return {
         "v": 1,
         "api": settings.public_api_url.rstrip("/"),
         "tok": token,
-        "eid": str(employee_id),
+        "eid": str(user_id),  # kept as 'eid' for backward compat with existing cashier app
+        "app": app_target,
     }
+
+
+def _position_for_user(db: Session, user: User) -> str:
+    """Derive a legacy-style position string from the user's role name."""
+    if user.role:
+        return user.role.name
+    return "unknown"
+
+
+def _credential_type_for_user(user: User) -> str:
+    if user.pin_hash:
+        return "pin"
+    if user.password_hash:
+        return "password"
+    return "none"
 
 
 class EmployeeOut(BaseModel):
     id: UUID
     tenant_id: UUID
-    shop_id: UUID
+    shop_id: UUID | None
     name: str
     email: str
     phone: str | None
@@ -161,6 +201,7 @@ class PatchEmployeeBody(BaseModel):
 class InviteMethodBody(BaseModel):
     method: str = Field(pattern="^(qr|email)$")
     ttl_hours: int = Field(default=168, ge=1, le=24 * 30)
+    app_target: str = Field(default="cashier", pattern="^(cashier|admin_mobile)$")
 
 
 class InviteEmployeeResponse(BaseModel):
@@ -235,6 +276,23 @@ class TenantEmailTestBody(BaseModel):
     to_email: EmailStr
 
 
+def _employee_out(db: Session, user: User) -> EmployeeOut:
+    return EmployeeOut(
+        id=user.id,
+        tenant_id=user.tenant_id,
+        shop_id=user.shop_id,
+        name=user.name,
+        email=user.email,
+        phone=user.phone,
+        position=_position_for_user(db, user),
+        credential_type=_credential_type_for_user(user),
+        device_id=user.device_id,
+        is_active=user.is_active,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+    )
+
+
 @router.get("/admin/employees", response_model=list[EmployeeOut], dependencies=[require_permission("staff:read")])
 def list_employees(
     ctx: AdminAuthDep,
@@ -242,30 +300,31 @@ def list_employees(
     shop_id: UUID | None = None,
     include_inactive: bool = False,
 ) -> list[EmployeeOut]:
+    """Lists users whose role has cashier_app:access (legacy 'employees' concept).
+
+    After the User merge, this filters on role permission rather than a separate table.
+    """
     tenant_id = _require_operator_tenant(ctx)
-    stmt = select(Employee).where(Employee.tenant_id == tenant_id).order_by(Employee.created_at.desc())
-    if not include_inactive:
-        stmt = stmt.where(Employee.is_active.is_(True))
-    if shop_id is not None:
-        stmt = stmt.where(Employee.shop_id == shop_id)
-    rows = db.execute(stmt).scalars().all()
-    return [
-        EmployeeOut(
-            id=r.id,
-            tenant_id=r.tenant_id,
-            shop_id=r.shop_id,
-            name=r.name,
-            email=r.email,
-            phone=r.phone,
-            position=r.position,
-            credential_type=r.credential_type,
-            device_id=r.device_id,
-            is_active=r.is_active,
-            created_at=r.created_at,
-            updated_at=r.updated_at,
+    from app.models import Permission, RolePermission
+
+    stmt = (
+        select(User)
+        .join(Role, User.role_id == Role.id)
+        .join(RolePermission, RolePermission.role_id == Role.id)
+        .join(Permission, Permission.id == RolePermission.permission_id)
+        .where(
+            User.tenant_id == tenant_id,
+            Permission.codename == "cashier_app:access",
         )
-        for r in rows
-    ]
+        .distinct()
+        .order_by(User.created_at.desc())
+    )
+    if not include_inactive:
+        stmt = stmt.where(User.is_active.is_(True))
+    if shop_id is not None:
+        stmt = stmt.where(User.shop_id == shop_id)
+    rows = db.execute(stmt).scalars().all()
+    return [_employee_out(db, r) for r in rows]
 
 
 @router.post("/admin/employees", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("staff:write")])
@@ -276,15 +335,17 @@ def create_employee(
 ) -> EmployeeOut:
     tenant_id = _require_operator_tenant(ctx)
     shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=body.shop_id)
-    row = Employee(
+    role_id = _resolve_role_for_position(db, tenant_id, body.position)
+    hashed = _hash_credential(body.initial_credential.strip())
+    row = User(
         tenant_id=tenant_id,
         shop_id=shop_id,
+        role_id=role_id,
         name=body.name.strip(),
         email=body.email.strip().lower(),
         phone=body.phone.strip() if body.phone else None,
-        position=body.position.strip().lower(),
-        credential_type=body.credential_type,
-        credential_hash=_hash_credential(body.initial_credential.strip()),
+        pin_hash=hashed if body.credential_type == "pin" else None,
+        password_hash=hashed if body.credential_type == "password" else None,
     )
     db.add(row)
     try:
@@ -292,23 +353,10 @@ def create_employee(
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee email already exists") from None
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="create_employee", resource_type="employee", resource_id=str(row.id))
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="create_employee", resource_type="user", resource_id=str(row.id))
     db.commit()
     db.refresh(row)
-    return EmployeeOut(
-        id=row.id,
-        tenant_id=row.tenant_id,
-        shop_id=row.shop_id,
-        name=row.name,
-        email=row.email,
-        phone=row.phone,
-        position=row.position,
-        credential_type=row.credential_type,
-        device_id=row.device_id,
-        is_active=row.is_active,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
+    return _employee_out(db, row)
 
 
 @router.get("/admin/employees/{employee_id}", response_model=EmployeeOut, dependencies=[require_permission("staff:read")])
@@ -319,20 +367,7 @@ def get_employee(
 ) -> EmployeeOut:
     tenant_id = _require_operator_tenant(ctx)
     row = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
-    return EmployeeOut(
-        id=row.id,
-        tenant_id=row.tenant_id,
-        shop_id=row.shop_id,
-        name=row.name,
-        email=row.email,
-        phone=row.phone,
-        position=row.position,
-        credential_type=row.credential_type,
-        device_id=row.device_id,
-        is_active=row.is_active,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
+    return _employee_out(db, row)
 
 
 @router.patch("/admin/employees/{employee_id}", response_model=EmployeeOut, dependencies=[require_permission("staff:write")])
@@ -352,32 +387,19 @@ def patch_employee(
     if "phone" in patch:
         row.phone = patch["phone"].strip() if isinstance(patch["phone"], str) and patch["phone"].strip() else None
     if "position" in patch and patch["position"] is not None:
-        row.position = patch["position"].strip().lower()
+        row.role_id = _resolve_role_for_position(db, tenant_id, patch["position"])
     if "shop_id" in patch:
         row.shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=patch["shop_id"])
     if "is_active" in patch and patch["is_active"] is not None:
         row.is_active = patch["is_active"]
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_employee", resource_type="employee", resource_id=str(employee_id))
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="update_employee", resource_type="user", resource_id=str(employee_id))
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Employee email already exists") from None
     db.refresh(row)
-    return EmployeeOut(
-        id=row.id,
-        tenant_id=row.tenant_id,
-        shop_id=row.shop_id,
-        name=row.name,
-        email=row.email,
-        phone=row.phone,
-        position=row.position,
-        credential_type=row.credential_type,
-        device_id=row.device_id,
-        is_active=row.is_active,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
+    return _employee_out(db, row)
 
 
 @router.delete("/admin/employees/{employee_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[require_permission("staff:write")])
@@ -389,7 +411,7 @@ def delete_employee(
     tenant_id = _require_operator_tenant(ctx)
     row = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
     row.is_active = False
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="deactivate_employee", resource_type="employee", resource_id=str(employee_id))
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="deactivate_employee", resource_type="user", resource_id=str(employee_id))
     db.commit()
 
 
@@ -402,22 +424,9 @@ def reactivate_employee(
     tenant_id = _require_operator_tenant(ctx)
     row = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
     row.is_active = True
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="reactivate_employee", resource_type="employee", resource_id=str(employee_id))
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="reactivate_employee", resource_type="user", resource_id=str(employee_id))
     db.commit()
-    return EmployeeOut(
-        id=row.id,
-        tenant_id=row.tenant_id,
-        shop_id=row.shop_id,
-        name=row.name,
-        email=row.email,
-        phone=row.phone,
-        position=row.position,
-        credential_type=row.credential_type,
-        device_id=row.device_id,
-        is_active=row.is_active,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
+    return _employee_out(db, row)
 
 
 @router.post("/admin/employees/{employee_id}/invite", response_model=InviteEmployeeResponse, dependencies=[require_permission("staff:write")])
@@ -429,14 +438,29 @@ def invite_employee(
 ) -> InviteEmployeeResponse:
     tenant_id = _require_operator_tenant(ctx)
     employee = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
+
+    # Verify user has the right access permission for the chosen app target
+    if employee.role_id:
+        perms = get_role_permissions(db, employee.role_id)
+        required = f"{body.app_target}_app:access" if body.app_target == "cashier" else "admin_mobile:access"
+        if required not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"User's role does not grant {required}",
+            )
+
+    shop_id = employee.shop_id
+    if shop_id is None:
+        shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=None)
     token, expires_at = _create_enrollment_token(
         db,
         tenant_id=tenant_id,
-        shop_id=employee.shop_id,
-        employee_id=employee.id,
+        shop_id=shop_id,
+        user_id=employee.id,
         ttl_hours=body.ttl_hours,
+        app_target=body.app_target,
     )
-    payload = _qr_payload(employee_id=employee.id, token=token)
+    payload = _qr_payload(user_id=employee.id, token=token, app_target=body.app_target)
     email_sent = False
     if body.method == "email":
         cfg = db.execute(
@@ -453,13 +477,13 @@ def invite_employee(
             subject="Device enrollment invite",
             text_body=(
                 f"Hello {employee.name},\n\n"
-                f"Use this enrollment token in the cashier app: {token}\n"
+                f"Use this enrollment token in the app: {token}\n"
                 f"QR payload: {payload}\n"
                 f"Expires at: {expires_at.isoformat()}\n"
             ),
         )
         email_sent = True
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="invite_employee", resource_type="employee", resource_id=str(employee_id))
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="invite_employee", resource_type="user", resource_id=str(employee_id))
     db.commit()
     return InviteEmployeeResponse(
         employee_id=employee.id,
@@ -481,14 +505,18 @@ def re_enroll_employee(
     tenant_id = _require_operator_tenant(ctx)
     employee = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
     employee.device_id = None
+    shop_id = employee.shop_id
+    if shop_id is None:
+        shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=None)
     token, expires_at = _create_enrollment_token(
         db,
         tenant_id=tenant_id,
-        shop_id=employee.shop_id,
-        employee_id=employee.id,
+        shop_id=shop_id,
+        user_id=employee.id,
         ttl_hours=body.ttl_hours,
+        app_target=body.app_target,
     )
-    payload = _qr_payload(employee_id=employee.id, token=token)
+    payload = _qr_payload(user_id=employee.id, token=token, app_target=body.app_target)
     email_sent = False
     if body.method == "email":
         cfg = db.execute(
@@ -505,13 +533,13 @@ def re_enroll_employee(
             subject="Device re-enrollment invite",
             text_body=(
                 f"Hello {employee.name},\n\n"
-                f"Use this re-enrollment token in the cashier app: {token}\n"
+                f"Use this re-enrollment token in the app: {token}\n"
                 f"QR payload: {payload}\n"
                 f"Expires at: {expires_at.isoformat()}\n"
             ),
         )
         email_sent = True
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="re_enroll_employee", resource_type="employee", resource_id=str(employee_id))
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="re_enroll_employee", resource_type="user", resource_id=str(employee_id))
     db.commit()
     return InviteEmployeeResponse(
         employee_id=employee.id,
@@ -532,25 +560,15 @@ def reset_employee_credentials(
 ) -> EmployeeOut:
     tenant_id = _require_operator_tenant(ctx)
     row = _get_employee_for_tenant(db, tenant_id=tenant_id, employee_id=employee_id)
-    row.credential_type = body.credential_type
-    row.credential_hash = _hash_credential(body.credential.strip())
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="reset_credentials", resource_type="employee", resource_id=str(employee_id))
+    hashed = _hash_credential(body.credential.strip())
+    if body.credential_type == "pin":
+        row.pin_hash = hashed
+    else:
+        row.password_hash = hashed
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="reset_credentials", resource_type="user", resource_id=str(employee_id))
     db.commit()
     db.refresh(row)
-    return EmployeeOut(
-        id=row.id,
-        tenant_id=row.tenant_id,
-        shop_id=row.shop_id,
-        name=row.name,
-        email=row.email,
-        phone=row.phone,
-        position=row.position,
-        credential_type=row.credential_type,
-        device_id=row.device_id,
-        is_active=row.is_active,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-    )
+    return _employee_out(db, row)
 
 
 @router.post("/employees/login", response_model=EmployeeLoginResponse)
@@ -559,40 +577,54 @@ def employee_login(
     auth: Annotated[DeviceAuth, Depends(get_device_auth)],
     db: Annotated[Session, Depends(get_db)],
 ) -> EmployeeLoginResponse:
-    # First check if this device has a deactivated employee linked (before filtering by is_active).
-    deactivated_stmt = select(Employee).where(
-        Employee.tenant_id == auth.tenant_id,
-        Employee.device_id == auth.device_id,
-        Employee.is_active.is_(False),
+    # First check if this device has a deactivated user linked (before filtering by is_active).
+    deactivated_stmt = select(User).where(
+        User.tenant_id == auth.tenant_id,
+        User.device_id == auth.device_id,
+        User.is_active.is_(False),
     )
     if body.employee_id is not None:
-        deactivated_stmt = deactivated_stmt.where(Employee.id == body.employee_id)
+        deactivated_stmt = deactivated_stmt.where(User.id == body.employee_id)
     if body.email is not None:
-        deactivated_stmt = deactivated_stmt.where(Employee.email == str(body.email).strip().lower())
+        deactivated_stmt = deactivated_stmt.where(User.email == str(body.email).strip().lower())
     if db.execute(deactivated_stmt).scalar_one_or_none() is not None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account deactivated")
 
-    stmt = select(Employee).where(
-        Employee.tenant_id == auth.tenant_id,
-        Employee.device_id == auth.device_id,
-        Employee.is_active.is_(True),
+    stmt = select(User).where(
+        User.tenant_id == auth.tenant_id,
+        User.device_id == auth.device_id,
+        User.is_active.is_(True),
     )
     if body.employee_id is not None:
-        stmt = stmt.where(Employee.id == body.employee_id)
+        stmt = stmt.where(User.id == body.employee_id)
     if body.email is not None:
-        stmt = stmt.where(Employee.email == str(body.email).strip().lower())
-    rows = db.execute(stmt.order_by(Employee.created_at.asc())).scalars().all()
+        stmt = stmt.where(User.email == str(body.email).strip().lower())
+    rows = db.execute(stmt.order_by(User.created_at.asc())).scalars().all()
     row = rows[0] if rows else None
     if row is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Employee is not linked to this device")
-    if not _credential_valid(body.credential.strip(), row.credential_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid employee credential")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User is not linked to this device")
+
+    # Enforce cashier_app:access on the user's role
+    if row.role_id:
+        perms = get_role_permissions(db, row.role_id)
+        if "cashier_app:access" not in perms:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your role does not grant cashier app access. Contact your administrator.",
+            )
+
+    # Try PIN first, then password (both stored hashed on User)
+    credential = body.credential.strip()
+    ok = _credential_valid(credential, row.pin_hash) or _credential_valid(credential, row.password_hash)
+    if not ok:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credential")
+
     return EmployeeLoginResponse(
         employee_id=row.id,
         name=row.name,
         email=row.email,
-        position=row.position,
-        credential_type=row.credential_type,
+        position=_position_for_user(db, row),
+        credential_type=_credential_type_for_user(row),
     )
 
 
@@ -640,7 +672,7 @@ def put_tenant_email_settings(
     row.from_email = str(body.from_email).strip().lower()
     row.from_name = body.from_name.strip() if body.from_name else None
     row.is_active = body.is_active
-    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="update_email_settings", resource_type="tenant_email_config")
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="update_email_settings", resource_type="tenant_email_config")
     db.commit()
     db.refresh(row)
     return TenantEmailConfigOut(
