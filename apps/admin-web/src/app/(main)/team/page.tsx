@@ -302,20 +302,38 @@ function InviteUserDialog({
 
 // ─── Edit user modal ───────────────────────────────────────────────────────────
 
-function EditUserModal({ open, onClose, user, roles, onSaved }: {
+function EditUserModal({ open, onClose, user, roles, permissionsByRole, onSaved }: {
   open: boolean;
   onClose: () => void;
   user: TeamUser | null;
   roles: Role[];
+  permissionsByRole: Record<string, string[]>;
   onSaved: () => void;
 }) {
   const [roleId, setRoleId] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [enrollToken, setEnrollToken] = useState<string | null>(null);
+  const [resetMode, setResetMode] = useState<"pin" | "password" | null>(null);
+  const [resetValue, setResetValue] = useState("");
 
   useEffect(() => {
-    if (open && user) { setRoleId(user.role_id ?? ""); setErr(null); }
+    if (open && user) {
+      setRoleId(user.role_id ?? "");
+      setErr(null);
+      setNotice(null);
+      setEnrollToken(null);
+      setResetMode(null);
+      setResetValue("");
+    }
   }, [open, user]);
+
+  const rolePerms = user?.role_id ? (permissionsByRole[user.role_id] ?? []) : [];
+  const hasCashierAccess = rolePerms.includes("cashier_app:access");
+  const hasAdminMobileAccess = rolePerms.includes("admin_mobile:access");
+  const hasAdminWebAccess = rolePerms.includes("admin_web:access");
+  const canReEnroll = hasCashierAccess || hasAdminMobileAccess;
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
@@ -352,6 +370,65 @@ function EditUserModal({ open, onClose, user, roles, onSaved }: {
     else { const d = (await r.json()) as { detail?: string }; setErr(d.detail ?? "Failed"); }
   }
 
+  async function reEnroll() {
+    if (!user) return;
+    const appTarget = hasCashierAccess ? "cashier" : "admin_mobile";
+    if (!confirm(
+      `Generate a new enrollment token for ${user.name}? ` +
+      `Their current device will be unlinked and they'll need to re-scan the QR on the ${appTarget === "cashier" ? "cashier" : "admin mobile"} app.`,
+    )) return;
+    setBusy(true); setErr(null); setNotice(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/employees/${user.id}/re-enroll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ method: "qr", ttl_hours: 168, app_target: appTarget }),
+      });
+      if (!r.ok) {
+        const d = (await r.json()) as { detail?: string };
+        setErr(d.detail ?? `Error ${r.status}`);
+        return;
+      }
+      const data = (await r.json()) as { enrollment_token?: string };
+      if (data.enrollment_token) {
+        setEnrollToken(data.enrollment_token);
+        setNotice("New enrollment token generated. Share it with the user below.");
+      }
+      onSaved();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitReset() {
+    if (!user || !resetMode) return;
+    if (resetMode === "pin" && !/^\d{4,8}$/.test(resetValue)) {
+      setErr("PIN must be 4–8 digits"); return;
+    }
+    if (resetMode === "password" && resetValue.length < 8) {
+      setErr("Password must be at least 8 characters"); return;
+    }
+    setBusy(true); setErr(null); setNotice(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/employees/${user.id}/reset-credentials`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential_type: resetMode, credential: resetValue }),
+      });
+      if (!r.ok) {
+        const d = (await r.json()) as { detail?: string };
+        setErr(d.detail ?? `Error ${r.status}`);
+        return;
+      }
+      setNotice(`${resetMode === "pin" ? "PIN" : "Password"} updated. Share the new credential with the user.`);
+      setResetMode(null);
+      setResetValue("");
+      onSaved();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!user) return null;
 
   return (
@@ -364,7 +441,104 @@ function EditUserModal({ open, onClose, user, roles, onSaved }: {
             ))}
           </select>
         </Field>
+
+        {/* Account actions */}
+        <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4 space-y-3">
+          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Account actions</p>
+
+          {canReEnroll && (
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-on-surface">Re-enroll device</p>
+                <p className="text-xs text-on-surface-variant">
+                  {user.device_id
+                    ? "Unlink the current device and generate a fresh enrollment token."
+                    : "Generate a new enrollment token for this user's device."}
+                </p>
+              </div>
+              <SecondaryButton type="button" onClick={() => void reEnroll()} disabled={busy}>
+                Re-enroll
+              </SecondaryButton>
+            </div>
+          )}
+
+          {(hasAdminWebAccess || hasAdminMobileAccess) && (
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-on-surface">Reset password</p>
+                <p className="text-xs text-on-surface-variant">
+                  {user.has_password
+                    ? "Set a new password for admin web / mobile login."
+                    : "Set an initial password for admin web / mobile login."}
+                </p>
+              </div>
+              <SecondaryButton type="button" onClick={() => { setResetMode("password"); setResetValue(""); setErr(null); }} disabled={busy}>
+                Reset password
+              </SecondaryButton>
+            </div>
+          )}
+
+          {(hasCashierAccess || hasAdminMobileAccess) && (
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-on-surface">Reset PIN</p>
+                <p className="text-xs text-on-surface-variant">
+                  {user.has_pin
+                    ? "Set a new PIN. The old one stops working immediately."
+                    : "Set an initial PIN for cashier / admin mobile quick unlock."}
+                </p>
+              </div>
+              <SecondaryButton type="button" onClick={() => { setResetMode("pin"); setResetValue(""); setErr(null); }} disabled={busy}>
+                Reset PIN
+              </SecondaryButton>
+            </div>
+          )}
+
+          {!canReEnroll && !hasAdminWebAccess && !hasAdminMobileAccess && (
+            <p className="text-xs text-on-surface-variant">This user&apos;s role grants no app access. Assign a role with cashier, web, or mobile access to unlock account actions.</p>
+          )}
+        </div>
+
+        {/* Inline reset form */}
+        {resetMode && (
+          <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+            <p className="text-sm font-semibold text-on-surface">
+              New {resetMode === "pin" ? "PIN" : "password"}
+            </p>
+            <input
+              className={inputCls}
+              type={resetMode === "password" ? "password" : "text"}
+              inputMode={resetMode === "pin" ? "numeric" : "text"}
+              pattern={resetMode === "pin" ? "\\d*" : undefined}
+              minLength={resetMode === "pin" ? 4 : 8}
+              maxLength={resetMode === "pin" ? 8 : 128}
+              value={resetValue}
+              onChange={(e) => setResetValue(e.target.value)}
+              placeholder={resetMode === "pin" ? "4-8 digits" : "Min 8 characters"}
+              autoFocus
+            />
+            <div className="flex justify-end gap-3">
+              <SecondaryButton type="button" onClick={() => { setResetMode(null); setResetValue(""); setErr(null); }}>Cancel</SecondaryButton>
+              <PrimaryButton type="button" onClick={() => void submitReset()} disabled={busy || !resetValue}>
+                {busy ? "Saving…" : "Update"}
+              </PrimaryButton>
+            </div>
+          </div>
+        )}
+
+        {enrollToken && (
+          <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Enrollment token</p>
+            <p className="mt-2 break-all font-mono text-xs text-on-surface">{enrollToken}</p>
+            <p className="mt-2 text-xs text-on-surface-variant">
+              Share this with the user — paste into the app or scan the QR to enroll their device.
+            </p>
+          </div>
+        )}
+
+        {notice && <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-on-surface">{notice}</p>}
         {err && <p className="rounded-lg border border-error/20 bg-error-container/20 px-3 py-2 text-xs text-on-error-container">{err}</p>}
+
         <div className="flex items-center justify-between pt-2">
           <button
             type="button"
@@ -374,7 +548,7 @@ function EditUserModal({ open, onClose, user, roles, onSaved }: {
             {user.is_active ? "Deactivate user" : "Reactivate user"}
           </button>
           <div className="flex gap-3">
-            <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
+            <SecondaryButton type="button" onClick={onClose}>Close</SecondaryButton>
             <PrimaryButton type="submit" disabled={busy}>{busy ? "Saving…" : "Save changes"}</PrimaryButton>
           </div>
         </div>
@@ -550,6 +724,7 @@ function TeamTab({ roles, permissionsByRole }: { roles: Role[]; permissionsByRol
         onClose={() => setEditUser(null)}
         user={editUser}
         roles={roles}
+        permissionsByRole={permissionsByRole}
         onSaved={() => void refresh(showInactive)}
       />
     </div>
