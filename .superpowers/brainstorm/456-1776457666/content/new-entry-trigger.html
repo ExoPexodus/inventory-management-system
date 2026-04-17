@@ -1,0 +1,60 @@
+<h2>When clicking "New Entry" — how should the choice appear?</h2>
+<p class="subtitle">The user needs to pick between creating a Product or a Shop. Which interaction pattern feels right?</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Split Modal</h3>
+      <p>A centered dialog pops up with two large cards side-by-side. Click "Create Product" or "Create Shop" to navigate.</p>
+      <div style="margin-top:12px; display:flex; gap:10px;">
+        <div style="flex:1; border:2px solid #1e3a5f; border-radius:8px; padding:16px; text-align:center; background:#f0f4ff;">
+          <div style="font-size:24px; margin-bottom:6px;">📦</div>
+          <strong style="display:block; font-size:13px;">Create Product</strong>
+          <span style="font-size:11px; color:#666;">Add a new SKU to your catalog</span>
+        </div>
+        <div style="flex:1; border:2px dashed #aaa; border-radius:8px; padding:16px; text-align:center; background:#fafafa;">
+          <div style="font-size:24px; margin-bottom:6px;">🏪</div>
+          <strong style="display:block; font-size:13px;">Create Shop</strong>
+          <span style="font-size:11px; color:#666;">Add a new store location</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Dropdown Menu</h3>
+      <p>Clicking "New Entry" opens a small dropdown beneath the button with two menu items.</p>
+      <div style="margin-top:12px; display:inline-block; border:1px solid #ddd; border-radius:8px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.1); min-width:200px;">
+        <div style="padding:10px 16px; display:flex; align-items:center; gap:10px; border-bottom:1px solid #eee; font-size:13px; background:#fff;">
+          <span>📦</span> <span>Create Product</span>
+        </div>
+        <div style="padding:10px 16px; display:flex; align-items:center; gap:10px; font-size:13px; background:#fff;">
+          <span>🏪</span> <span>Create Shop</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Dedicated Landing Page</h3>
+      <p>"New Entry" navigates to a choice page with two large tiles. From there you pick which thing to create, then go to that form.</p>
+      <div style="margin-top:12px; display:flex; gap:10px;">
+        <div style="flex:1; border:1px solid #ddd; border-radius:10px; padding:20px; text-align:center; background:#fff;">
+          <div style="font-size:28px; margin-bottom:8px;">📦</div>
+          <strong style="display:block; font-size:13px; margin-bottom:4px;">Product</strong>
+          <span style="font-size:11px; color:#888;">New SKU, variants, pricing</span>
+        </div>
+        <div style="flex:1; border:1px solid #ddd; border-radius:10px; padding:20px; text-align:center; background:#fff;">
+          <div style="font-size:28px; margin-bottom:8px;">🏪</div>
+          <strong style="display:block; font-size:13px; margin-bottom:4px;">Shop</strong>
+          <span style="font-size:11px; color:#888;">New store location</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

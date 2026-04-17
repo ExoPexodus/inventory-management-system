@@ -1,0 +1,132 @@
+<h2>Proposed product form layout</h2>
+<p class="subtitle">No tabs. Everything on one scrollable page. Does this structure feel right?</p>
+
+<div class="mockup">
+  <div class="mockup-header">New Entry Hub — Create Product (proposed)</div>
+  <div class="mockup-body" style="padding:0;">
+
+    <!-- Page header -->
+    <div style="padding:20px 24px 12px; border-bottom:1px solid #e5e7eb;">
+      <div style="font-size:11px; color:#888; margin-bottom:4px;">Catalog › New Entry Hub</div>
+      <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#6b7280; letter-spacing:.05em;">NEW ENTRY HUB</div>
+      <div style="font-size:22px; font-weight:700; margin:2px 0 4px;">Create Product</div>
+      <div style="font-size:13px; color:#6b7280;">Fill in the details below — see a live preview on the right.</div>
+    </div>
+
+    <div style="display:flex; gap:0;">
+
+      <!-- LEFT: form -->
+      <div style="flex:1; padding:20px 24px; overflow-y:auto;">
+
+        <!-- Product Details section -->
+        <div style="margin-bottom:20px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#6b7280; margin-bottom:12px;">PRODUCT DETAILS</div>
+
+          <div style="display:flex; gap:12px; margin-bottom:12px;">
+            <div style="flex:1;">
+              <div style="font-size:12px; color:#374151; margin-bottom:4px;">SKU <span style="color:#ef4444">*</span></div>
+              <div class="mock-input" style="font-size:13px; color:#9ca3af;">e.g. SHIRT-BLK-M</div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:12px; color:#374151; margin-bottom:4px;">Category</div>
+              <div class="mock-input" style="font-size:13px; color:#9ca3af;">e.g. Beverages</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:12px;">
+            <div style="font-size:12px; color:#374151; margin-bottom:4px;">Display name <span style="color:#ef4444">*</span></div>
+            <div class="mock-input" style="font-size:13px; color:#9ca3af;"></div>
+          </div>
+
+          <div style="margin-bottom:4px;">
+            <div style="font-size:12px; color:#374151; margin-bottom:4px;">Price <span style="font-size:11px; color:#6b7280;">(from tenant currency — ₹ INR)</span></div>
+            <div class="mock-input" style="font-size:13px; color:#9ca3af;">0.00</div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid #f3f4f6; margin-bottom:20px;"></div>
+
+        <!-- Product Image section (was "Visual Provenance") -->
+        <div style="margin-bottom:20px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#6b7280; margin-bottom:12px;">PRODUCT IMAGE</div>
+          <div style="border:2px dashed #d1d5db; border-radius:8px; padding:24px; text-align:center; background:#fafafa;">
+            <div style="font-size:20px; color:#9ca3af; margin-bottom:6px;">📷</div>
+            <div style="font-size:13px; font-weight:500; color:#374151;">Drop image here or click to upload</div>
+            <div style="font-size:11px; color:#9ca3af; margin-top:2px;">Recommended: 2000 × 2000px JPG or PNG</div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid #f3f4f6; margin-bottom:20px;"></div>
+
+        <!-- Variant Grouping (was inside provenance) -->
+        <div style="margin-bottom:20px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#6b7280; margin-bottom:12px;">VARIANTS <span style="font-size:10px; font-weight:400; color:#9ca3af; text-transform:none;">(optional)</span></div>
+
+          <div style="margin-bottom:10px;">
+            <div style="font-size:12px; color:#374151; margin-bottom:4px;">Product group</div>
+            <div class="mock-input" style="font-size:13px; color:#9ca3af;">None</div>
+          </div>
+
+          <div style="margin-bottom:10px;">
+            <div style="font-size:12px; color:#374151; margin-bottom:4px;">Variant label</div>
+            <div class="mock-input" style="font-size:13px; color:#9ca3af;">e.g. 12oz · cold</div>
+          </div>
+
+          <div style="display:flex; gap:8px; align-items:flex-end;">
+            <div style="flex:1;">
+              <div style="font-size:12px; color:#374151; margin-bottom:4px;">Or create new group</div>
+              <div class="mock-input" style="font-size:13px; color:#9ca3af;">New group title</div>
+            </div>
+            <div style="padding:9px 14px; background:#1e3a5f; color:white; border-radius:6px; font-size:12px; cursor:pointer; white-space:nowrap;">Save group</div>
+          </div>
+        </div>
+
+        <!-- Commit button -->
+        <div style="padding-top:8px;">
+          <div style="padding:10px 20px; background:#1e3a5f; color:white; border-radius:8px; font-size:13px; font-weight:600; display:inline-block;">Commit product</div>
+        </div>
+      </div>
+
+      <!-- RIGHT: live preview + logistics summary -->
+      <div style="width:300px; background:#f9fafb; border-left:1px solid #e5e7eb; padding:20px; display:flex; flex-direction:column; gap:16px;">
+
+        <!-- Live Preview card -->
+        <div style="background:#1e3a5f; border-radius:10px; padding:16px; color:white;">
+          <div style="font-size:10px; text-transform:uppercase; letter-spacing:.1em; opacity:.7; margin-bottom:6px;">LIVE PREVIEW</div>
+          <div style="font-size:16px; font-weight:600; margin-bottom:8px;">Product name</div>
+          <div style="font-size:20px; font-weight:700; margin-bottom:10px;">₹0.00</div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:10px;">
+            <span style="background:rgba(255,255,255,.15); border-radius:4px; padding:2px 8px; font-size:11px;">SKU —</span>
+            <span style="background:rgba(255,255,255,.15); border-radius:4px; padding:2px 8px; font-size:11px;">CATEGORY</span>
+          </div>
+          <div style="font-size:11px; opacity:.6;">Tenant scope is derived from your signed-in organization.</div>
+        </div>
+
+        <!-- Logistics summary (was its own tab) -->
+        <div style="background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px;">
+          <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:#6b7280; margin-bottom:12px;">SUMMARY</div>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; font-size:12px;">
+              <span style="color:#6b7280;">SKU</span>
+              <span style="font-family:monospace; color:#374151;">—</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px;">
+              <span style="color:#6b7280;">Category</span>
+              <span style="color:#9ca3af; font-style:italic;">Uncategorized</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px;">
+              <span style="color:#6b7280;">Variant</span>
+              <span style="color:#9ca3af; font-style:italic;">Standard</span>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:12px;">
+              <span style="color:#6b7280;">Group</span>
+              <span style="color:#9ca3af; font-style:italic;">Ungrouped</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>
