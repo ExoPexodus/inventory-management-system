@@ -38,7 +38,7 @@ export default function EntriesPage() {
 
   const selectedGroupTitle = productGroups.find((g) => g.id === productGroupId)?.title ?? null;
   const previewPriceCents = Math.round(parseFloat(price) * 100);
-  const priceOk = !Number.isNaN(previewPriceCents);
+  const priceOk = !Number.isNaN(previewPriceCents) && previewPriceCents > 0;
 
   async function createGroup() {
     setMsg(null);
@@ -67,8 +67,8 @@ export default function EntriesPage() {
     e.preventDefault();
     setMsg(null);
     const unit = Math.round(parseFloat(price) * 100);
-    if (Number.isNaN(unit)) {
-      setMsg("Invalid price");
+    if (Number.isNaN(unit) || unit <= 0) {
+      setMsg("Price must be a positive number");
       return;
     }
     const body: Record<string, unknown> = {
@@ -140,6 +140,7 @@ export default function EntriesPage() {
           {/* Product Image */}
           <div className="space-y-4 rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Product image</p>
+            {/* Image file is queued for display only — upload endpoint not yet implemented */}
             <DropZone
               onChange={(e) => {
                 const f = e.target.files?.[0];
@@ -160,7 +161,6 @@ export default function EntriesPage() {
             <SelectInput
               value={productGroupId}
               onChange={setProductGroupId}
-              placeholder="None"
               options={[
                 { value: "", label: "None" },
                 ...productGroups.map((g) => ({ value: g.id, label: g.title })),
