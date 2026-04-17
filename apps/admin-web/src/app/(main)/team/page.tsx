@@ -1,15 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { InviteStaffDialog } from "@/components/staff/InviteStaffDialog";
-import { ReEnrollDialog } from "@/components/staff/ReEnrollDialog";
 import {
   Avatar,
   Badge,
   EmptyState,
   ErrorState,
   PageHeader,
-  Panel,
   PrimaryButton,
   SearchBar,
   SecondaryButton,
@@ -18,25 +15,19 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Employee = {
+type TeamUser = {
   id: string;
-  shop_id: string;
+  email: string;
   name: string;
-  email: string;
   phone: string | null;
-  position: string;
-  credential_type: "pin" | "password";
-  device_id: string | null;
-  is_active: boolean;
-  created_at: string;
-};
-
-type Operator = {
-  id: string;
-  email: string;
-  display_name: string | null;
-  role: string | null;
   role_id: string | null;
+  role_name: string | null;
+  role_display_name: string | null;
+  shop_id: string | null;
+  device_id: string | null;
+  access: ("cashier_app" | "admin_web" | "admin_mobile")[];
+  has_password: boolean;
+  has_pin: boolean;
   is_active: boolean;
   created_at: string;
 };
@@ -60,19 +51,7 @@ type Permission = {
 
 type Shop = { id: string; name: string };
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function roleTone(role: string | null): "default" | "warn" | "good" | "danger" {
-  if (role === "owner") return "warn";
-  if (role === "manager") return "good";
-  return "default";
-}
-
-function roleLabel(role: string | null, displayName?: string | null) {
-  return displayName ?? role?.replace(/_/g, " ") ?? "No role";
-}
-
-// ─── Shared modal shell ───────────────────────────────────────────────────────
+// ─── Modal shell ───────────────────────────────────────────────────────────────
 
 function Modal({ open, onClose, title, children }: {
   open: boolean;
@@ -91,7 +70,7 @@ function Modal({ open, onClose, title, children }: {
             <span className="material-symbols-outlined text-xl">close</span>
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-6 max-h-[75vh] overflow-y-auto">{children}</div>
       </div>
     </div>
   );
@@ -108,264 +87,169 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 const inputCls = "w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2.5 text-sm text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary";
 
-// ─── Staff Tab ────────────────────────────────────────────────────────────────
+// ─── Access badges ─────────────────────────────────────────────────────────────
 
-function StaffTab() {
-  const [rows, setRows] = useState<Employee[]>([]);
-  const [shops, setShops] = useState<Shop[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [inviteOpen, setInviteOpen] = useState(false);
-  const [reEnrollOpen, setReEnrollOpen] = useState(false);
-  const [emailConfigured, setEmailConfigured] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [showInactive, setShowInactive] = useState(false);
-  const [q, setQ] = useState("");
-
-  const refresh = useCallback(async (includeInactive = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [empR, shopR, emailR] = await Promise.all([
-        fetch(includeInactive ? "/api/ims/v1/admin/employees?include_inactive=true" : "/api/ims/v1/admin/employees"),
-        fetch("/api/ims/v1/admin/shops"),
-        fetch("/api/ims/v1/admin/tenant-settings/email"),
-      ]);
-      const empList = (await empR.json()) as Employee[];
-      setRows(empList);
-      setShops((await shopR.json()) as Shop[]);
-      if (emailR.ok) setEmailConfigured(((await emailR.json()) as { is_active: boolean }).is_active);
-      setSelectedId((prev) => (prev && empList.some((x) => x.id === prev)) ? prev : (empList[0]?.id ?? null));
-    } catch {
-      setError("Failed to load staff data");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  const shopLabel = (id: string) => shops.find((s) => s.id === id)?.name ?? "Unknown";
-  const selected = rows.find((o) => o.id === selectedId) ?? null;
-
-  const filtered = useMemo(() => {
-    const ql = q.toLowerCase();
-    return rows.filter((e) =>
-      (!ql || e.name.toLowerCase().includes(ql) || e.email.toLowerCase().includes(ql) || e.position.toLowerCase().includes(ql)) &&
-      (showInactive || e.is_active)
-    );
-  }, [rows, q, showInactive]);
-
-  const stats = useMemo(() => ({
-    active: rows.filter((r) => r.is_active).length,
-    total: rows.length,
-    pending: rows.filter((r) => r.is_active && !r.device_id).length,
-    enrolled: rows.filter((r) => !!r.device_id).length,
-  }), [rows]);
-
-  async function deactivate() {
-    if (!selected || !confirm(`Deactivate ${selected.name}?`)) return;
-    await fetch(`/api/ims/v1/admin/employees/${selected.id}`, { method: "DELETE" });
-    void refresh(showInactive);
-  }
-
-  async function reactivate() {
-    if (!selected || !confirm(`Reactivate ${selected.name}?`)) return;
-    await fetch(`/api/ims/v1/admin/employees/${selected.id}/reactivate`, { method: "PATCH" });
-    void refresh(showInactive);
-  }
-
+function AccessBadges({ access }: { access: TeamUser["access"] }) {
+  const labels: Record<string, { text: string; icon: string; tone: "default" | "good" | "warn" }> = {
+    cashier_app: { text: "Cashier", icon: "point_of_sale", tone: "default" },
+    admin_web: { text: "Web", icon: "desktop_windows", tone: "good" },
+    admin_mobile: { text: "Mobile", icon: "phone_android", tone: "warn" },
+  };
+  if (access.length === 0) return <Badge tone="danger">No access</Badge>;
   return (
-    <div className="space-y-6">
-      {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { label: "Active staff", value: stats.active },
-          { label: "Total records", value: stats.total },
-          { label: "Pending enrollment", value: stats.pending, sub: `${stats.enrolled} device-linked` },
-        ].map((s) => (
-          <div key={s.label} className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
-            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{s.label}</p>
-            <p className="mt-4 font-headline text-3xl font-extrabold text-primary">{s.value}</p>
-            {s.sub && <p className="mt-1 text-xs text-on-surface-variant">{s.sub}</p>}
-          </div>
-        ))}
-      </div>
-
-      {error && <ErrorState detail={error} />}
-
-      <div className="grid grid-cols-12 gap-6">
-        {/* List */}
-        <div className="col-span-12 space-y-3 lg:col-span-7">
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
-              <SearchBar placeholder="Search employees…" value={q} onChange={(e) => setQ(e.target.value)} />
-            </div>
-            <button
-              type="button"
-              onClick={() => { const next = !showInactive; setShowInactive(next); void refresh(next); }}
-              className={`flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition ${showInactive ? "border-primary/30 bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container"}`}
-            >
-              <span className="material-symbols-outlined text-sm">{showInactive ? "visibility" : "visibility_off"}</span>
-              {showInactive ? "Showing inactive" : "Show inactive"}
-            </button>
-            <PrimaryButton type="button" onClick={() => setInviteOpen(true)}>
-              <span className="material-symbols-outlined text-base">person_add</span>
-              Invite
-            </PrimaryButton>
-          </div>
-
-          {loading && <p className="text-sm text-on-surface-variant">Loading…</p>}
-
-          {!loading && filtered.length === 0 && (
-            <EmptyState title="No employees found" detail={q ? "Try a different search term" : "Invite your first staff member"} />
-          )}
-
-          {filtered.map((o) => {
-            const on = selectedId === o.id;
-            return (
-              <button
-                key={o.id}
-                type="button"
-                onClick={() => setSelectedId(o.id)}
-                className={`w-full rounded-xl border p-4 text-left shadow-sm transition ${!o.is_active ? "border-outline-variant/10 bg-surface-container-lowest opacity-50" : on ? "border-primary/40 bg-surface-container-low" : "border-outline-variant/10 bg-surface-container-lowest hover:border-outline-variant/20"}`}
-              >
-                <div className="flex items-center gap-3">
-                  <Avatar name={o.name} className="h-10 w-10 text-xs" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-semibold text-on-surface">{o.name}</p>
-                    <p className="truncate text-xs text-on-surface-variant">{o.email}</p>
-                    <p className="mt-0.5 text-xs text-on-surface-variant/70">
-                      {o.position.replaceAll("_", " ")} · {shopLabel(o.shop_id)} · {o.credential_type}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1.5">
-                    <Badge tone={o.is_active ? "good" : "danger"}>{o.is_active ? "Active" : "Inactive"}</Badge>
-                    <span
-                      className={`material-symbols-outlined text-xl ${o.device_id ? "text-primary" : "text-on-surface-variant/40"}`}
-                      title={o.device_id ? "Device linked" : "No device"}
-                    >
-                      {o.device_id ? "smartphone" : "smartphone"}
-                    </span>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Detail panel */}
-        <div className="col-span-12 lg:col-span-5">
-          <div className="sticky top-6 overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-sm">
-            <div className="ink-gradient px-6 py-5">
-              <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">Employee detail</p>
-              <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">
-                {selected ? selected.name : "Select an employee"}
-              </p>
-              <p className="mt-1 text-sm text-on-primary/80">{selected ? selected.position.replaceAll("_", " ") : "—"}</p>
-            </div>
-            <div className="space-y-3 p-6">
-              {selected ? (
-                <>
-                  {[
-                    ["Email", selected.email],
-                    ["Phone", selected.phone ?? "—"],
-                    ["Shop", shopLabel(selected.shop_id)],
-                    ["Credential", selected.credential_type],
-                    ["Device", selected.device_id ? "Linked" : "Not enrolled"],
-                    ["Joined", selected.created_at.slice(0, 10)],
-                  ].map(([k, v]) => (
-                    <p key={k} className="text-sm text-on-surface-variant"><span className="font-semibold text-on-surface">{k}:</span> {v}</p>
-                  ))}
-                  {!selected.is_active && (
-                    <p className="rounded-lg border border-error/20 bg-error-container/20 px-3 py-2 text-xs font-semibold text-on-error-container">
-                      This employee is deactivated.
-                    </p>
-                  )}
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {selected.is_active ? (
-                      <>
-                        <PrimaryButton type="button" onClick={() => setReEnrollOpen(true)}>Re-enroll / reset</PrimaryButton>
-                        <SecondaryButton type="button" onClick={() => void deactivate()}>Deactivate</SecondaryButton>
-                      </>
-                    ) : (
-                      <PrimaryButton type="button" onClick={() => void reactivate()}>Reactivate</PrimaryButton>
-                    )}
-                  </div>
-                </>
-              ) : (
-                <p className="text-sm text-on-surface-variant">Select an employee to manage enrollment and credentials.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <InviteStaffDialog open={inviteOpen} shops={shops} emailConfigured={emailConfigured} onClose={() => setInviteOpen(false)} onCreated={() => void refresh(showInactive)} />
-      <ReEnrollDialog
-        open={reEnrollOpen}
-        employee={selected ? { id: selected.id, name: selected.name, email: selected.email, credential_type: selected.credential_type } : null}
-        emailConfigured={emailConfigured}
-        onClose={() => setReEnrollOpen(false)}
-        onDone={() => void refresh(showInactive)}
-      />
+    <div className="flex flex-wrap gap-1">
+      {access.map((a) => {
+        const label = labels[a];
+        return (
+          <Badge key={a} tone={label.tone}>
+            <span className="material-symbols-outlined text-[11px] mr-0.5">{label.icon}</span>
+            {label.text}
+          </Badge>
+        );
+      })}
     </div>
   );
 }
 
-// ─── Operators Tab ────────────────────────────────────────────────────────────
+// ─── Invite dialog — single flow for any role ─────────────────────────────────
 
-function CreateOperatorModal({ open, onClose, roles, onCreated }: {
+function InviteUserDialog({
+  open,
+  onClose,
+  onCreated,
+  roles,
+  permissionsByRole,
+  shops,
+}: {
   open: boolean;
   onClose: () => void;
+  onCreated: (newUser: TeamUser) => void;
   roles: Role[];
-  onCreated: () => void;
+  permissionsByRole: Record<string, string[]>;
+  shops: Shop[];
 }) {
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
+  const [phone, setPhone] = useState("");
   const [roleId, setRoleId] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [shopId, setShopId] = useState("");
+  const [password, setPassword] = useState("");
+  const [pin, setPin] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [createdUser, setCreatedUser] = useState<TeamUser | null>(null);
+  const [qrToken, setQrToken] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open) { setEmail(""); setDisplayName(""); setPassword(""); setRoleId(roles[0]?.id ?? ""); setErr(null); }
+    if (open) {
+      setName(""); setEmail(""); setPhone("");
+      setRoleId(roles[0]?.id ?? "");
+      setShopId("");
+      setPassword(""); setPin(""); setErr(null); setBusy(false);
+      setCreatedUser(null); setQrToken(null);
+    }
   }, [open, roles]);
 
-  async function submit(e: React.FormEvent) {
+  const rolePerms = roleId ? (permissionsByRole[roleId] ?? []) : [];
+  const needsWeb = rolePerms.includes("admin_web:access") || rolePerms.includes("admin_mobile:access");
+  const needsCashier = rolePerms.includes("cashier_app:access");
+  const needsPassword = needsWeb; // admin-web/mobile users need password
+  const needsPin = needsCashier; // cashier users need PIN (admin_mobile quick-unlock can be set later)
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!roleId) { setErr("Select a role"); return; }
+    if (needsPassword && !password) { setErr("This role requires a password"); return; }
+    if (needsPin && !pin) { setErr("This role requires a PIN"); return; }
+    if (pin && !/^\d+$/.test(pin)) { setErr("PIN must be numeric"); return; }
+
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch("/api/ims/v1/admin/operators", {
+      const body: Record<string, string | null> = {
+        email,
+        name,
+        phone: phone || null,
+        role_id: roleId,
+        shop_id: shopId || null,
+      };
+      if (password) body.password = password;
+      if (pin) body.pin = pin;
+
+      const r = await fetch("/api/ims/v1/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, display_name: displayName || null, role_id: roleId }),
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const d = (await r.json()) as { detail?: string };
         setErr(d.detail ?? `Error ${r.status}`);
+        setBusy(false);
         return;
       }
-      onCreated();
-      onClose();
+      const created = (await r.json()) as TeamUser;
+      setCreatedUser(created);
+
+      // If user has any device-based access, generate enrollment QR
+      if (needsCashier || rolePerms.includes("admin_mobile:access")) {
+        const appTarget = needsCashier ? "cashier" : "admin_mobile";
+        const enrollR = await fetch(`/api/ims/v1/admin/employees/${created.id}/invite`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ method: "qr", ttl_hours: 168, app_target: appTarget }),
+        });
+        if (enrollR.ok) {
+          const enrollData = await enrollR.json() as { enrollment_token?: string };
+          if (enrollData.enrollment_token) setQrToken(enrollData.enrollment_token);
+        }
+      }
+
+      onCreated(created);
     } finally {
       setBusy(false);
     }
   }
 
+  if (createdUser) {
+    return (
+      <Modal open={open} onClose={onClose} title={`Invited — ${createdUser.name}`}>
+        <div className="space-y-4">
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+            <p className="text-sm font-semibold text-on-surface">User created successfully</p>
+            <p className="mt-1 text-xs text-on-surface-variant">
+              {createdUser.email} · {createdUser.role_display_name}
+            </p>
+          </div>
+
+          {qrToken && (
+            <div className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest p-4">
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Enrollment token</p>
+              <p className="mt-2 break-all font-mono text-xs text-on-surface">{qrToken}</p>
+              <p className="mt-2 text-xs text-on-surface-variant">
+                Share this token with the user — they can scan the QR or paste it into the app to enroll their device.
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <PrimaryButton type="button" onClick={onClose}>Done</PrimaryButton>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal open={open} onClose={onClose} title="Add operator">
-      <form onSubmit={(e) => void submit(e)} className="space-y-4">
+    <Modal open={open} onClose={onClose} title="Invite team member">
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
+        <Field label="Full name">
+          <input className={inputCls} required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Priya Sharma" />
+        </Field>
         <Field label="Email">
-          <input className={inputCls} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" autoComplete="off" />
+          <input className={inputCls} type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" />
         </Field>
-        <Field label="Display name">
-          <input className={inputCls} type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="Optional" />
-        </Field>
-        <Field label="Password">
-          <input className={inputCls} type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 8 characters" autoComplete="new-password" />
+        <Field label="Phone (optional)">
+          <input className={inputCls} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91..." />
         </Field>
         <Field label="Role">
           <select className={inputCls} required value={roleId} onChange={(e) => setRoleId(e.target.value)}>
@@ -374,21 +258,54 @@ function CreateOperatorModal({ open, onClose, roles, onCreated }: {
               <option key={r.id} value={r.id}>{r.display_name}</option>
             ))}
           </select>
+          {roleId && (
+            <p className="mt-1.5 text-xs text-on-surface-variant">
+              This role grants access to:{" "}
+              {rolePerms.includes("admin_web:access") && <Badge tone="good">Admin Web</Badge>}{" "}
+              {rolePerms.includes("admin_mobile:access") && <Badge tone="warn">Admin Mobile</Badge>}{" "}
+              {rolePerms.includes("cashier_app:access") && <Badge>Cashier App</Badge>}{" "}
+              {!needsWeb && !needsCashier && <span className="text-on-surface-variant">(no app access — role only)</span>}
+            </p>
+          )}
         </Field>
+        {shops.length > 1 && (
+          <Field label="Shop (optional)">
+            <select className={inputCls} value={shopId} onChange={(e) => setShopId(e.target.value)}>
+              <option value="">— tenant-wide —</option>
+              {shops.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          </Field>
+        )}
+        {needsPassword && (
+          <Field label="Password (for admin web/mobile login)">
+            <input className={inputCls} type="password" minLength={8} required={needsPassword} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 8 characters" autoComplete="new-password" />
+          </Field>
+        )}
+        {needsPin && (
+          <Field label="PIN (for cashier device login)">
+            <input className={inputCls} type="text" pattern="\d*" minLength={4} maxLength={8} required={needsPin} value={pin} onChange={(e) => setPin(e.target.value)} placeholder="4-8 digits" />
+          </Field>
+        )}
+
         {err && <p className="rounded-lg border border-error/20 bg-error-container/20 px-3 py-2 text-xs text-on-error-container">{err}</p>}
+
         <div className="flex justify-end gap-3 pt-2">
           <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
-          <PrimaryButton type="submit" disabled={busy}>{busy ? "Creating…" : "Create operator"}</PrimaryButton>
+          <PrimaryButton type="submit" disabled={busy}>{busy ? "Inviting…" : "Invite"}</PrimaryButton>
         </div>
       </form>
     </Modal>
   );
 }
 
-function EditOperatorModal({ open, onClose, operator, roles, onSaved }: {
+// ─── Edit user modal ───────────────────────────────────────────────────────────
+
+function EditUserModal({ open, onClose, user, roles, onSaved }: {
   open: boolean;
   onClose: () => void;
-  operator: Operator | null;
+  user: TeamUser | null;
   roles: Role[];
   onSaved: () => void;
 }) {
@@ -397,16 +314,16 @@ function EditOperatorModal({ open, onClose, operator, roles, onSaved }: {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open && operator) { setRoleId(operator.role_id ?? ""); setErr(null); }
-  }, [open, operator]);
+    if (open && user) { setRoleId(user.role_id ?? ""); setErr(null); }
+  }, [open, user]);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!operator) return;
+    if (!user) return;
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch(`/api/ims/v1/admin/operators/${operator.id}`, {
+      const r = await fetch(`/api/ims/v1/admin/users/${user.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role_id: roleId || null }),
@@ -424,21 +341,21 @@ function EditOperatorModal({ open, onClose, operator, roles, onSaved }: {
   }
 
   async function toggleActive() {
-    if (!operator) return;
-    if (!confirm(`${operator.is_active ? "Deactivate" : "Reactivate"} ${operator.display_name ?? operator.email}?`)) return;
-    const r = await fetch(`/api/ims/v1/admin/operators/${operator.id}`, {
+    if (!user) return;
+    if (!confirm(`${user.is_active ? "Deactivate" : "Reactivate"} ${user.name}?`)) return;
+    const r = await fetch(`/api/ims/v1/admin/users/${user.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !operator.is_active }),
+      body: JSON.stringify({ is_active: !user.is_active }),
     });
     if (r.ok) { onSaved(); onClose(); }
     else { const d = (await r.json()) as { detail?: string }; setErr(d.detail ?? "Failed"); }
   }
 
-  if (!operator) return null;
+  if (!user) return null;
 
   return (
-    <Modal open={open} onClose={onClose} title={`Edit — ${operator.display_name ?? operator.email}`}>
+    <Modal open={open} onClose={onClose} title={`Edit — ${user.name}`}>
       <form onSubmit={(e) => void save(e)} className="space-y-4">
         <Field label="Role">
           <select className={inputCls} value={roleId} onChange={(e) => setRoleId(e.target.value)}>
@@ -452,9 +369,9 @@ function EditOperatorModal({ open, onClose, operator, roles, onSaved }: {
           <button
             type="button"
             onClick={() => void toggleActive()}
-            className={`text-sm font-semibold underline underline-offset-2 ${operator.is_active ? "text-error" : "text-primary"}`}
+            className={`text-sm font-semibold underline underline-offset-2 ${user.is_active ? "text-error" : "text-primary"}`}
           >
-            {operator.is_active ? "Deactivate operator" : "Reactivate operator"}
+            {user.is_active ? "Deactivate user" : "Reactivate user"}
           </button>
           <div className="flex gap-3">
             <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
@@ -466,23 +383,33 @@ function EditOperatorModal({ open, onClose, operator, roles, onSaved }: {
   );
 }
 
-function OperatorsTab({ roles }: { roles: Role[] }) {
-  const [rows, setRows] = useState<Operator[]>([]);
+// ─── Team Tab (unified list) ───────────────────────────────────────────────────
+
+function TeamTab({ roles, permissionsByRole }: { roles: Role[]; permissionsByRole: Record<string, string[]> }) {
+  const [users, setUsers] = useState<TeamUser[]>([]);
+  const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<Operator | null>(null);
   const [q, setQ] = useState("");
+  const [filterAccess, setFilterAccess] = useState<"all" | "cashier_app" | "admin_web" | "admin_mobile">("all");
+  const [showInactive, setShowInactive] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [editUser, setEditUser] = useState<TeamUser | null>(null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (includeInactive = false) => {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/ims/v1/admin/operators");
-      if (!r.ok) throw new Error(`${r.status}`);
-      setRows((await r.json()) as Operator[]);
+      const url = includeInactive ? "/api/ims/v1/admin/users?include_inactive=true" : "/api/ims/v1/admin/users";
+      const [uR, sR] = await Promise.all([
+        fetch(url),
+        fetch("/api/ims/v1/admin/shops"),
+      ]);
+      if (!uR.ok) throw new Error("Failed to load");
+      setUsers((await uR.json()) as TeamUser[]);
+      if (sR.ok) setShops((await sR.json()) as Shop[]);
     } catch {
-      setError("Failed to load operators");
+      setError("Failed to load team data");
     } finally {
       setLoading(false);
     }
@@ -490,96 +417,114 @@ function OperatorsTab({ roles }: { roles: Role[] }) {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  const shopLabel = (id: string | null) => id ? (shops.find((s) => s.id === id)?.name ?? "—") : "Tenant-wide";
+
   const filtered = useMemo(() => {
     const ql = q.toLowerCase();
-    return rows.filter((o) => !ql || o.email.toLowerCase().includes(ql) || (o.display_name ?? "").toLowerCase().includes(ql) || (o.role ?? "").toLowerCase().includes(ql));
-  }, [rows, q]);
-
-  const roleDisplayName = (roleId: string | null) => {
-    if (!roleId) return null;
-    return roles.find((r) => r.id === roleId)?.display_name ?? null;
-  };
+    return users.filter((u) => {
+      if (ql && !u.name.toLowerCase().includes(ql) && !u.email.toLowerCase().includes(ql) && !(u.role_display_name ?? "").toLowerCase().includes(ql)) return false;
+      if (filterAccess !== "all" && !u.access.includes(filterAccess as "cashier_app" | "admin_web" | "admin_mobile")) return false;
+      return true;
+    });
+  }, [users, q, filterAccess]);
 
   const stats = useMemo(() => ({
-    total: rows.length,
-    active: rows.filter((r) => r.is_active).length,
-    byRole: roles.map((r) => ({ label: r.display_name, count: rows.filter((o) => o.role_id === r.id).length })).filter((x) => x.count > 0),
-  }), [rows, roles]);
+    total: users.length,
+    active: users.filter((u) => u.is_active).length,
+    cashier: users.filter((u) => u.access.includes("cashier_app")).length,
+    admin: users.filter((u) => u.access.includes("admin_web") || u.access.includes("admin_mobile")).length,
+  }), [users]);
 
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Total operators</p>
-          <p className="mt-4 font-headline text-3xl font-extrabold text-primary">{stats.total}</p>
-        </div>
-        <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Active</p>
-          <p className="mt-4 font-headline text-3xl font-extrabold text-primary">{stats.active}</p>
-        </div>
-        <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
-          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">By role</p>
-          <div className="mt-3 space-y-1">
-            {stats.byRole.length === 0 ? <p className="text-sm text-on-surface-variant">—</p> : stats.byRole.map((b) => (
-              <p key={b.label} className="text-xs text-on-surface-variant"><span className="font-semibold text-on-surface">{b.count}</span> {b.label}</p>
-            ))}
+      <div className="grid gap-4 sm:grid-cols-4">
+        {[
+          { label: "Total members", value: stats.total, icon: "group" },
+          { label: "Active", value: stats.active, icon: "check_circle" },
+          { label: "Cashier access", value: stats.cashier, icon: "point_of_sale" },
+          { label: "Admin access", value: stats.admin, icon: "admin_panel_settings" },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-5 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-lg text-on-surface-variant">{s.icon}</span>
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{s.label}</p>
+            </div>
+            <p className="mt-3 font-headline text-3xl font-extrabold text-primary">{s.value}</p>
           </div>
-        </div>
+        ))}
       </div>
 
       {error && <ErrorState detail={error} />}
 
-      <Panel
-        title="Admin operators"
-        subtitle="People who can access the admin dashboard"
-        right={
-          <div className="flex items-center gap-3">
-            <SearchBar placeholder="Search operators…" value={q} onChange={(e) => setQ(e.target.value)} className="w-56" />
-            <PrimaryButton type="button" onClick={() => setCreateOpen(true)}>
-              <span className="material-symbols-outlined text-base">person_add</span>
-              Add operator
-            </PrimaryButton>
-          </div>
-        }
-        noPad
-      >
+      {/* Toolbar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex-1 min-w-[200px]">
+          <SearchBar placeholder="Search by name, email, role…" value={q} onChange={(e) => setQ(e.target.value)} />
+        </div>
+        <select className={inputCls + " w-44"} value={filterAccess} onChange={(e) => setFilterAccess(e.target.value as typeof filterAccess)}>
+          <option value="all">All access</option>
+          <option value="cashier_app">Cashier App</option>
+          <option value="admin_web">Admin Web</option>
+          <option value="admin_mobile">Admin Mobile</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => { const next = !showInactive; setShowInactive(next); void refresh(next); }}
+          className={`rounded-lg border px-3 py-2 text-xs font-semibold transition ${showInactive ? "border-primary/30 bg-primary/10 text-primary" : "border-outline-variant/20 text-on-surface-variant hover:bg-surface-container"}`}
+        >
+          {showInactive ? "Showing inactive" : "Show inactive"}
+        </button>
+        <PrimaryButton type="button" onClick={() => setInviteOpen(true)}>
+          <span className="material-symbols-outlined text-base">person_add</span>
+          Invite
+        </PrimaryButton>
+      </div>
+
+      {/* Users table */}
+      <div className="overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-sm">
         {loading ? (
           <p className="px-6 py-8 text-sm text-on-surface-variant">Loading…</p>
         ) : filtered.length === 0 ? (
-          <EmptyState title="No operators found" detail={q ? "Try a different search" : "Add your first operator"} />
+          <EmptyState title="No team members found" detail={q || filterAccess !== "all" ? "Try a different filter" : "Invite your first team member"} />
         ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-outline-variant/10">
-                {["Operator", "Role", "Status", "Joined", ""].map((h) => (
+                {["Name", "Email", "Role", "Access", "Shop", "Status", ""].map((h) => (
                   <th key={h} className="px-6 py-3 text-left text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
-              {filtered.map((op) => (
-                <tr key={op.id} className="transition hover:bg-surface-container-low/50">
+              {filtered.map((u) => (
+                <tr key={u.id} className={`transition hover:bg-surface-container-low/50 ${!u.is_active ? "opacity-50" : ""}`}>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <Avatar name={op.display_name ?? op.email} className="h-9 w-9 text-xs" />
+                      <Avatar name={u.name} className="h-9 w-9 text-xs" />
                       <div>
-                        <p className="font-semibold text-on-surface">{op.display_name ?? op.email}</p>
-                        {op.display_name && <p className="text-xs text-on-surface-variant">{op.email}</p>}
+                        <p className="font-semibold text-on-surface">{u.name}</p>
+                        {u.device_id && <p className="text-[10px] text-primary"><span className="material-symbols-outlined text-[11px] align-middle">smartphone</span> Device linked</p>}
                       </div>
                     </div>
                   </td>
+                  <td className="px-6 py-4 text-sm text-on-surface-variant">{u.email}</td>
                   <td className="px-6 py-4">
-                    <Badge tone={roleTone(op.role)}>{roleLabel(op.role, roleDisplayName(op.role_id))}</Badge>
+                    <Badge tone={u.role_name === "owner" ? "warn" : u.role_name === "manager" ? "good" : "default"}>
+                      {u.role_display_name ?? "No role"}
+                    </Badge>
                   </td>
                   <td className="px-6 py-4">
-                    <Badge tone={op.is_active ? "good" : "danger"}>{op.is_active ? "Active" : "Inactive"}</Badge>
+                    <AccessBadges access={u.access} />
                   </td>
-                  <td className="px-6 py-4 text-xs text-on-surface-variant">{op.created_at.slice(0, 10)}</td>
+                  <td className="px-6 py-4 text-xs text-on-surface-variant">{shopLabel(u.shop_id)}</td>
+                  <td className="px-6 py-4">
+                    <Badge tone={u.is_active ? "good" : "danger"}>{u.is_active ? "Active" : "Inactive"}</Badge>
+                  </td>
                   <td className="px-6 py-4 text-right">
                     <button
                       type="button"
-                      onClick={() => setEditTarget(op)}
+                      onClick={() => setEditUser(u)}
                       className="rounded-lg border border-outline-variant/30 px-3 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container"
                     >
                       Edit
@@ -590,17 +535,30 @@ function OperatorsTab({ roles }: { roles: Role[] }) {
             </tbody>
           </table>
         )}
-      </Panel>
+      </div>
 
-      <CreateOperatorModal open={createOpen} onClose={() => setCreateOpen(false)} roles={roles} onCreated={() => void refresh()} />
-      <EditOperatorModal open={!!editTarget} onClose={() => setEditTarget(null)} operator={editTarget} roles={roles} onSaved={() => void refresh()} />
+      <InviteUserDialog
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        onCreated={() => void refresh(showInactive)}
+        roles={roles}
+        permissionsByRole={permissionsByRole}
+        shops={shops}
+      />
+      <EditUserModal
+        open={!!editUser}
+        onClose={() => setEditUser(null)}
+        user={editUser}
+        roles={roles}
+        onSaved={() => void refresh(showInactive)}
+      />
     </div>
   );
 }
 
-// ─── Roles Tab ────────────────────────────────────────────────────────────────
+// ─── Roles Tab (unchanged except Access category) ─────────────────────────────
 
-const CATEGORY_ORDER = ["staff", "catalog", "inventory", "procurement", "sales", "analytics", "operations", "settings", "integrations", "operators", "roles", "audit", "reports", "notifications", "enrollment", "shops"];
+const CATEGORY_ORDER = ["access", "staff", "catalog", "inventory", "procurement", "sales", "analytics", "operations", "settings", "integrations", "operators", "roles", "audit", "reports", "notifications", "enrollment", "shops"];
 
 function groupPermissions(perms: Permission[]) {
   const map = new Map<string, Permission[]>();
@@ -617,7 +575,7 @@ function groupPermissions(perms: Permission[]) {
 function RoleModal({ open, onClose, role, allPermissions, onSaved }: {
   open: boolean;
   onClose: () => void;
-  role: Role | null; // null = create mode
+  role: Role | null;
   allPermissions: Permission[];
   onSaved: () => void;
 }) {
@@ -643,7 +601,7 @@ function RoleModal({ open, onClose, role, allPermissions, onSaved }: {
   function toggle(codename: string) {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(codename) ? next.delete(codename) : next.add(codename);
+      if (next.has(codename)) next.delete(codename); else next.add(codename);
       return next;
     });
   }
@@ -684,10 +642,10 @@ function RoleModal({ open, onClose, role, allPermissions, onSaved }: {
 
   return (
     <Modal open={open} onClose={onClose} title={isEdit ? `Edit role — ${role?.display_name}` : "Create custom role"}>
-      <form onSubmit={(e) => void submit(e)} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+      <form onSubmit={(e) => void submit(e)} className="space-y-4">
         {!isEdit && (
           <Field label="Role name (slug)">
-            <input className={inputCls} required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. warehouse_lead" pattern="[a-z0-9_]+" title="Lowercase letters, numbers, underscores" />
+            <input className={inputCls} required value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. warehouse_lead" pattern="[a-z0-9_]+" />
           </Field>
         )}
         <Field label="Display name">
@@ -699,8 +657,9 @@ function RoleModal({ open, onClose, role, allPermissions, onSaved }: {
           {grouped.map(({ category, items }) => {
             const allChecked = items.every((p) => selected.has(p.codename));
             const someChecked = items.some((p) => selected.has(p.codename));
+            const isAccess = category === "access";
             return (
-              <div key={category} className="rounded-lg border border-outline-variant/15 bg-surface-container-lowest">
+              <div key={category} className={`rounded-lg border ${isAccess ? "border-primary/30 bg-primary/5" : "border-outline-variant/15 bg-surface-container-lowest"}`}>
                 <button
                   type="button"
                   onClick={() => selectCategory(category, items, !allChecked)}
@@ -709,7 +668,9 @@ function RoleModal({ open, onClose, role, allPermissions, onSaved }: {
                   <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border text-[10px] font-bold ${allChecked ? "border-primary bg-primary text-on-primary" : someChecked ? "border-primary/60 bg-primary/20 text-primary" : "border-outline-variant/40 bg-surface"}`}>
                     {allChecked ? "✓" : someChecked ? "−" : ""}
                   </span>
-                  <span className="flex-1 text-sm font-semibold capitalize text-on-surface">{category}</span>
+                  <span className="flex-1 text-sm font-semibold capitalize text-on-surface">
+                    {isAccess ? "App Access" : category}
+                  </span>
                   <span className="text-xs text-on-surface-variant">{items.filter((p) => selected.has(p.codename)).length}/{items.length}</span>
                 </button>
                 <div className="border-t border-outline-variant/10 px-4 pb-3 pt-2 space-y-2">
@@ -775,16 +736,11 @@ function RolesTab() {
   async function deleteRole(role: Role) {
     if (!confirm(`Delete role "${role.display_name}"? This cannot be undone.`)) return;
     const r = await fetch(`/api/ims/v1/admin/roles/${role.id}`, { method: "DELETE" });
-    if (r.ok) {
-      void refresh();
-    } else {
-      const d = (await r.json()) as { detail?: string };
-      alert(d.detail ?? "Failed to delete role");
-    }
+    if (r.ok) void refresh();
+    else { const d = (await r.json()) as { detail?: string }; alert(d.detail ?? "Failed to delete"); }
   }
 
   const grouped = useMemo(() => groupPermissions(allPermissions), [allPermissions]);
-
   const editTarget = modalTarget !== null && modalTarget !== "create" ? modalTarget as Role : null;
 
   return (
@@ -802,11 +758,11 @@ function RolesTab() {
       {error && <ErrorState detail={error} />}
 
       <div className="grid grid-cols-12 gap-6">
-        {/* Role list */}
         <div className="col-span-12 space-y-2 lg:col-span-5">
           {loading && <p className="text-sm text-on-surface-variant">Loading…</p>}
           {roles.map((role) => {
             const on = selectedRole?.id === role.id;
+            const accessPerms = role.permissions.filter((p) => p.endsWith(":access"));
             return (
               <button
                 key={role.id}
@@ -821,6 +777,13 @@ function RolesTab() {
                       {role.is_system && <Badge>System</Badge>}
                     </div>
                     <p className="mt-0.5 font-mono text-xs text-on-surface-variant">{role.name}</p>
+                    {accessPerms.length > 0 && (
+                      <div className="mt-1.5 flex flex-wrap gap-1">
+                        {accessPerms.includes("cashier_app:access") && <Badge>Cashier</Badge>}
+                        {accessPerms.includes("admin_web:access") && <Badge tone="good">Web</Badge>}
+                        {accessPerms.includes("admin_mobile:access") && <Badge tone="warn">Mobile</Badge>}
+                      </div>
+                    )}
                   </div>
                   <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
                     {role.permissions.length} perms
@@ -831,7 +794,6 @@ function RolesTab() {
           })}
         </div>
 
-        {/* Role detail */}
         <div className="col-span-12 lg:col-span-7">
           {selectedRole ? (
             <div className="sticky top-6 overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest shadow-sm">
@@ -864,9 +826,12 @@ function RolesTab() {
                 {grouped.map(({ category, items }) => {
                   const granted = items.filter((p) => selectedRole.permissions.includes(p.codename));
                   if (granted.length === 0) return null;
+                  const isAccess = category === "access";
                   return (
-                    <div key={category}>
-                      <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">{category}</p>
+                    <div key={category} className={isAccess ? "rounded-lg border border-primary/20 bg-primary/5 p-3" : ""}>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                        {isAccess ? "App Access" : category}
+                      </p>
                       <div className="space-y-1">
                         {granted.map((p) => (
                           <div key={p.codename} className="flex items-center gap-2">
@@ -906,20 +871,25 @@ function RolesTab() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: "staff", label: "Staff" },
-  { id: "operators", label: "Operators" },
+  { id: "team", label: "Team" },
   { id: "roles", label: "Roles & Permissions" },
 ];
 
 export default function TeamPage() {
-  const [tab, setTab] = useState("staff");
-  // Roles are loaded once and shared between Operators tab (for the role picker)
+  const [tab, setTab] = useState("team");
   const [roles, setRoles] = useState<Role[]>([]);
+  const [permissionsByRole, setPermissionsByRole] = useState<Record<string, string[]>>({});
 
   const refreshRoles = useCallback(async () => {
     try {
       const r = await fetch("/api/ims/v1/admin/roles");
-      if (r.ok) setRoles((await r.json()) as Role[]);
+      if (r.ok) {
+        const list = (await r.json()) as Role[];
+        setRoles(list);
+        const map: Record<string, string[]> = {};
+        list.forEach((ro) => { map[ro.id] = ro.permissions; });
+        setPermissionsByRole(map);
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -930,13 +900,12 @@ export default function TeamPage() {
       <PageHeader
         kicker="People management"
         title="Team"
-        subtitle="Manage employees, admin operators, and access roles from one place."
+        subtitle="One place to manage everyone — cashiers, managers, and admins. Access is driven by their role."
       />
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
-      {tab === "staff" && <StaffTab />}
-      {tab === "operators" && <OperatorsTab roles={roles} />}
+      {tab === "team" && <TeamTab roles={roles} permissionsByRole={permissionsByRole} />}
       {tab === "roles" && <RolesTab />}
     </div>
   );

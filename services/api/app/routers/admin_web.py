@@ -795,6 +795,223 @@ def patch_operator(
     return _operator_out(row)
 
 
+# ---------------------------------------------------------------------------
+# Unified Users endpoint — for the new single Team tab
+# ---------------------------------------------------------------------------
+
+
+class TeamUserOut(BaseModel):
+    id: UUID
+    email: str
+    name: str
+    phone: str | None
+    role_id: UUID | None
+    role_name: str | None
+    role_display_name: str | None
+    shop_id: UUID | None
+    device_id: UUID | None
+    access: list[str]  # subset of ["cashier_app", "admin_web", "admin_mobile"]
+    has_password: bool
+    has_pin: bool
+    is_active: bool
+    created_at: datetime
+
+
+@router.get("/users", response_model=list[TeamUserOut], dependencies=[require_permission("operators:read", "staff:read")])
+def list_users(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+    include_inactive: bool = False,
+) -> list[TeamUserOut]:
+    """Unified list of all users in the tenant (replaces separate employees/operators endpoints for the Team UI)."""
+    tenant_id = _require_operator_tenant(ctx)
+    from app.models import Permission, RolePermission
+
+    stmt = select(User).where(User.tenant_id == tenant_id).order_by(User.created_at.desc())
+    if not include_inactive:
+        stmt = stmt.where(User.is_active.is_(True))
+    users = db.execute(stmt).scalars().all()
+
+    # Build role → permissions map in one query
+    role_ids = {u.role_id for u in users if u.role_id}
+    role_perms: dict[UUID, list[str]] = {rid: [] for rid in role_ids}
+    if role_ids:
+        rows = db.execute(
+            select(RolePermission.role_id, Permission.codename)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+            .where(RolePermission.role_id.in_(role_ids))
+        ).all()
+        for rid, codename in rows:
+            role_perms[rid].append(codename)
+
+    access_codenames = {
+        "cashier_app:access": "cashier_app",
+        "admin_web:access": "admin_web",
+        "admin_mobile:access": "admin_mobile",
+    }
+
+    out: list[TeamUserOut] = []
+    for u in users:
+        perms = role_perms.get(u.role_id, []) if u.role_id else []
+        access = [access_codenames[p] for p in perms if p in access_codenames]
+        out.append(
+            TeamUserOut(
+                id=u.id,
+                email=u.email,
+                name=u.name,
+                phone=u.phone,
+                role_id=u.role_id,
+                role_name=u.role.name if u.role else None,
+                role_display_name=u.role.display_name if u.role else None,
+                shop_id=u.shop_id,
+                device_id=u.device_id,
+                access=access,
+                has_password=bool(u.password_hash),
+                has_pin=bool(u.pin_hash),
+                is_active=u.is_active,
+                created_at=u.created_at,
+            )
+        )
+    return out
+
+
+class CreateUnifiedUserBody(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=255)
+    phone: str | None = Field(default=None, max_length=64)
+    role_id: UUID
+    shop_id: UUID | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=128)
+    pin: str | None = Field(default=None, min_length=4, max_length=8)
+
+
+@router.post("/users", response_model=TeamUserOut, status_code=201, dependencies=[require_permission("operators:write", "staff:write")])
+def create_unified_user(
+    body: CreateUnifiedUserBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> TeamUserOut:
+    """Unified create-user endpoint — handles both admin-style and cashier-style users."""
+    tenant_id = _require_operator_tenant(ctx)
+    role = db.execute(
+        select(Role).where(Role.id == body.role_id, Role.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found for this tenant")
+
+    if body.pin and not body.pin.isdigit():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="PIN must be numeric")
+
+    import bcrypt as _bcrypt
+    password_hash = _bcrypt.hashpw(body.password.encode(), _bcrypt.gensalt()).decode() if body.password else None
+    pin_hash = _bcrypt.hashpw(body.pin.encode(), _bcrypt.gensalt()).decode() if body.pin else None
+
+    user = User(
+        tenant_id=tenant_id,
+        shop_id=body.shop_id,
+        role_id=body.role_id,
+        email=body.email.strip().lower(),
+        name=body.name.strip(),
+        phone=body.phone.strip() if body.phone else None,
+        password_hash=password_hash,
+        pin_hash=pin_hash,
+        is_active=True,
+    )
+    db.add(user)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use for this tenant")
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="create_user", resource_type="user", resource_id=str(user.id))
+    db.commit()
+    db.refresh(user)
+
+    # Build response via the same logic as list_users
+    from app.models import Permission, RolePermission
+    perms = [p for p, in db.execute(
+        select(Permission.codename)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .where(RolePermission.role_id == user.role_id)
+    ).all()]
+    access_codenames = {"cashier_app:access": "cashier_app", "admin_web:access": "admin_web", "admin_mobile:access": "admin_mobile"}
+    access = [access_codenames[p] for p in perms if p in access_codenames]
+
+    return TeamUserOut(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        phone=user.phone,
+        role_id=user.role_id,
+        role_name=role.name,
+        role_display_name=role.display_name,
+        shop_id=user.shop_id,
+        device_id=user.device_id,
+        access=access,
+        has_password=bool(user.password_hash),
+        has_pin=bool(user.pin_hash),
+        is_active=user.is_active,
+        created_at=user.created_at,
+    )
+
+
+class PatchUnifiedUserBody(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    role_id: UUID | None = None
+    shop_id: UUID | None = None
+    is_active: bool | None = None
+
+
+@router.patch("/users/{user_id}", response_model=TeamUserOut, dependencies=[require_permission("operators:write", "staff:write")])
+def patch_unified_user(
+    user_id: UUID,
+    body: PatchUnifiedUserBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> TeamUserOut:
+    tenant_id = _require_operator_tenant(ctx)
+    row = db.get(User, user_id)
+    if row is None or row.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if body.role_id is not None:
+        role = db.execute(select(Role).where(Role.id == body.role_id, Role.tenant_id == tenant_id)).scalar_one_or_none()
+        if role is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+        row.role_id = body.role_id
+    if body.name is not None:
+        row.name = body.name.strip()
+    if body.phone is not None:
+        row.phone = body.phone.strip() or None
+    if body.shop_id is not None:
+        row.shop_id = body.shop_id
+    if body.is_active is not None:
+        row.is_active = body.is_active
+
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="update_user", resource_type="user", resource_id=str(user_id))
+    db.commit()
+    db.refresh(row)
+
+    from app.models import Permission, RolePermission
+    perms = [p for p, in db.execute(
+        select(Permission.codename)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .where(RolePermission.role_id == row.role_id)
+    ).all()] if row.role_id else []
+    access_codenames = {"cashier_app:access": "cashier_app", "admin_web:access": "admin_web", "admin_mobile:access": "admin_mobile"}
+    access = [access_codenames[p] for p in perms if p in access_codenames]
+
+    return TeamUserOut(
+        id=row.id, email=row.email, name=row.name, phone=row.phone,
+        role_id=row.role_id, role_name=row.role.name if row.role else None,
+        role_display_name=row.role.display_name if row.role else None,
+        shop_id=row.shop_id, device_id=row.device_id, access=access,
+        has_password=bool(row.password_hash), has_pin=bool(row.pin_hash),
+        is_active=row.is_active, created_at=row.created_at,
+    )
+
+
 class CreateShopBody(BaseModel):
     name: str = Field(min_length=1, max_length=255)
 
