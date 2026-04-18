@@ -1,12 +1,18 @@
-"""Wipe all tenant-scoped data and load a rich demo dataset. Preserves `admin_users` (operators).
+"""Wipe all data and load a rich demo dataset with an optional bootstrap admin user.
 
-Use for demos / feature showcases. **Destructive**: deletes every tenant and related rows.
+Combines the former seed_demo.py and reset_demo_showcase.py into a single script.
+
+Use for demos / feature showcases. **Destructive**: deletes every tenant, user, and
+related row, then rebuilds from scratch.
 
 Run inside the API container / with DATABASE_URL set:
 
   IMS_DEMO_RESET_OK=1 python -m app.scripts.reset_demo_showcase
 
-Also prints a fresh enrollment token for cashier device onboarding.
+Optionally create an admin user for the tenant:
+
+  IMS_DEMO_RESET_OK=1 ADMIN_BOOTSTRAP_EMAIL=admin@example.com ADMIN_BOOTSTRAP_PASSWORD=secret \\
+    python -m app.scripts.reset_demo_showcase
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
+import bcrypt
 from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
@@ -90,6 +97,7 @@ _QTY_W              = [70, 20, 7, 3]
 
 
 _ALL_PERMS = [
+    "admin_web:access", "admin_mobile:access", "cashier_app:access",
     "staff:read", "staff:write",
     "catalog:read", "catalog:write",
     "inventory:read", "inventory:write",
@@ -108,6 +116,7 @@ _ALL_PERMS = [
     "shops:read", "shops:write",
 ]
 _MANAGER_PERMS = [
+    "admin_web:access", "admin_mobile:access",
     "staff:read", "staff:write",
     "catalog:read", "catalog:write",
     "inventory:read", "inventory:write",
@@ -123,7 +132,7 @@ _MANAGER_PERMS = [
 _SYSTEM_ROLES = [
     ("owner",   "Owner",   _ALL_PERMS),
     ("manager", "Manager", _MANAGER_PERMS),
-    ("cashier", "Cashier", []),
+    ("cashier", "Cashier", ["cashier_app:access"]),
 ]
 
 
@@ -155,12 +164,13 @@ def _require_confirmation() -> None:
         )
 
 
-def _wipe_tenants(db: Session) -> None:
-    """Remove all tenants (CASCADE removes shops, products, transactions, etc.). Keeps admin_users."""
+def _wipe_all(db: Session) -> None:
+    """Remove all users and tenants (CASCADE removes shops, products, transactions, etc.)."""
     set_rls_context(db, is_admin=True, tenant_id=None)
-    # Null out role_id on admin_users first — roles are tenant-scoped and will be
-    # CASCADE-deleted with the tenant, but admin_users.role_id has ON DELETE RESTRICT.
-    db.execute(text("UPDATE admin_users SET role_id = NULL"))
+    # Delete users first — role_id has ON DELETE RESTRICT on roles, which are
+    # tenant-scoped and would be CASCADE-deleted with the tenant. Removing users
+    # first avoids a constraint violation regardless of cascade ordering.
+    db.execute(text("DELETE FROM users"))
     db.execute(text("DELETE FROM tenants"))
     db.commit()
 
@@ -302,7 +312,7 @@ def main() -> None:
     rng = random.Random(42)
     db = SessionLocal()
     try:
-        _wipe_tenants(db)
+        _wipe_all(db)
         set_rls_context(db, is_admin=True, tenant_id=None)
 
         tenant = Tenant(
@@ -318,6 +328,34 @@ def main() -> None:
         db.flush()
 
         _seed_system_roles(db, tenant.id)
+
+        # -----------------------------------------------------------------------
+        # Bootstrap admin user (optional — set env vars to enable)
+        # -----------------------------------------------------------------------
+        bootstrap_note = ""
+        owner_admin_id: UUID | None = None
+        em = os.environ.get("ADMIN_BOOTSTRAP_EMAIL", "").strip().lower()
+        raw_pw = os.environ.get("ADMIN_BOOTSTRAP_PASSWORD", "").strip()
+        if em and raw_pw:
+            owner_role = db.execute(
+                select(Role).where(Role.tenant_id == tenant.id, Role.name == "owner")
+            ).scalar_one_or_none()
+            if owner_role is None:
+                bootstrap_note = "  bootstrap_admin: skipped (no owner role found — run migrations first)"
+            else:
+                h = bcrypt.hashpw(raw_pw.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
+                admin_user = User(
+                    email=em,
+                    password_hash=h,
+                    role_id=owner_role.id,
+                    tenant_id=tenant.id,
+                    name=em.split("@", 1)[0].replace(".", " ").title(),
+                    avatar_url=f"https://api.dicebear.com/9.x/identicon/svg?seed={em}",
+                )
+                db.add(admin_user)
+                db.flush()
+                owner_admin_id = admin_user.id
+                bootstrap_note = f"  bootstrap_admin: created ({em})"
 
         shop_downtown = Shop(tenant_id=tenant.id, name="Downtown Store", default_tax_rate_bps=825)
         shop_west = Shop(tenant_id=tenant.id, name="Westside Outlet", default_tax_rate_bps=725)
@@ -380,12 +418,12 @@ def main() -> None:
             ("Old Harbor Wholesale", "inactive", "archive@oldharbor.test",    None,          "Paused — seasonal only"),
         ]
         suppliers: list[Supplier] = []
-        for name, st, em, ph, notes in suppliers_data:
+        for name, st, em_addr, ph, notes in suppliers_data:
             supplier = Supplier(
                 tenant_id=tenant.id,
                 name=name,
                 status=st,
-                contact_email=em,
+                contact_email=em_addr,
                 contact_phone=ph,
                 notes=notes,
             )
@@ -520,24 +558,6 @@ def main() -> None:
             expires_at=datetime.now(UTC) + timedelta(days=14),
         ))
 
-        # Bind all existing users with admin access to showcase tenant and assign owner role
-        owner_role = db.execute(
-            select(Role).where(Role.tenant_id == tenant.id, Role.name == "owner")
-        ).scalar_one_or_none()
-        # Pick users that currently have a password (admin-style users); new User model
-        admins = db.execute(select(User).where(User.password_hash.is_not(None))).scalars().all()
-        for admin in admins:
-            admin.tenant_id = tenant.id
-            admin.is_active = True
-            if owner_role and not admin.role_id:
-                admin.role_id = owner_role.id
-            if not admin.name:
-                admin.name = admin.email.split("@", 1)[0].replace(".", " ").title()
-            if not admin.avatar_url:
-                admin.avatar_url = f"https://api.dicebear.com/9.x/identicon/svg?seed={admin.email}"
-
-        owner_admin_id = admins[0].id if admins else None
-
         # -----------------------------------------------------------------------
         # Procurement showcase data (5 POs spanning the period)
         # -----------------------------------------------------------------------
@@ -550,7 +570,7 @@ def main() -> None:
             status="received",
             expected_delivery_date=now - timedelta(days=46),
             notes="Initial bulk order — beverages",
-            created_by=owner_admin_id,
+            created_by_user_id=owner_admin_id,
             created_at=now - timedelta(days=50),
         )
         # PO received ~20 days ago
@@ -560,7 +580,7 @@ def main() -> None:
             status="received",
             expected_delivery_date=now - timedelta(days=21),
             notes="Stationery restock — mid month",
-            created_by=owner_admin_id,
+            created_by_user_id=owner_admin_id,
             created_at=now - timedelta(days=24),
         )
         po_received = PurchaseOrder(
@@ -569,7 +589,7 @@ def main() -> None:
             status="received",
             expected_delivery_date=now - timedelta(days=1),
             notes="Received and stocked",
-            created_by=owner_admin_id,
+            created_by_user_id=owner_admin_id,
         )
         po_ordered = PurchaseOrder(
             tenant_id=tenant.id,
@@ -577,7 +597,7 @@ def main() -> None:
             status="ordered",
             expected_delivery_date=now + timedelta(days=1),
             notes="Urgent beverage restock",
-            created_by=owner_admin_id,
+            created_by_user_id=owner_admin_id,
         )
         po_draft = PurchaseOrder(
             tenant_id=tenant.id,
@@ -585,7 +605,7 @@ def main() -> None:
             status="draft",
             expected_delivery_date=now + timedelta(days=3),
             notes="Weekly replenishment draft",
-            created_by=owner_admin_id,
+            created_by_user_id=owner_admin_id,
         )
         db.add_all([po_old_received, po_mid_received, po_received, po_ordered, po_draft])
         db.flush()
@@ -650,8 +670,8 @@ def main() -> None:
                 reason_code="damage",
                 notes="Shelf damage discovered during cycle count",
                 status="pending",
-                created_by=owner_admin_id,
-                approved_by=None,
+                created_by_user_id=owner_admin_id,
+                approved_by_user_id=None,
             ),
             StockAdjustment(
                 tenant_id=tenant.id,
@@ -661,8 +681,8 @@ def main() -> None:
                 reason_code="recount",
                 notes="Variance confirmed and corrected",
                 status="approved",
-                created_by=owner_admin_id,
-                approved_by=owner_admin_id,
+                created_by_user_id=owner_admin_id,
+                approved_by_user_id=owner_admin_id,
             ),
         ])
         db.add(StockMovement(
@@ -682,7 +702,7 @@ def main() -> None:
             from_shop_id=shop_downtown.id,
             to_shop_id=shop_west.id,
             status="in_transit",
-            created_by=owner_admin_id,
+            created_by_user_id=owner_admin_id,
             completed_at=None,
         )
         db.add(transfer)
@@ -697,7 +717,7 @@ def main() -> None:
 
         db.commit()
 
-        print("Showcase demo reset complete. admin_users were preserved.")
+        print("Showcase demo reset complete.")
         print(f"  tenant_id:           {tenant.id}")
         print(f"  slug:                {FIXED_SLUG}")
         print(f"  shop_downtown_id:    {shop_downtown.id}")
@@ -705,6 +725,8 @@ def main() -> None:
         print(f"  products:            {len(products)}")
         print(f"  transactions seeded: {total_txns} posted (+ 1 pending, 1 refunded)")
         print(f"  enrollment_token:    {raw_enrollment}")
+        if bootstrap_note:
+            print(bootstrap_note)
         print("  Use cashier app → enroll with token above (Downtown Store).")
     except Exception:
         db.rollback()
