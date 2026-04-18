@@ -37,9 +37,14 @@ Today every non-zero variance — even a ₹1 short — forces an admin to open 
 
 An override value of `0` disables auto-resolve for that shop even when the tenant default is nonzero. This is intentional: `NULL` = inherit, `0` = explicitly off.
 
-### `users` table — new `system` role
+### Per-tenant `system` role and sentinel user
 
-The existing unified `User` model (post Employee→User migration) gains a `system` role value. One `system` user is seeded per tenant, used for attribution of automated actions. This sentinel is scoped to the tenant (respects RLS) and cannot log in (unusable password hash).
+`User.role_id` is a FK to a per-tenant `roles` table (not an enum). For each tenant we seed:
+
+1. A `Role` row with `name = "system"` (and a minimal/empty permission set — this role is never used for login).
+2. A `User` row with `role_id` pointing at that system role, email `system+{tenant_id}@internal.ims`, and an unusable password hash (e.g. `!` prefix).
+
+This sentinel respects RLS (scoped to its tenant) and cannot log in. It is used purely for attribution of automated actions.
 
 ## Resolution Logic
 
@@ -61,9 +66,11 @@ else:
 
 **`auto_resolve()` effect:**
 
-1. Append a resolution note of the form `[AUTO-RESOLVED] Variance <signed amount> within <shop|tenant> <shortage|overage> threshold of <threshold amount>.`
-2. Set `resolved_by_user_id` = tenant's system user id.
-3. Set `resolved_at` = now.
+`ShiftClosing` has no `resolved_by_user_id` / `resolved_at` columns — resolution metadata is stored inline in the `notes` field, following the existing manual-resolve pattern at [admin_reconciliation.py:151-152](services/api/app/routers/admin_reconciliation.py#L151-L152) which appends `[RESOLVED by {email} on {timestamp}] …`. Auto-resolve follows the same pattern, appending:
+
+```
+[AUTO-RESOLVED by {system_user_email} on {ISO-8601 timestamp}] Variance <signed minor-unit amount> within <shop|tenant> <shortage|overage> threshold of <threshold minor-unit amount>.
+```
 
 `_rec_status()` ([admin_reconciliation.py:54-65](services/api/app/routers/admin_reconciliation.py#L54-L65)) currently matches the substring `[RESOLVED` to promote status to `resolved`. Since `[AUTO-RESOLVED]` does not contain that substring, `_rec_status()` must be extended to also match `[AUTO-RESOLVED`. No change to the `resolved` status enumeration itself — both manual and auto-resolved paths land on the same status, with the `auto_resolved` boolean (see API Changes) being the distinguishing signal.
 
@@ -86,15 +93,13 @@ Implemented alongside the existing `/v1/admin/tenant-settings/currency` pattern 
 
 ### Reconciliation list response (extension)
 
-Each shift row in the existing reconciliation list response gains a computed boolean:
+Each shift row in the existing reconciliation list response gains a computed boolean on the `ReconciliationRow` Pydantic model at [admin_reconciliation.py:35-48](services/api/app/routers/admin_reconciliation.py#L35-L48):
 
 ```
-auto_resolved = true iff
-  resolution_note starts with "[AUTO-RESOLVED]"
-  AND resolved_by_user_id == tenant's system user id
+auto_resolved = true iff shift.notes contains the substring "[AUTO-RESOLVED"
 ```
 
-No new endpoints for the auto-resolve action itself — it is always inline during shift close.
+(The `system_user_email` in the note already encodes who did it — no separate FK check needed.) No new endpoints for the auto-resolve action itself — it is always inline during shift close.
 
 ## Admin Web UI Changes
 
@@ -127,12 +132,11 @@ No changes.
 
 1. Add `auto_resolve_shortage_cents` and `auto_resolve_overage_cents` columns to `tenants` (`NOT NULL DEFAULT 0`).
 2. Add `auto_resolve_shortage_cents_override` and `auto_resolve_overage_cents_override` columns to `shops` (nullable).
-3. Add `system` to the `User.role` enum (or equivalent flag on the unified User model).
-4. **Data migration:** for every existing `Tenant`, insert one `User` row with role=`system`, synthetic email `system+{tenant_id}@internal.ims`, and an unusable password hash (e.g. `!` prefix that cannot match any valid hash). Must run inside the same revision so the invariant "every tenant has a system user" holds immediately after upgrade.
+3. **Data migration** (same revision, idempotent per tenant): for every existing `Tenant`, if no `Role` named `system` exists for that tenant, insert one (minimal/empty permissions). Then, if no `User` exists with that tenant's system role, insert one with email `system+{tenant_id}@internal.ims` and an unusable password hash (e.g. `!` prefix that cannot match any valid hash). Invariant after upgrade: every tenant has exactly one system role and exactly one system user.
 
 ### Tenant provisioning
 
-Extend the tenant-creation flow to seed the system user as part of the same transaction. New tenants never exist without a system user.
+Extract a shared helper `seed_tenant_system_user(db, tenant_id)` used by both the Alembic data migration and the tenant-creation path (currently in [services/api/app/scripts/reset_demo_showcase.py:309-362](services/api/app/scripts/reset_demo_showcase.py#L309-L362), alongside the existing `_seed_system_roles` call). New tenants never exist without a system role + system user.
 
 ### Feature flag / gating
 
