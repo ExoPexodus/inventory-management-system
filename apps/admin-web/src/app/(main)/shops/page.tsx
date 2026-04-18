@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ErrorState, PageHeader, Panel, PrimaryButton } from "@/components/ui/primitives";
 
 type Shop = {
@@ -12,6 +13,22 @@ type Shop = {
 };
 
 export default function ShopsPage() {
+  const pathname = usePathname();
+  const segments = pathname.split("/").filter(Boolean);
+  const ROOT_ROUTES = new Set([
+    "overview",
+    "inventory",
+    "staff",
+    "team",
+    "orders",
+    "analytics",
+    "suppliers",
+    "products",
+    "purchase-orders",
+    "settings",
+  ]);
+  const tenantPrefix = segments.length > 0 && !ROOT_ROUTES.has(segments[0]) ? `/${segments[0]}` : "";
+
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -37,7 +54,7 @@ export default function ShopsPage() {
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-8">
       <div className="flex items-center justify-between">
         <PageHeader title="Shops" />
-        <Link href="/shops/new">
+        <Link href={`${tenantPrefix}/shops/new`}>
           <PrimaryButton>New Shop</PrimaryButton>
         </Link>
       </div>
@@ -53,7 +70,7 @@ export default function ShopsPage() {
           <div className="px-6 py-10 text-center">
             <p className="text-sm text-on-surface-variant">No shops yet.</p>
             <p className="mt-1 text-sm text-on-surface-variant">
-              <Link href="/shops/new" className="text-primary underline">
+              <Link href={`${tenantPrefix}/shops/new`} className="text-primary underline">
                 Create your first shop
               </Link>
             </p>

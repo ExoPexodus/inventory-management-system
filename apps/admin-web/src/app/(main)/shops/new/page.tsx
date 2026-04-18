@@ -1,11 +1,27 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Badge, PageHeader, Panel, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui/primitives";
 
 export default function NewShopPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const segments = pathname.split("/").filter(Boolean);
+  const ROOT_ROUTES = new Set([
+    "overview",
+    "inventory",
+    "staff",
+    "team",
+    "orders",
+    "analytics",
+    "suppliers",
+    "products",
+    "purchase-orders",
+    "settings",
+  ]);
+  const tenantPrefix = segments.length > 0 && !ROOT_ROUTES.has(segments[0]) ? `/${segments[0]}` : "";
+
   const [name, setName] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -21,7 +37,7 @@ export default function NewShopPage() {
         body: JSON.stringify({ name: name.trim() }),
       });
       if (r.ok) {
-        router.push("/shops");
+        router.push(`${tenantPrefix}/shops`);
         return;
       }
       if (r.status === 409) {
@@ -61,7 +77,7 @@ export default function NewShopPage() {
             <PrimaryButton type="submit" disabled={saving}>
               {saving ? "Creating…" : "Create Shop"}
             </PrimaryButton>
-            <SecondaryButton type="button" onClick={() => router.push("/shops")}>
+            <SecondaryButton type="button" onClick={() => router.push(`${tenantPrefix}/shops`)}>
               Cancel
             </SecondaryButton>
           </div>
