@@ -1026,6 +1026,7 @@ class ShopSummaryOut(BaseModel):
     id: UUID
     tenant_id: UUID
     name: str
+    created_at: datetime
 
 
 @router.get("/shops", response_model=list[ShopSummaryOut], dependencies=[require_permission("shops:read")])
@@ -1038,7 +1039,7 @@ def admin_list_shops(
     stmt = select(Shop).order_by(Shop.tenant_id, Shop.name)
     stmt = stmt.where(Shop.tenant_id == tenant_id)
     rows = db.execute(stmt).scalars().all()
-    return [ShopSummaryOut(id=r.id, tenant_id=r.tenant_id, name=r.name) for r in rows]
+    return [ShopSummaryOut(id=r.id, tenant_id=r.tenant_id, name=r.name, created_at=r.created_at) for r in rows]
 
 
 @router.post("/shops", response_model=CreateShopResponse, dependencies=[require_permission("shops:write")])

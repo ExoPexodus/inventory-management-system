@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -17,6 +18,7 @@ class ShopOut(BaseModel):
     id: UUID
     tenant_id: UUID
     name: str
+    created_at: datetime
 
 
 @router.get("", response_model=list[ShopOut])
@@ -33,5 +35,5 @@ def list_shops(
     stmt = select(Shop).order_by(Shop.created_at.desc())
     stmt = stmt.where(Shop.tenant_id == tenant_id)
     rows = db.execute(stmt).scalars().all()
-    return [ShopOut(id=s.id, tenant_id=s.tenant_id, name=s.name) for s in rows]
+    return [ShopOut(id=s.id, tenant_id=s.tenant_id, name=s.name, created_at=s.created_at) for s in rows]
 
