@@ -1051,6 +1051,20 @@ def admin_create_shop(
     tenant_id = _require_operator_tenant(ctx)
     shop = Shop(tenant_id=tenant_id, name=body.name.strip())
     db.add(shop)
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A shop with this name already exists.") from None
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="create_shop",
+        resource_type="shop",
+        resource_id=str(shop.id),
+        after={"name": shop.name},
+    )
     db.commit()
     db.refresh(shop)
     return CreateShopResponse(id=shop.id, tenant_id=shop.tenant_id, name=shop.name)
