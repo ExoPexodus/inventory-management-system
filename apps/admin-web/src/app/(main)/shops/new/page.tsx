@@ -29,6 +29,8 @@ export default function NewShopPage() {
       } else {
         setMsg(`Failed to create shop (${r.status})`);
       }
+    } catch {
+      setMsg("Network error. Please try again.");
     } finally {
       setSaving(false);
     }
