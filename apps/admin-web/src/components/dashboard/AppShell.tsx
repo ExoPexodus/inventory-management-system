@@ -177,13 +177,14 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
                   <span className="material-symbols-outlined text-[18px]" aria-hidden="true">inventory_2</span>
                   Create Product
                 </Link>
-                <div className="flex items-center justify-between border-t border-outline-variant/10 px-4 py-3 text-[13px] text-on-surface/40 cursor-not-allowed select-none">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">store</span>
-                    Create Shop
-                  </div>
-                  <span className="text-[10px] font-medium tracking-wide">Soon</span>
-                </div>
+                <Link
+                  href={`${tenantPrefix}/shops/new`}
+                  onClick={() => setEntryMenuOpen(false)}
+                  className="flex items-center gap-2 border-t border-outline-variant/10 px-4 py-3 text-[13px] font-medium text-on-surface hover:bg-surface-container"
+                >
+                  <span className="material-symbols-outlined text-[18px]" aria-hidden="true">store</span>
+                  Create Shop
+                </Link>
               </div>
             )}
           </div>
