@@ -7,13 +7,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.models import Base, Tenant
+from app.models import Tenant
 
 
 @pytest.fixture(scope="session")
 def engine():
     eng = create_engine(settings.database_url, pool_pre_ping=True)
-    Base.metadata.create_all(eng)
     yield eng
     eng.dispose()
 
