@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.models import Tenant
+from app.models import Shop, Tenant
 
 
 @pytest.fixture(scope="session")
@@ -39,3 +39,16 @@ def tenant(db: Session) -> Tenant:
     db.commit()
     db.refresh(t)
     return t
+
+
+@pytest.fixture()
+def shop(db: Session, tenant: Tenant) -> Shop:
+    s = Shop(
+        id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        name=f"Test Shop {uuid.uuid4().hex[:6]}",
+    )
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return s
