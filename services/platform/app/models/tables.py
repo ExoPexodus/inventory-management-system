@@ -60,6 +60,10 @@ class PlatformTenant(Base):
     api_shared_secret: Mapped[str] = mapped_column(String(255), nullable=False)
     download_token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    default_currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="USD", server_default="USD")
+    currency_exponent: Mapped[int] = mapped_column(Integer, nullable=False, default=2, server_default="2")
+    currency_symbol_override: Mapped[Optional[str]] = mapped_column(String(8), nullable=True)
+    deployment_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="cloud", server_default="cloud")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
