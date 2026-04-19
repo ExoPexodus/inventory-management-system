@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
-from app.models import PaymentAllocation, Shop, ShiftClosing, Transaction
+from app.models import PaymentAllocation, Shop, ShiftClosing, Tenant, Transaction
 from app.services.audit_service import write_audit
+from app.services.reconciliation_auto_resolve import maybe_auto_resolve_shift
 
 router = APIRouter(prefix="/v1/admin/shifts", tags=["Admin Shifts"])
 
@@ -229,6 +230,11 @@ def close_shift(
         shift.notes = (shift.notes or "") + ("\n" if shift.notes else "") + body.notes
     if ctx.user_id:
         shift.closed_by_user_id = ctx.user_id
+
+    tenant_obj = db.get(Tenant, tenant_id)
+    shop_obj = db.get(Shop, shift.shop_id)
+    if tenant_obj is not None and shop_obj is not None:
+        maybe_auto_resolve_shift(db, shift, tenant_obj, shop_obj)
 
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="close_shift", resource_type="shift", resource_id=str(shift_id))
     db.commit()
