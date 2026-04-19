@@ -61,7 +61,7 @@ def maybe_auto_resolve_shift(
     timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     note = (
         f"\n{AUTO_RESOLVED_PREFIX} by {system_user.email} on {timestamp}] "
-        f"Variance {discrepancy} within {scope} {direction} threshold of {threshold}."
+        f"Variance {discrepancy:+d} within {scope} {direction} threshold of {threshold}."
     )
     shift.notes = (shift.notes or "") + note
     return True
