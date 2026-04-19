@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, downloads, health, invoices, license, payments, plans, releases, subscriptions, tenant_api, tenants
+from app.routers import auth, downloads, health, internal_sync, invoices, license, payments, plans, releases, subscriptions, tenant_api, tenants
 
 app = FastAPI(
     title="IMS Platform Service",
@@ -28,3 +28,4 @@ app.include_router(releases.router)
 app.include_router(downloads.router)
 app.include_router(license.router)
 app.include_router(tenant_api.router)
+app.include_router(internal_sync.router)
