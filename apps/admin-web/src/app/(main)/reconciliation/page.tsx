@@ -25,6 +25,7 @@ type RecRow = {
   actual_cents: number;
   variance_cents: number;
   rec_status: string;
+  auto_resolved: boolean;
   opened_at: string;
   closed_at: string | null;
   resolution_note: string | null;
@@ -236,7 +237,14 @@ export default function ReconciliationPage() {
                           {r.variance_cents >= 0 ? "+" : ""}{formatMoney(r.variance_cents, currency)}
                         </td>
                         <td className="px-6 py-4">
-                          <Badge tone={recTone(r.rec_status)}>{r.rec_status}</Badge>
+                          <div className="flex items-center gap-1.5">
+                            <Badge tone={recTone(r.rec_status)}>{r.rec_status}</Badge>
+                            {r.auto_resolved && (
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600" title="Automatically resolved by the system">
+                                Auto
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4" onClick={(e) => e.stopPropagation()}>
                           <div className="flex gap-2">
