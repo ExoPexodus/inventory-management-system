@@ -13,7 +13,8 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.db.session import get_db
-from app.models import PaymentAllocation, ShiftClosing, Transaction
+from app.models import PaymentAllocation, ShiftClosing, Shop, Tenant, Transaction
+from app.services.reconciliation_auto_resolve import maybe_auto_resolve_shift
 
 router = APIRouter(prefix="/v1/shifts", tags=["Device Shifts"])
 
@@ -155,6 +156,11 @@ def close_shift(
     if body.notes:
         shift.notes = (shift.notes or "") + ("\n" if shift.notes else "") + body.notes
     # reviewed_by left null — pending manager review
+
+    tenant_obj = db.get(Tenant, ctx.tenant_id)
+    shop_obj = db.get(Shop, shift.shop_id)
+    if tenant_obj is not None and shop_obj is not None:
+        maybe_auto_resolve_shift(db, shift, tenant_obj, shop_obj)
 
     db.commit()
     db.refresh(shift)
