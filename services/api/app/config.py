@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     # Platform service connection (billing / license control plane)
     platform_api_url: str = ""
     platform_api_secret: str = ""
+    platform_base_url: str = "http://platform:8000"
+    ims_platform_sync_mode: str = "polling"  # "polling" or "offline"
+    ims_platform_sync_interval_seconds: int = 300
     license_sync_interval_seconds: int = 300
 
 

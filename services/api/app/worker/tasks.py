@@ -35,3 +35,37 @@ def sync_all_tenant_licenses() -> str:
         return "error"
     finally:
         db.close()
+
+
+def poll_all_tenant_configs() -> dict:
+    """Scheduled job: poll platform for every tenant's config. Gated by IMS_PLATFORM_SYNC_MODE."""
+    import logging
+    from app.config import settings as app_settings
+
+    logger = logging.getLogger(__name__)
+
+    if app_settings.ims_platform_sync_mode != "polling":
+        return {"status": "skipped", "reason": f"sync mode is {app_settings.ims_platform_sync_mode}"}
+
+    from app.db.session import SessionLocal
+    from app.models import Tenant
+    from app.services.platform_sync import poll_tenant_config
+
+    db = SessionLocal()
+    applied_count = 0
+    failed_count = 0
+    total = 0
+    try:
+        tenants = db.query(Tenant).all()
+        total = len(tenants)
+        for tenant in tenants:
+            try:
+                if poll_tenant_config(db, tenant):
+                    applied_count += 1
+            except Exception as e:
+                failed_count += 1
+                logger.warning("poll_tenant_config failed for %s: %s", tenant.slug, e)
+    finally:
+        db.close()
+
+    return {"applied": applied_count, "failed": failed_count, "total": total}
