@@ -25,6 +25,7 @@ from app.routers import (
     device_shifts,
     devices,
     health,
+    internal_sync,
     inventory,
     notifications,
     reporting,
@@ -79,3 +80,4 @@ app.include_router(admin_audit.router)
 app.include_router(admin_reports.router)
 app.include_router(audit.router)
 app.include_router(notifications.router)
+app.include_router(internal_sync.router)
