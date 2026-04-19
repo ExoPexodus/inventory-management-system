@@ -17,6 +17,7 @@ from app.auth.deps import OperatorDep
 from app.db.session import get_db
 from app.models import PlatformTenant
 from app.services.audit_service import write_audit
+from app.services.tenant_config_push import push_tenant_currency_config
 
 router = APIRouter(prefix="/v1/platform/tenants", tags=["Platform Tenants"])
 
@@ -256,9 +257,10 @@ def patch_tenant_currency(
     db.commit()
     db.refresh(tenant)
 
-    # Push integration added in Task 6
-    push_status = "not_implemented"
-    push_error = None
+    # Push tenant config to api (single attempt; failures logged and surfaced)
+    push_result = push_tenant_currency_config(tenant)
+    push_status = push_result.status
+    push_error = push_result.error
 
     return TenantCurrencyPatchResult(
         default_currency_code=tenant.default_currency_code,
