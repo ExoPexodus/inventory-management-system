@@ -32,6 +32,10 @@ class TenantCreate(BaseModel):
     region: str = "in"
     api_base_url: str
     notes: str | None = None
+    default_currency_code: str = Field(default="USD", min_length=3, max_length=3)
+    currency_exponent: int = Field(default=2, ge=0, le=4)
+    currency_symbol_override: str | None = Field(default=None, max_length=8)
+    deployment_mode: str = Field(default="cloud", pattern="^(cloud|on_prem)$")
 
 
 class TenantPatch(BaseModel):
@@ -39,6 +43,7 @@ class TenantPatch(BaseModel):
     region: str | None = None
     api_base_url: str | None = None
     notes: str | None = None
+    deployment_mode: str | None = Field(default=None, pattern="^(cloud|on_prem)$")
 
 
 class TenantOut(BaseModel):
@@ -49,6 +54,10 @@ class TenantOut(BaseModel):
     api_base_url: str
     download_token: str
     notes: str | None
+    default_currency_code: str
+    currency_exponent: int
+    currency_symbol_override: str | None
+    deployment_mode: str
     created_at: datetime
     updated_at: datetime
 
@@ -135,6 +144,10 @@ def create_tenant(
         api_shared_secret=secrets.token_urlsafe(32),
         download_token=secrets.token_urlsafe(16),
         notes=body.notes,
+        default_currency_code=body.default_currency_code,
+        currency_exponent=body.currency_exponent,
+        currency_symbol_override=body.currency_symbol_override,
+        deployment_mode=body.deployment_mode,
     )
     db.add(tenant)
     try:
@@ -270,6 +283,10 @@ def _to_out(t: PlatformTenant) -> TenantOut:
         api_base_url=t.api_base_url,
         download_token=t.download_token,
         notes=t.notes,
+        default_currency_code=t.default_currency_code,
+        currency_exponent=t.currency_exponent,
+        currency_symbol_override=t.currency_symbol_override,
+        deployment_mode=t.deployment_mode,
         created_at=t.created_at,
         updated_at=t.updated_at,
     )
