@@ -41,6 +41,7 @@ class ReconciliationRow(BaseModel):
     actual_cents: int
     variance_cents: int
     rec_status: str
+    auto_resolved: bool
     opened_at: str
     closed_at: str | None
     resolution_note: str | None
@@ -51,18 +52,21 @@ class ReconciliationListResponse(BaseModel):
     items: list[ReconciliationRow]
 
 
-def _rec_status(shift: ShiftClosing) -> tuple[str, str | None]:
-    """Return (status, resolution_note) from a closed shift."""
+def _rec_status(shift: ShiftClosing) -> tuple[str, str | None, bool]:
+    """Return (status, resolution_note, auto_resolved) from a closed shift."""
     notes = shift.notes or ""
+    if "[AUTO-RESOLVED" in notes:
+        idx = notes.find("[AUTO-RESOLVED")
+        return "resolved", notes[idx:], True
     if "[RESOLVED" in notes:
         idx = notes.find("[RESOLVED")
-        return "resolved", notes[idx:]
+        return "resolved", notes[idx:], False
     if shift.discrepancy_cents != 0:
-        return "variance", None
+        return "variance", None, False
     # Zero variance — check if manager has reviewed
     if shift.reviewed_by_user_id is None:
-        return "pending_review", None
-    return "matched", None
+        return "pending_review", None, False
+    return "matched", None, False
 
 
 @router.get("", response_model=ReconciliationListResponse, dependencies=[require_permission("operations:read")])
@@ -97,7 +101,7 @@ def list_reconciliation(
 
     items = []
     for shift in shifts:
-        rec_st, resolution_note = _rec_status(shift)
+        rec_st, resolution_note, auto_resolved = _rec_status(shift)
         shop_name = shops.get(shift.shop_id)
         period = f"{shop_name or 'Unknown'} — {shift.closed_at.strftime('%b %d, %Y') if shift.closed_at else '?'}"
         items.append(ReconciliationRow(
@@ -109,6 +113,7 @@ def list_reconciliation(
             actual_cents=shift.reported_cash_cents,
             variance_cents=shift.discrepancy_cents,
             rec_status=rec_st,
+            auto_resolved=auto_resolved,
             opened_at=shift.opened_at.isoformat(),
             closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
             resolution_note=resolution_note,
@@ -157,7 +162,7 @@ def resolve_reconciliation(
 
     shop = db.get(Shop, shift.shop_id)
     shop_name = shop.name if shop else None
-    rec_st, resolution_note = _rec_status(shift)
+    rec_st, resolution_note, auto_resolved = _rec_status(shift)
     period = f"{shop_name or 'Unknown'} — {shift.closed_at.strftime('%b %d, %Y') if shift.closed_at else '?'}"
 
     return ReconciliationRow(
@@ -169,6 +174,7 @@ def resolve_reconciliation(
         actual_cents=shift.reported_cash_cents,
         variance_cents=shift.discrepancy_cents,
         rec_status=rec_st,
+        auto_resolved=auto_resolved,
         opened_at=shift.opened_at.isoformat(),
         closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
         resolution_note=resolution_note,
@@ -202,7 +208,7 @@ def approve_reconciliation(
 
     shop = db.get(Shop, shift.shop_id)
     shop_name = shop.name if shop else None
-    rec_st, resolution_note = _rec_status(shift)
+    rec_st, resolution_note, auto_resolved = _rec_status(shift)
     period = f"{shop_name or 'Unknown'} — {shift.closed_at.strftime('%b %d, %Y') if shift.closed_at else '?'}"
 
     return ReconciliationRow(
@@ -214,6 +220,7 @@ def approve_reconciliation(
         actual_cents=shift.reported_cash_cents,
         variance_cents=shift.discrepancy_cents,
         rec_status=rec_st,
+        auto_resolved=auto_resolved,
         opened_at=shift.opened_at.isoformat(),
         closed_at=shift.closed_at.isoformat() if shift.closed_at else None,
         resolution_note=resolution_note,
