@@ -81,6 +81,7 @@ export default function ShopsPage() {
               <tr className="border-b border-outline-variant/20">
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-on-surface-variant">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wide text-on-surface-variant">Created</th>
+                <th className="px-6 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -93,6 +94,14 @@ export default function ShopsPage() {
                       month: "short",
                       day: "numeric",
                     })}
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <Link
+                      href={`${tenantPrefix}/shops/${shop.id}/edit`}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      Edit
+                    </Link>
                   </td>
                 </tr>
               ))}
