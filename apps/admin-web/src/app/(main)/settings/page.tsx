@@ -7,8 +7,6 @@ type CurrencySettings = {
   currency_code: string;
   currency_symbol: string;
   currency_exponent: number;
-  display_mode: "symbol" | "convert";
-  conversion_rate: number | null;
   supported_currencies: Array<{ code: string; symbol: string; name: string; exponent: number }>;
 };
 
@@ -61,12 +59,6 @@ export default function SettingsPage() {
   // Currency state
   const [currencySettings, setCurrencySettings] = useState<CurrencySettings | null>(null);
   const [currencyLoading, setCurrencyLoading] = useState(true);
-  const [currencyCode, setCurrencyCode] = useState("USD");
-  const [currencyDisplayMode, setCurrencyDisplayMode] = useState<"symbol" | "convert">("symbol");
-  const [conversionRate, setConversionRate] = useState("");
-  const [currencySaving, setCurrencySaving] = useState(false);
-  const [currencyMessage, setCurrencyMessage] = useState<string | null>(null);
-  const [currencyError, setCurrencyError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadEmailSettings() {
@@ -201,9 +193,6 @@ export default function SettingsPage() {
         if (res.ok) {
           const cfg = (await res.json()) as CurrencySettings;
           setCurrencySettings(cfg);
-          setCurrencyCode(cfg.currency_code);
-          setCurrencyDisplayMode(cfg.display_mode);
-          setConversionRate(cfg.conversion_rate != null ? String(cfg.conversion_rate) : "");
         }
       } finally {
         setCurrencyLoading(false);
@@ -211,34 +200,6 @@ export default function SettingsPage() {
     }
     void loadCurrency();
   }, []);
-
-  async function saveCurrencySettings() {
-    setCurrencySaving(true);
-    setCurrencyMessage(null);
-    setCurrencyError(null);
-    try {
-      const payload: Record<string, unknown> = {
-        currency_code: currencyCode,
-        display_mode: currencyDisplayMode,
-      };
-      if (currencyDisplayMode === "convert" && conversionRate.trim()) {
-        payload.conversion_rate = parseFloat(conversionRate);
-      }
-      const res = await fetch("/api/ims/v1/admin/tenant-settings/currency", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const updated = (await res.json()) as CurrencySettings;
-      setCurrencySettings(updated);
-      setCurrencyMessage("Currency settings saved.");
-    } catch (e) {
-      setCurrencyError(e instanceof Error ? e.message : "Failed to save currency settings");
-    } finally {
-      setCurrencySaving(false);
-    }
-  }
 
   const save = async () => {
     setSaving(true);
@@ -415,69 +376,26 @@ export default function SettingsPage() {
         <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
           <h3 className="font-headline text-lg font-bold text-primary">Currency</h3>
           <p className="mt-1 text-sm text-on-surface-variant">
-            Select your store currency. &ldquo;Symbol only&rdquo; displays amounts with the new symbol but keeps the underlying USD value. &ldquo;Convert&rdquo; multiplies all stored cent values by your rate.
+            Your tenant&rsquo;s currency is managed by your platform administrator. To request a change, contact support.
           </p>
           {currencyLoading ? (
             <p className="mt-4 text-sm text-on-surface-variant">Loading currency settings…</p>
-          ) : (
-            <div className="mt-5 space-y-4">
-              <div className="grid gap-4 md:grid-cols-3">
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">Currency</label>
-                  <SelectInput
-                    value={currencyCode}
-                    onChange={setCurrencyCode}
-                    options={(currencySettings?.supported_currencies ?? []).map((c) => ({
-                      value: c.code,
-                      label: `${c.code} — ${c.name} (${c.symbol})`,
-                    }))}
-                  />
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">Display mode</label>
-                  <SelectInput
-                    value={currencyDisplayMode}
-                    onChange={(v) => setCurrencyDisplayMode(v as "symbol" | "convert")}
-                    options={[
-                      { value: "symbol", label: "Symbol only (cosmetic)" },
-                      { value: "convert", label: "Convert amounts" },
-                    ]}
-                  />
-                </div>
-                {currencyDisplayMode === "convert" && (
-                  <div>
-                    <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">
-                      Rate (1 USD = ? {currencyCode})
-                    </label>
-                    <TextInput
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={conversionRate}
-                      onChange={(e) => setConversionRate(e.target.value)}
-                      placeholder="e.g. 83.5"
-                    />
-                  </div>
-                )}
+          ) : currencySettings ? (
+            <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3">
+              <div>
+                <dt className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Code</dt>
+                <dd className="mt-1 text-sm font-semibold text-on-surface">{currencySettings.currency_code}</dd>
               </div>
-              {currencySettings && (
-                <div className="rounded-lg border border-outline-variant/10 bg-surface-container-low p-3 text-sm text-on-surface-variant">
-                  Current: <strong className="text-on-surface">{currencySettings.currency_symbol}</strong> {currencySettings.currency_code}{" "}
-                  &bull; mode: <strong className="text-on-surface">{currencySettings.display_mode}</strong>
-                  {currencySettings.conversion_rate != null && ` @ ${currencySettings.conversion_rate}×`}
-                </div>
-              )}
-              <div className="flex flex-wrap items-center gap-3">
-                <PrimaryButton type="button" disabled={currencySaving} onClick={() => void saveCurrencySettings()}>
-                  {currencySaving ? "Saving…" : "Save currency"}
-                </PrimaryButton>
+              <div>
+                <dt className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Symbol</dt>
+                <dd className="mt-1 text-sm font-semibold text-on-surface">{currencySettings.currency_symbol}</dd>
               </div>
-              {currencyMessage && <p className="text-sm font-semibold text-primary">{currencyMessage}</p>}
-              {currencyError && (
-                <p className="rounded-lg border border-error/20 bg-error-container/20 px-3 py-2 text-sm text-on-error-container">{currencyError}</p>
-              )}
-            </div>
-          )}
+              <div>
+                <dt className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Exponent</dt>
+                <dd className="mt-1 text-sm font-semibold text-on-surface">{currencySettings.currency_exponent}</dd>
+              </div>
+            </dl>
+          ) : null}
         </section>
 
         <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
