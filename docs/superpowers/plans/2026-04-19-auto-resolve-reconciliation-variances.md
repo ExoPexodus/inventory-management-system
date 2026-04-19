@@ -110,7 +110,7 @@ def upgrade() -> None:
             role_id = uuid.uuid4()
             conn.execute(
                 sa.text(
-                    "INSERT INTO roles (id, tenant_id, name, display_name, is_system_role, created_at) "
+                    "INSERT INTO roles (id, tenant_id, name, display_name, is_system, created_at) "
                     "VALUES (:id, :t, :n, :d, :s, NOW())"
                 ),
                 {
@@ -163,7 +163,7 @@ def downgrade() -> None:
 
 **Verify `down_revision`:** open the latest file in `services/api/alembic/versions/` (most recent by timestamp — currently `20260417000001_merge_users.py`) and copy its revision id into `down_revision`.
 
-**Verify column names on `roles` table:** open `services/api/app/models/tables.py` and find the `Role` model. If fields like `is_system_role` or `display_name` are not present in `Role`, remove them from the INSERT (use only fields that exist). The INSERT is free to set only required columns; other columns use their defaults.
+**Verify column names on `roles` table:** open `services/api/app/models/tables.py` and find the `Role` model. If fields like `is_system` or `display_name` are not present in `Role`, remove them from the INSERT (use only fields that exist). The INSERT is free to set only required columns; other columns use their defaults.
 
 - [ ] **Step 2: Run the migration**
 
