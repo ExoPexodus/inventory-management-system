@@ -54,6 +54,7 @@ from app.models import (
 )
 from app.services.enrollment import hash_token
 from app.services.tax import sale_tax_totals
+from app.services.tenant_system_user import seed_tenant_system_user
 
 
 FIXED_SLUG = "showcase-demo"
@@ -328,6 +329,7 @@ def main() -> None:
         db.flush()
 
         _seed_system_roles(db, tenant.id)
+        seed_tenant_system_user(db, tenant.id)
 
         # -----------------------------------------------------------------------
         # Bootstrap admin user (optional — set env vars to enable)
