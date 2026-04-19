@@ -4,7 +4,20 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 
-type Tenant = { id: string; name: string; slug: string; region: string; api_base_url: string; download_token: string; notes: string | null; created_at: string };
+type Tenant = {
+  id: string;
+  name: string;
+  slug: string;
+  region: string;
+  api_base_url: string;
+  download_token: string;
+  notes: string | null;
+  default_currency_code: string;
+  currency_exponent: number;
+  currency_symbol_override: string | null;
+  deployment_mode: string;
+  created_at: string;
+};
 type AddonRow = { addon_id: string; codename: string; display_name: string; added_at: string };
 type Sub = { id: string; status: string; plan_id: string; plan_codename: string; plan_display_name: string; billing_cycle: string; trial_ends_at: string | null; current_period_start: string; current_period_end: string; grace_period_days: number; addons: AddonRow[] };
 type PlanOpt = { id: string; codename: string; display_name: string; base_price_cents: number; currency_code: string; max_shops: number; max_employees: number; storage_limit_mb: number };
@@ -87,6 +100,14 @@ export default function TenantDetailPage() {
           <span className="font-mono">{tenant.slug}</span> &middot; {tenant.region.toUpperCase()} &middot; Created {new Date(tenant.created_at).toLocaleDateString()}
         </p>
       </div>
+
+      {/* Currency + Deployment mode */}
+      {tenant && (
+        <>
+          <CurrencySection tenantId={tenant.id} onUpdate={() => void load()} />
+          <DeploymentModeSection tenantId={tenant.id} currentMode={tenant.deployment_mode} onUpdate={() => void load()} />
+        </>
+      )}
 
       {/* Subscription management */}
       <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
@@ -237,6 +258,195 @@ export default function TenantDetailPage() {
           <ManualPayForm tenantId={id} onDone={() => { setShowManualPay(false); void load(); }} />
         </Modal>
       ) : null}
+    </div>
+  );
+}
+
+const SUPPORTED_CURRENCIES = [
+  { code: "USD", exponent: 2 },
+  { code: "INR", exponent: 2 },
+  { code: "IDR", exponent: 0 },
+  { code: "EUR", exponent: 2 },
+  { code: "GBP", exponent: 2 },
+];
+
+function CurrencySection({
+  tenantId,
+  onUpdate,
+}: {
+  tenantId: string;
+  onUpdate: () => void;
+}) {
+  const [code, setCode] = useState<string>("USD");
+  const [exponent, setExponent] = useState<number>(2);
+  const [symbolOverride, setSymbolOverride] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [pushStatus, setPushStatus] = useState<string | null>(null);
+  const [pushError, setPushError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetch(`/api/platform/v1/platform/tenants/${tenantId}/currency`);
+        if (!r.ok) return;
+        const data = await r.json();
+        if (cancelled) return;
+        setCode(data.default_currency_code);
+        setExponent(data.currency_exponent);
+        setSymbolOverride(data.currency_symbol_override ?? "");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [tenantId]);
+
+  async function save() {
+    setSaving(true);
+    setPushError(null);
+    setPushStatus(null);
+    const body = {
+      default_currency_code: code,
+      currency_exponent: exponent,
+      currency_symbol_override: symbolOverride || null,
+    };
+    const r = await fetch(`/api/platform/v1/platform/tenants/${tenantId}/currency`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    setSaving(false);
+    if (!r.ok) {
+      setPushError(`HTTP ${r.status}`);
+      return;
+    }
+    const data = await r.json();
+    setPushStatus(data.push_status ?? null);
+    setPushError(data.push_error ?? null);
+    onUpdate();
+  }
+
+  if (loading) {
+    return <div className="text-sm text-on-surface-variant">Loading currency…</div>;
+  }
+
+  return (
+    <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-on-surface">Currency</h2>
+      <p className="mt-1 text-sm text-on-surface-variant">
+        Operating currency for this tenant. Changes push to the tenant&apos;s api instance on save.
+      </p>
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
+        <label className="block">
+          <span className="block text-sm font-medium text-on-surface">Code</span>
+          <select
+            className="mt-1 block w-full rounded-md border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface"
+            value={code}
+            onChange={(e) => {
+              const picked = SUPPORTED_CURRENCIES.find((c) => c.code === e.target.value);
+              setCode(e.target.value);
+              if (picked) setExponent(picked.exponent);
+            }}
+          >
+            {SUPPORTED_CURRENCIES.map((c) => (
+              <option key={c.code} value={c.code}>{c.code}</option>
+            ))}
+          </select>
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium text-on-surface">Exponent</span>
+          <input
+            type="number"
+            readOnly
+            className="mt-1 block w-full rounded-md border border-outline-variant/30 bg-surface-container-highest/50 px-3 py-2 text-sm text-on-surface-variant"
+            value={exponent}
+          />
+        </label>
+        <label className="block">
+          <span className="block text-sm font-medium text-on-surface">Symbol override</span>
+          <input
+            type="text"
+            maxLength={8}
+            placeholder="(auto)"
+            className="mt-1 block w-full rounded-md border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface"
+            value={symbolOverride}
+            onChange={(e) => setSymbolOverride(e.target.value)}
+          />
+        </label>
+      </div>
+      {pushStatus && (
+        <p className={`mt-3 text-sm ${pushStatus === "success" ? "text-tertiary" : "text-error"}`}>
+          {pushStatus === "success" ? "Pushed to tenant api." : `Push failed${pushError ? `: ${pushError}` : ""}.`}
+        </p>
+      )}
+      {pushError && !pushStatus && <p className="mt-3 text-sm text-error">Save failed: {pushError}</p>}
+      <div className="mt-4">
+        <button
+          onClick={() => void save()}
+          disabled={saving}
+          className="inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-medium text-on-primary disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DeploymentModeSection({
+  tenantId,
+  currentMode,
+  onUpdate,
+}: {
+  tenantId: string;
+  currentMode: string;
+  onUpdate: () => void;
+}) {
+  const [mode, setMode] = useState<string>(currentMode);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setMode(currentMode);
+  }, [currentMode]);
+
+  async function save(newMode: string) {
+    if (!confirm("Changing deployment_mode requires matching IMS_PLATFORM_SYNC_MODE env var on the api instance. Continue?")) {
+      return;
+    }
+    setSaving(true);
+    const r = await fetch(`/api/platform/v1/platform/tenants/${tenantId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deployment_mode: newMode }),
+    });
+    setSaving(false);
+    if (!r.ok) {
+      alert(`Save failed: HTTP ${r.status}`);
+      return;
+    }
+    setMode(newMode);
+    onUpdate();
+  }
+
+  return (
+    <div className="rounded-xl border border-outline-variant/20 bg-surface-container-lowest p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-on-surface">Deployment mode</h2>
+      <p className="mt-1 text-sm text-on-surface-variant">
+        Cloud tenants receive push updates and also poll platform periodically. On-prem tenants only receive pushes.
+      </p>
+      <label className="mt-4 block">
+        <select
+          className="mt-1 block rounded-md border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm text-on-surface"
+          value={mode}
+          disabled={saving}
+          onChange={(e) => void save(e.target.value)}
+        >
+          <option value="cloud">Cloud</option>
+          <option value="on_prem">On-prem</option>
+        </select>
+      </label>
     </div>
   );
 }
