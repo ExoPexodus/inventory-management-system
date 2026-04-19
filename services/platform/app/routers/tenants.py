@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -57,6 +57,28 @@ class TenantListResponse(BaseModel):
     items: list[TenantOut]
     total: int
     next_cursor: str | None = None
+
+
+class TenantCurrencyOut(BaseModel):
+    default_currency_code: str
+    currency_exponent: int
+    currency_symbol_override: str | None
+
+
+class PatchTenantCurrencyBody(BaseModel):
+    default_currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    currency_exponent: int | None = Field(default=None, ge=0, le=4)
+    currency_symbol_override: str | None = Field(default=None, max_length=8)
+
+    model_config = {"extra": "forbid"}
+
+
+class TenantCurrencyPatchResult(BaseModel):
+    default_currency_code: str
+    currency_exponent: int
+    currency_symbol_override: str | None
+    push_status: str  # "success" | "failed" | "not_implemented"
+    push_error: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +199,61 @@ def regenerate_download_token(
     db.commit()
     db.refresh(tenant)
     return _to_out(tenant)
+
+
+@router.get("/{tenant_id}/currency", response_model=TenantCurrencyOut)
+def get_tenant_currency(
+    tenant_id: UUID,
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> TenantCurrencyOut:
+    tenant = db.get(PlatformTenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return TenantCurrencyOut(
+        default_currency_code=tenant.default_currency_code,
+        currency_exponent=tenant.currency_exponent,
+        currency_symbol_override=tenant.currency_symbol_override,
+    )
+
+
+@router.patch("/{tenant_id}/currency", response_model=TenantCurrencyPatchResult)
+def patch_tenant_currency(
+    tenant_id: UUID,
+    body: PatchTenantCurrencyBody,
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> TenantCurrencyPatchResult:
+    tenant = db.get(PlatformTenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    sent = body.model_fields_set
+    patch_data = body.model_dump(include=sent)
+    for field, value in patch_data.items():
+        setattr(tenant, field, value)
+
+    write_audit(
+        db,
+        operator_id=ctx.operator_id,
+        action="update_tenant_currency",
+        resource_type="tenant",
+        resource_id=str(tenant_id),
+    )
+    db.commit()
+    db.refresh(tenant)
+
+    # Push integration added in Task 6
+    push_status = "not_implemented"
+    push_error = None
+
+    return TenantCurrencyPatchResult(
+        default_currency_code=tenant.default_currency_code,
+        currency_exponent=tenant.currency_exponent,
+        currency_symbol_override=tenant.currency_symbol_override,
+        push_status=push_status,
+        push_error=push_error,
+    )
 
 
 # ---------------------------------------------------------------------------

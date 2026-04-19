@@ -7,7 +7,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
-from app.models import PlatformTenant
+from app.models import PlatformOperator, PlatformTenant
 
 
 @pytest.fixture(scope="session")
@@ -26,6 +26,20 @@ def db(engine) -> Session:
     session.close()
     transaction.rollback()
     connection.close()
+
+
+@pytest.fixture()
+def platform_operator(db: Session) -> PlatformOperator:
+    op = PlatformOperator(
+        id=uuid.uuid4(),
+        email=f"op-{uuid.uuid4().hex[:8]}@test.local",
+        password_hash="x",
+        display_name="Test Operator",
+    )
+    db.add(op)
+    db.commit()
+    db.refresh(op)
+    return op
 
 
 @pytest.fixture()
