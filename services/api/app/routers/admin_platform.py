@@ -188,3 +188,74 @@ def patch_device_security(
         max_offline_minutes=tenant.max_offline_minutes,
         employee_session_timeout_minutes=tenant.employee_session_timeout_minutes,
     )
+
+
+# ---------------------------------------------------------------------------
+# Reconciliation settings
+# ---------------------------------------------------------------------------
+
+
+class ReconciliationSettingsOut(BaseModel):
+    auto_resolve_shortage_cents: int
+    auto_resolve_overage_cents: int
+
+
+class PatchReconciliationBody(BaseModel):
+    auto_resolve_shortage_cents: int | None = Field(default=None, ge=0)
+    auto_resolve_overage_cents: int | None = Field(default=None, ge=0)
+
+
+@router.get(
+    "/tenant-settings/reconciliation",
+    response_model=ReconciliationSettingsOut,
+    dependencies=[require_permission("settings:read")],
+)
+def get_reconciliation_settings(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> ReconciliationSettingsOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return ReconciliationSettingsOut(
+        auto_resolve_shortage_cents=tenant.auto_resolve_shortage_cents,
+        auto_resolve_overage_cents=tenant.auto_resolve_overage_cents,
+    )
+
+
+@router.patch(
+    "/tenant-settings/reconciliation",
+    response_model=ReconciliationSettingsOut,
+    dependencies=[require_permission("settings:write")],
+)
+def patch_reconciliation_settings(
+    body: PatchReconciliationBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> ReconciliationSettingsOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    if body.auto_resolve_shortage_cents is not None:
+        tenant.auto_resolve_shortage_cents = body.auto_resolve_shortage_cents
+    if body.auto_resolve_overage_cents is not None:
+        tenant.auto_resolve_overage_cents = body.auto_resolve_overage_cents
+
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="update_reconciliation_settings",
+        resource_type="tenant",
+        resource_id=str(tenant_id),
+    )
+    db.commit()
+    db.refresh(tenant)
+
+    return ReconciliationSettingsOut(
+        auto_resolve_shortage_cents=tenant.auto_resolve_shortage_cents,
+        auto_resolve_overage_cents=tenant.auto_resolve_overage_cents,
+    )
