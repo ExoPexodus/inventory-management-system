@@ -130,6 +130,8 @@ class Tenant(Base):
     billing_state: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     billing_postal_code: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     billing_country: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    auto_resolve_shortage_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    auto_resolve_overage_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     shops: Mapped[list[Shop]] = relationship(back_populates="tenant")
@@ -145,6 +147,8 @@ class Shop(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     default_tax_rate_bps: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    auto_resolve_shortage_cents_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    auto_resolve_overage_cents_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tenant: Mapped[Tenant] = relationship(back_populates="shops")
