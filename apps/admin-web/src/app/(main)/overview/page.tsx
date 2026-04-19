@@ -17,15 +17,15 @@ type DashboardSummary = {
 };
 
 export default async function OverviewPage() {
-  type CurrencySettingsRaw = { currency_code: string; currency_exponent: number; symbol_override?: string | null; display_mode: "symbol" | "convert"; conversion_rate?: number | null };
+  type CurrencySettingsRaw = { currency_code: string; currency_exponent: number };
   const [res, seriesRes, currencyRes] = await Promise.all([
     serverJsonGet<DashboardSummary>("/v1/admin/dashboard-summary"),
     serverJsonGet<{ points: Array<{ day: string; gross_cents: number }> }>("/v1/admin/analytics/sales-series?days=30"),
     serverJsonGet<CurrencySettingsRaw>("/v1/admin/tenant-settings/currency"),
   ]);
   const currency: CurrencyConfig = currencyRes.ok
-    ? { code: currencyRes.data.currency_code, exponent: currencyRes.data.currency_exponent, displayMode: currencyRes.data.display_mode, conversionRate: currencyRes.data.conversion_rate ?? null }
-    : { code: "USD", exponent: 2, displayMode: "symbol", conversionRate: null };
+    ? { code: currencyRes.data.currency_code, exponent: currencyRes.data.currency_exponent }
+    : { code: "USD", exponent: 2 };
 
   if (!res.ok) {
     return (
