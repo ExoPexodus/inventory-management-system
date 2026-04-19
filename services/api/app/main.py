@@ -16,6 +16,7 @@ from app.routers import (
     admin_reports,
     admin_roles,
     admin_shifts,
+    admin_shops,
     admin_staff,
     admin_suppliers,
     admin_web,
@@ -71,6 +72,7 @@ app.include_router(admin_platform.router)
 app.include_router(admin_billing.router)
 app.include_router(tenants.router)
 app.include_router(shops.router)
+app.include_router(admin_shops.router)
 app.include_router(inventory.router)
 app.include_router(reporting.router)
 app.include_router(admin_audit.router)
