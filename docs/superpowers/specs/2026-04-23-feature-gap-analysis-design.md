@@ -68,10 +68,11 @@ This document maps all missing industry-standard features against what is alread
 - Customer profiles (name, phone, email, address, notes)
 - Customer purchase history
 - Customer groups / segments (VIP, regular, loyalty member)
-- Customer-specific pricing (price list per group)
-- Store credit / customer wallet balance (see also Domain 28 — Khata)
+- Store credit / customer wallet balance (see also Domain 26 — Khata)
 
-**Chunk:** 1 (profiles, purchase history, groups), 2 (customer-specific pricing, store credit wallet)
+> Note: Differentiated pricing for customer groups (e.g. VIP discounts) is handled through Domain 6 (discount codes + manager overrides) and Domain 7 (loyalty tiers), not through dedicated per-customer price lists.
+
+**Chunk:** 1 (profiles, purchase history, groups), 2 (store credit wallet)
 
 ---
 
@@ -317,7 +318,7 @@ This document maps all missing industry-standard features against what is alread
 - Bulk export: transactions, customers, products, stock
 - Razorpay / PayU integration (card + UPI payments via payment gateway)
 - Shopify / WooCommerce stock sync (for retailers with an online store)
-- Tally export (see Domain 25)
+- Tally export (see Domain 28)
 
 **Chunk:** 2 (more CSV imports, bulk export), 3 (payment gateway, e-commerce integrations)
 
@@ -331,9 +332,9 @@ This document maps all missing industry-standard features against what is alread
 - Bundle / kit definition (group of products sold as one unit at one price)
 - Bundle stock deduction (auto-deduct each component on sale)
 - Bundle pricing rules (bundle price vs. sum of parts)
-- Composite products / assemblies (product made from other products)
+- In-store assembly bundles (e.g. gift hampers, custom gift sets built from individual products at time of sale — stock deducted per component)
 
-**Chunk:** 2 (basic bundles/kits), 3 (composite/assembly)
+**Chunk:** 2 (basic bundles/kits), 3 (in-store assembly)
 
 ---
 
@@ -842,20 +843,19 @@ QuickBooks is the dominant SMB accounting tool in Canada. Wave Accounting was fo
 | 2.21 | Opening float + denomination count at shift close (Indian notes) | Cash Mgmt |
 | 2.22 | 2FA for operator logins + session management | Security |
 | 2.23 | Onboarding wizard + usage limits enforcement by plan | Platform |
-| 2.24 | Customer-specific pricing per group | CRM |
-| 2.25 | Dynamic UPI QR, named wallet tenders, COD tender | Indian Payments |
-| 2.26 | WhatsApp receipts + Khata reminders | WhatsApp |
-| 2.27 | Khata credit limits + WhatsApp reminders + settlement workflow | Khata |
-| 2.28 | Barcode generation + single label print + basic label template | Labels |
-| 2.29 | Indian number format, ₹ symbol, date format, state code / address fields | Localisation |
-| 2.30 | Dynamic QRIS, named wallet tenders (GoPay/OVO/Dana), VA payments, COD (Indonesia) | Indonesian Payments |
-| 2.31 | PPN-exempt product categories + annual PPN return export (Indonesia) | PPN Compliance |
-| 2.32 | IDR formatting, date format, timezone (WIB/WITA/WIT), address + +62 phone (Indonesia) | Indonesian Localisation |
-| 2.33 | Tax-exempt product categories by province + annual GST/HST + QST return reports (Canada) | Canadian Tax |
-| 2.34 | Interac e-Transfer + Apple Pay / Google Pay tenders (Canada) | Canadian Payments |
-| 2.35 | CASL-compliant opt-in management for marketing messages (Canada) | Canadian Compliance |
-| 2.36 | CAD formatting, postal code validation, province dropdown, +1 phone, timezone (Canada) | Canadian Localisation |
-| 2.37 | Country-aware address format + phone country-code validation (all markets) | i18n Foundation |
+| 2.24 | Dynamic UPI QR, named wallet tenders, COD tender | Indian Payments |
+| 2.25 | WhatsApp receipts + Khata reminders | WhatsApp |
+| 2.26 | Khata credit limits + WhatsApp reminders + settlement workflow | Khata |
+| 2.27 | Barcode generation + single label print + basic label template | Labels |
+| 2.28 | Indian number format, ₹ symbol, date format, state code / address fields | Localisation |
+| 2.29 | Dynamic QRIS, named wallet tenders (GoPay/OVO/Dana), VA payments, COD (Indonesia) | Indonesian Payments |
+| 2.30 | PPN-exempt product categories + annual PPN return export (Indonesia) | PPN Compliance |
+| 2.31 | IDR formatting, date format, timezone (WIB/WITA/WIT), address + +62 phone (Indonesia) | Indonesian Localisation |
+| 2.32 | Tax-exempt product categories by province + annual GST/HST + QST return reports (Canada) | Canadian Tax |
+| 2.33 | Interac e-Transfer + Apple Pay / Google Pay tenders (Canada) | Canadian Payments |
+| 2.34 | CASL-compliant opt-in management for marketing messages (Canada) | Canadian Compliance |
+| 2.35 | CAD formatting, postal code validation, province dropdown, +1 phone, timezone (Canada) | Canadian Localisation |
+| 2.36 | Country-aware address format + phone country-code validation (all markets) | i18n Foundation |
 
 ### Chunk 3 — Differentiating
 
@@ -875,7 +875,7 @@ QuickBooks is the dominant SMB accounting tool in Canada. Wave Accounting was fo
 | 3.12 | Accounting integrations (Xero, QuickBooks) | Integrations |
 | 3.13 | Shopify / WooCommerce stock sync | Integrations |
 | 3.14 | Razorpay / PayU gateway integration | Indian Payments |
-| 3.15 | Composite products / assemblies | Bundles |
+| 3.15 | In-store assembly bundles (gift hampers, custom gift sets) | Bundles |
 | 3.16 | Auto-draft PO on reorder trigger | Auto-reorder |
 | 3.17 | Staff commission tracking + report | Staff |
 | 3.18 | Employee clock in/out + scheduling | Staff |
