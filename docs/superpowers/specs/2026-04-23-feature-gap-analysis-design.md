@@ -67,7 +67,7 @@ This document maps all missing industry-standard features against what is alread
 **What's missing:**
 - Customer profiles (name, phone, email, address, notes)
 - Customer purchase history
-- Customer groups / segments (VIP, regular, wholesale account)
+- Customer groups / segments (VIP, regular, loyalty member)
 - Customer-specific pricing (price list per group)
 - Store credit / customer wallet balance (see also Domain 28 — Khata)
 
@@ -115,7 +115,7 @@ This document maps all missing industry-standard features against what is alread
 
 **What's missing:**
 - Supplier address and GSTIN (needed for GST input tax credit)
-- Supplier payment terms and lead time
+- Supplier lead time (days to delivery — used for reorder timing)
 - PO receiving workflow — endpoint that marks received lines and creates stock movements
 - Partial receiving (receive some lines, leave rest open)
 - PO status flow: draft → submitted → partially received → fully received → closed
@@ -720,13 +720,13 @@ The tax applied to a Canadian transaction is entirely determined by which provin
 
 ### Domain 39 — Canadian Payment Methods
 
-Interac Debit is the dominant domestic payment network in Canada — most Canadians use it daily. It is not the same as Visa Debit and must be its own tender type for accurate reporting. Interac e-Transfer is common for invoice payments.
+Interac Debit is the dominant domestic payment network in Canada — most Canadians use it daily. It is not the same as Visa Debit and must be its own tender type for accurate reporting. Interac e-Transfer is also common for custom orders, deposits, and layaway settlements.
 
 **What exists:** Cash and card tender types only.
 
 **What's missing:**
 - Interac Debit as a first-class tender type
-- Interac e-Transfer as a tender type (bank-to-bank via email/phone — common for settlements and invoice payments)
+- Interac e-Transfer as a tender type (bank-to-bank via email/phone — common for custom orders, deposits, and layaway settlements)
 - Apple Pay / Google Pay (contactless tap — growing rapidly, especially post-pandemic)
 
 **Chunk:** 1 (Interac Debit), 2 (Interac e-Transfer, Apple Pay / Google Pay)
