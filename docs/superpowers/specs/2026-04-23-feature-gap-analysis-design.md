@@ -97,16 +97,19 @@ This document maps all missing industry-standard features against what is alread
 **What exists:** SKU, name, category (free text), description, image_url, reorder_point, unit_price_cents, variants, product groups.
 
 **What's missing:**
-- `barcode` / UPC / EAN field — critical for POS scanning; also needed for label printing (Domain 29)
+- `barcode` / UPC / EAN field — critical for POS scanning; also needed for label printing (Domain 27)
 - `cost_price_cents` — without it, margin and COGS calculations are impossible
-- `hsn_code` — mandatory for GST invoices in India (Domain 25)
+- `hsn_code` — mandatory for GST invoices in India (Domain 23)
 - `unit_of_measure` — sell by kg, litre, metre, piece, pack (grocery, fabric, hardware retail)
 - Max stock level (only reorder_point exists; max needed for over-stock alerts)
 - Product tags / labels (flexible classification beyond single category)
 - Price history — track when prices changed and by how much
 - Discontinued status handling — no longer ordered but still in stock
+- `negative_inventory_allowed` flag per product — configurable whether a sale can proceed when stock = 0 (block, warn with override, or allow silently)
+- Product availability per shop — enable or disable a product at specific shop locations without deleting it from the catalog
+- See also Domain 43 for product enrichment (image upload, MRP, custom fields)
 
-**Chunk:** 1 (barcode, cost_price_cents, hsn_code), 2 (UOM, max stock, tags), 3 (price history, discontinued handling)
+**Chunk:** 1 (barcode, cost_price_cents, hsn_code, negative_inventory_allowed), 2 (UOM, max stock, tags, product availability per shop), 3 (price history, discontinued handling)
 
 ---
 
@@ -152,8 +155,10 @@ This document maps all missing industry-standard features against what is alread
 - Coupon / promo codes (single-use, multi-use, expiry date)
 - Manager override discounts (requires a role with `discounts:approve` permission)
 - Time-limited promotions (date range, e.g. Diwali sale)
+- Promotional bundle pricing — "any 3 for ₹299" style (different from fixed kit bundles — customer picks any 3 items from a category)
+- Minimum selling price / floor price per product — prevent cashiers from discounting below a set floor (franchise protection, margin protection)
 
-**Chunk:** 2 (item + cart discounts, coupon codes, manager override), 3 (time-limited promotions)
+**Chunk:** 2 (item + cart discounts, coupon codes, manager override, floor price), 3 (time-limited promotions, promotional bundle pricing)
 
 ---
 
@@ -167,6 +172,9 @@ This document maps all missing industry-standard features against what is alread
 - Store credit / customer wallet (balance, top-up, redemption)
 - Loyalty tiers (bronze/silver/gold with threshold rules)
 - Points expiry
+- Points deducted on return (reverse the points earned on a returned transaction)
+- Loyalty multiplier events ("double points this weekend" promotions)
+- Points expiry WhatsApp notifications (remind customer before points expire)
 
 **Chunk:** 3
 
@@ -290,8 +298,12 @@ This document maps all missing industry-standard features against what is alread
 - Tip / gratuity support
 - Customer-facing display screen mode (second screen at POS terminal)
 - Barcode / QR product lookup at POS (requires barcode field — Domain 3)
+- Quick-access favourites grid — configurable pinned products on the cashier home screen for one-tap adding (avoids searching for top-selling items every time)
+- Shift daily sales target — manager sets a revenue goal per shift; cashier sees live progress on their dashboard
+- Quick product creation at POS — create a new product inline from the cashier screen without navigating to admin (useful when a new item arrives mid-shift)
+- Manager remote approval — when a cashier requests a discount override or return approval, it appears on the manager's device for one-tap approval rather than requiring physical presence at the till
 
-**Chunk:** 2 (hold transactions, custom line items, item notes, void, barcode lookup), 3 (tip/gratuity, customer display)
+**Chunk:** 2 (hold transactions, custom line items, item notes, void, barcode lookup, favourites grid, shift target, manager remote approval), 3 (tip/gratuity, customer display, quick product creation)
 
 ---
 
@@ -396,6 +408,228 @@ This document maps all missing industry-standard features against what is alread
 
 ---
 
+### Domain 43 — Product Enrichment
+
+**What exists:** `image_url` is a stored URL string — no actual upload. One image per product. No MRP field. No custom metadata fields.
+
+**What's missing:**
+- **Product image upload** — upload images directly from phone/desktop rather than pasting a URL; stored in cloud object storage (S3 / equivalent)
+- **Multi-image per product** — multiple angles, variant-specific images
+- **MRP (Maximum Retail Price)** — legally mandated field for packaged goods in India; POS should alert if selling price exceeds MRP; shown on shelf labels and receipts
+- **Price guard alerts** — warn cashier if selling price is below cost price (margin protection) or above MRP (legal protection)
+- **Shelf / aisle location** — text field for where to find the product in the store (e.g., "Aisle 3, Shelf B") — useful during stocktakes and for staff helping customers
+- **Bulk price update** — update selling price (or cost price) for all products in a category at once, or by percentage change; critical for seasonal repricing without editing hundreds of products one by one
+- **Custom product fields** — configurable extra metadata per tenant (e.g. warranty period, country of origin, care instructions, material, brand)
+- **Multi-language product names** — store product name in multiple languages (e.g. English + Hindi + Bahasa) for multilingual receipts and POS display
+- **Product search by supplier** — filter catalog by which supplier provides each product
+
+**Chunk:** 1 (MRP field, price guard), 2 (image upload, shelf location, bulk price update, product search by supplier), 3 (multi-image, custom fields, multi-language names)
+
+---
+
+### Domain 44 — Advanced POS Operations
+
+**What exists:** Multi-tender, offline sync, variants, hold/park (being added).
+
+**What's missing:**
+- **Staff PIN / quick cashier login** — each staff member has a 4-digit PIN; they enter it at the start of their session on a shared device; sales are attributed to the active cashier; requires no full logout between cashiers
+- **Cashier handover** — pass the device to the next cashier without closing the shift; active shift continues, cashier identity changes with a PIN entry
+- **Layaway / deposit payment** — customer pays a deposit now, product is reserved, balance paid when they collect; generates a layaway record tied to the customer; critical for Indian retail (electronics, clothing, gold)
+- **Price rounding rules** — configurable rounding for transaction totals: nearest ₹1 / ₹5 / ₹10 for India (paisa avoidance); nearest $0.05 for Canadian cash transactions (penny phased out); rounding applies to cash only, not card
+- **Transaction-level notes** — free-text note on the whole transaction (delivery instructions, custom order reference, customer request)
+- **Multi-unit selling** — configure a product to be sold in multiple pack sizes without duplicate SKUs (e.g. 1 piece = ₹50, 6-pack = ₹280, carton = ₹900); POS prompts for unit selection
+- **Product modifiers at POS** — add customisations to a product line that change the price (e.g. size: S/M/L, filling choice, engraving text, gift wrapping add-on); relevant for tailors, bakeries, jewellery shops, gift stores
+- **Tax exemption per customer** — flag certain customers as tax-exempt (registered charities, government bodies, diplomatic entities); tax lines are suppressed on their transactions
+
+**Chunk:** 2 (staff PIN, cashier handover, layaway, price rounding, transaction notes, multi-unit selling, tax exemption per customer), 3 (product modifiers)
+
+---
+
+### Domain 45 — Returns & Exchange (depth)
+
+The returns domain (Domain 2) covers the core workflow. These gaps only become visible once returns are live:
+
+**What's missing:**
+- **Return without receipt** — look up the original transaction by customer name/phone, product name, or approximate date range; common in retail where customers lose receipts
+- **Configurable return policy per product category** — e.g. electronics: 7 days; clothing: 30 days; perishables: no returns; displayed to cashier at the point of initiating a return
+- **Return window enforcement** — POS alerts cashier if customer is past the configured return window; requires manager PIN override to proceed
+- **Exchange workflow** — return one item and immediately replace with another in a single transaction (price difference settled as charge or refund); currently would require two separate flows
+- **Serial number verification on return** — for electronics, scan or enter the serial number at return and verify it matches what was originally sold before accepting
+- **Partial refund amount** — refund a custom amount rather than the exact original line price (e.g. for goodwill refund or damaged-but-accepted return)
+
+**Chunk:** 2 (return without receipt, return policy config, return window enforcement, partial refund), 3 (exchange workflow, serial number verification)
+
+---
+
+### Domain 46 — Customer Intelligence
+
+CRM (Domain 1) covers profiles and history. These are the analytical and re-engagement layers on top:
+
+**What's missing:**
+- **Birthday field + birthday discount automation** — store customer date of birth; on their birthday automatically send a WhatsApp message with a discount voucher or loyalty bonus points
+- **Visit frequency tracking** — track last visit date and total visit count per customer; display on customer profile
+- **At-risk customer dashboard** — customers who haven't visited in X configurable days are flagged in a list; manager can see who's drifting away
+- **WhatsApp re-engagement** — automatically send a "we miss you" message with a personalised promo to customers who haven't visited in X days (CASL opt-in required for Canadian tenants)
+- **Customer lifetime value (CLV)** — total spend since first visit, visible on the customer profile and in a report; useful for identifying true VIPs beyond just last-visit recency
+- **Average basket value per customer** — mean transaction value; helps distinguish high-value occasional buyers from frequent small buyers
+- **Referral tracking** — "referred by" field on customer profile; track which customers bring in new customers; basis for referral incentive programmes
+
+**Chunk:** 2 (birthday field, visit frequency, at-risk dashboard), 3 (birthday automation, WhatsApp re-engagement, CLV report, referral tracking)
+
+---
+
+### Domain 47 — Advanced Inventory Operations
+
+Beyond the stocktake workflow already in Domain 5:
+
+**What's missing:**
+- **Mobile stocktake** — conduct a cycle count from the admin mobile app; staff walks the shop floor, scans barcodes or taps products, enters physical count; far more practical than doing it from a desktop admin panel
+- **Blind count mode** — during a stocktake, hide the system's expected quantities so staff counts what they physically see, not what the system expects; reduces anchoring bias and catches real discrepancies
+- **Inventory write-off** — formal process to write off stock that cannot be sold (expired, damaged beyond repair, stolen with police report); distinct from a stock adjustment because it carries an explicit P&L cost and appears in a dedicated write-off report
+- **Inventory aging report** — for each product at each shop, how long has the current stock been sitting since it was received; highlights items at risk of becoming dead stock before the dead stock report catches them
+- **GRN (Goods Received Note)** — a printable/downloadable document auto-generated when a PO is marked as received; lists what was ordered vs what arrived; signed by the receiving staff member as a paper audit trail
+
+**Chunk:** 2 (mobile stocktake, blind count, inventory write-off), 3 (inventory aging report, GRN)
+
+---
+
+### Domain 48 — Supplier Depth
+
+Beyond basic supplier CRUD (Domain 4):
+
+**What's missing:**
+- **Multiple contacts per supplier** — most suppliers have separate people for placing orders, tracking deliveries, and handling accounts/invoices; currently only one email and phone per supplier record
+- **Supplier performance notes** — free-text log of interactions, quality issues, dispute history, and delivery reliability per supplier; visible to anyone creating a PO
+- **Supplier invoice matching** — when a PO is received, attach the supplier's paper/digital invoice (PDF or photo), match the invoice total against the PO total, and flag any discrepancy before payment is made
+- **Supplier product catalogue** — link which products each supplier carries, at what typical cost; used to auto-populate PO lines and drive the preferred-supplier-per-product feature (Domain 19)
+
+**Chunk:** 2 (multiple contacts, performance notes, supplier product catalogue), 3 (invoice matching)
+
+---
+
+### Domain 49 — Device & POS Health
+
+**What exists:** Device enrollment and refresh exist. No visibility into device health or sync status from admin.
+
+**What's missing:**
+- **Device last-sync dashboard** — admin view showing each enrolled device, its last sync timestamp, and how many transactions are sitting in the offline queue; immediately spot devices that are offline or stuck
+- **Offline duration alerts** — notify the manager (in-app + email) if a device hasn't synced in a configurable number of hours; could indicate a broken device, connectivity problem, or forgotten open shift
+- **Receipt printer assignment** — configure which network/bluetooth printer is associated with each device; currently no printer management exists at all
+- **Per-device sales reporting** — revenue, transaction count, and average basket by device per shift; useful for understanding if one till is being underused or if a specific cashier is assigned to it
+
+**Chunk:** 2 (device last-sync dashboard, offline duration alerts), 3 (printer assignment, per-device sales reporting)
+
+---
+
+### Domain 50 — Customer Feedback & NPS
+
+**What exists:** Nothing.
+
+**What's missing:**
+- **Post-sale feedback QR code** — printed on the receipt; customer scans it and gets a simple 1–5 star rating form (optionally with a comment box); no app download required
+- **NPS tracking** — Net Promoter Score calculated from ratings per shop, trended over time; visible in the analytics dashboard
+- **Negative feedback alerts** — when a customer gives 1–2 stars, alert the shop manager immediately via in-app notification or WhatsApp so they can follow up
+- **Feedback visible in admin** — review all customer ratings and comments; filter by shop, date, rating; flag for resolution
+
+**Chunk:** 3
+
+---
+
+### Domain 51 — Advanced Analytics & Reporting
+
+Beyond what's already in Domain 9:
+
+**What's missing:**
+- **Gross margin per product and category** — selling price minus cost price, expressed as % and absolute value; requires cost_price_cents from Domain 3; unlocks a full margin report once Chunk 1 is done
+- **Inter-store performance comparison** — side-by-side analytics for two or more shops: revenue, basket size, top products, staff performance, conversion; critical for owners managing multiple locations
+- **ABC product classification** — automatically classify products as A (top 20% of revenue), B (middle 30%), C (bottom 50%); standard retail inventory technique; drives purchasing priority and shelf-space decisions
+- **Basket / affinity analysis** — what products are most commonly bought together; surfaces cross-sell opportunities and informs product placement decisions
+- **Staff productivity report** — revenue per cashier, items per transaction per cashier, average transaction value per cashier, voids and discounts per cashier; requires staff PIN (Domain 44) to attribute sales
+- **Cash flow summary** — daily cash in (sales) vs. cash out (purchases, petty cash, expenses) per shop
+
+**Chunk:** 2 (gross margin report, inter-store comparison), 3 (ABC classification, basket analysis, staff productivity, cash flow summary)
+
+---
+
+### Domain 52 — Local Delivery Management
+
+Relevant for grocery, pharmacy, electronics, and FMCG retail in urban India and Indonesia — home delivery from the store has become a baseline customer expectation.
+
+**What exists:** Nothing. Transactions are all in-store.
+
+**What's missing:**
+- **Delivery order creation at POS** — mark a transaction as a delivery order with a customer delivery address and scheduled delivery time window
+- **Delivery fee as a line item** — add a delivery charge to the transaction total (configurable per shop)
+- **Delivery status tracking** — simple manual status updates: pending → out for delivery → delivered; no GPS required
+- **Delivery person assignment** — assign a staff member or external rider to a delivery run; they see their assigned deliveries in the admin mobile app
+- **Delivery confirmation** — mark delivery as complete with an OTP the customer receives, or a photo of the delivered goods
+- **Delivery-integrated WhatsApp** — auto-send customer a WhatsApp message when order is out for delivery and again when delivered
+
+**Chunk:** 3
+
+---
+
+### Domain 53 — Fraud Prevention & Anomaly Detection
+
+**What exists:** Audit logs exist for admin actions. No fraud-specific monitoring.
+
+**What's missing:**
+- **Suspicious cashier pattern alerts** — flag unusual patterns automatically: excessive voids in a shift, excessive discounts by a single cashier, high volume of no-receipt returns, refunds to a different tender than the original payment
+- **Void / discount rate thresholds** — configurable per-tenant thresholds; alert manager when a cashier exceeds X% discount rate or Y voids in a shift
+- **Customer fraud flag** — mark a customer as flagged in CRM (e.g. history of fraudulent returns, chargebacks); POS warns cashier when a flagged customer is selected
+- **Anomaly detection on stock movements** — flag unexpected stock movements (large adjustments made outside shift hours, movements by users without inventory permissions)
+- **Cashier loss report** — report on discrepancies between expected and actual cash per cashier over time; identifies patterns of cash handling issues
+
+**Chunk:** 2 (suspicious pattern alerts, void/discount thresholds, customer fraud flag), 3 (anomaly detection on stock, cashier loss report)
+
+---
+
+### Domain 54 — Warranty & After-sales Tracking
+
+Relevant for electronics, appliance, and tool retailers:
+
+**What exists:** Nothing.
+
+**What's missing:**
+- **Warranty period per product** — configurable warranty duration (e.g. 12 months) stored on the product; displayed on the receipt
+- **Warranty record per sale** — when a product with a warranty is sold, a warranty record is created linking the sale, the customer, the product serial number (if tracked), and the expiry date
+- **Warranty lookup** — admin or cashier looks up a customer's warranty status by customer name, phone, or receipt number; used when a customer brings an item in for service
+- **Warranty expiry alerts** — notify customers via WhatsApp before their warranty expires (useful for upselling extended warranty or service plans)
+
+**Chunk:** 3
+
+---
+
+### Domain 55 — Customer Self-service & Catalogue Sharing
+
+**What exists:** Nothing customer-facing beyond the physical receipt.
+
+**What's missing:**
+- **Customer self-service portal** — a simple web page (no app) where customers enter their phone number, verify via OTP, and see their purchase history, loyalty points balance, active Khata balance, and outstanding Layaway payments
+- **Digital product catalogue** — a shareable web link or PDF showing the store's products with prices and images; tenant configures which products appear; shared via WhatsApp or printed as a price list brochure
+- **Price list WhatsApp broadcast** — send the catalogue or price list directly to a customer segment via WhatsApp Business API (e.g. "our new arrivals" or "this week's offers")
+
+**Chunk:** 3
+
+---
+
+### Domain 56 — Advanced Promotions
+
+Beyond basic discounts and coupons (Domain 6):
+
+**What exists:** Nothing.
+
+**What's missing:**
+- **Promotional bundle pricing** — "any 3 items from this category for ₹299" (customer picks freely, not a fixed kit); different from Domain 18 bundles which are fixed product groupings
+- **Loyalty multiplier events** — double or triple points on specific products, categories, or date ranges (e.g. "3× points on electronics this weekend")
+- **Customer-segment-specific promotions** — a promotion that only applies to customers in a specific group (e.g. VIP members get 15% off, others don't)
+- **Flash sale pricing** — a product's price drops to a sale price for a defined time window; reverts automatically; cashier sees the sale badge on the product
+- **Spend-and-save thresholds** — "spend ₹2000, get ₹200 off" cart-level promotion tied to spend amount (different from a percentage discount)
+
+**Chunk:** 3
+
+---
+
 ---
 
 ## India-Specific Domains
@@ -484,9 +718,10 @@ KhataBook and OkCredit built ₹1000cr+ businesses purely on this concept. Every
 - Credit limit per customer (soft limit with override)
 - WhatsApp reminder for overdue balance (ties into Domain 25)
 - Khata settlement (mark a customer's balance as fully settled)
+- Overdue Khata aging report — list all customers with outstanding balances, bucketed by days overdue (0–30, 31–60, 60+ days); sorted by amount owed
 
 **Chunk:** 1 (Udhar record, balance tracking, payment received, Khata statement)  
-**Chunk:** 2 (WhatsApp reminders, credit limits, settlement workflow)
+**Chunk:** 2 (WhatsApp reminders, credit limits, settlement workflow, overdue aging report)
 
 ---
 
@@ -815,6 +1050,9 @@ QuickBooks is the dominant SMB accounting tool in Canada. Wave Accounting was fo
 | 1.23 | Compound tax display on receipt — GST + HST/PST/QST (Canada) | Canadian Tax |
 | 1.24 | BN + GST/HST registration number on all receipts over $30 CAD (Canada — legal) | Canadian Compliance |
 | 1.25 | Interac Debit as first-class tender type (Canada) | Canadian Payments |
+| 1.26 | MRP field on products + price guard (above MRP / below cost alerts) | Product Enrichment |
+| 1.27 | `negative_inventory_allowed` flag per product | Product Catalog |
+| 1.28 | Product availability per shop (enable/disable per location) | Product Catalog |
 
 ### Chunk 2 — Competitive parity
 
@@ -856,6 +1094,30 @@ QuickBooks is the dominant SMB accounting tool in Canada. Wave Accounting was fo
 | 2.34 | CASL-compliant opt-in management for marketing messages (Canada) | Canadian Compliance |
 | 2.35 | CAD formatting, postal code validation, province dropdown, +1 phone, timezone (Canada) | Canadian Localisation |
 | 2.36 | Country-aware address format + phone country-code validation (all markets) | i18n Foundation |
+| 2.37 | Product image upload (cloud storage, not just URL) + shelf/aisle location | Product Enrichment |
+| 2.38 | Bulk price update by category or percentage | Product Enrichment |
+| 2.39 | Product search by supplier in catalog | Product Enrichment |
+| 2.40 | Staff PIN / quick cashier login + cashier handover | POS Operations |
+| 2.41 | Layaway / deposit payment — hold product with partial payment | POS Operations |
+| 2.42 | Price rounding rules (₹1/₹5/₹10 India; $0.05 Canada cash) | POS Operations |
+| 2.43 | Transaction-level notes + multi-unit selling | POS Operations |
+| 2.44 | Quick-access favourites grid + shift daily sales target | POS Operations |
+| 2.45 | Manager remote approval queue for discounts and returns | POS Operations |
+| 2.46 | Tax exemption per customer | POS Operations |
+| 2.47 | Floor price / minimum selling price per product | Discounts |
+| 2.48 | Return without receipt + return policy config per category | Returns Depth |
+| 2.49 | Return window enforcement at POS | Returns Depth |
+| 2.50 | Partial refund amount | Returns Depth |
+| 2.51 | Customer birthday field + visit frequency + at-risk dashboard | Customer Intelligence |
+| 2.52 | Mobile stocktake (admin mobile app) + blind count mode | Inventory Ops |
+| 2.53 | Inventory write-off (P&L-impacting, separate from adjustment) | Inventory Ops |
+| 2.54 | Multiple supplier contacts + performance notes | Supplier Depth |
+| 2.55 | Supplier product catalogue (which supplier carries which products) | Supplier Depth |
+| 2.56 | Device last-sync dashboard + offline duration alerts | Device Health |
+| 2.57 | Gross margin report per product and category | Reporting |
+| 2.58 | Inter-store performance comparison analytics | Reporting |
+| 2.59 | Suspicious pattern alerts + void/discount thresholds + customer fraud flag | Fraud Prevention |
+| 2.60 | Overdue Khata aging report (0–30 / 31–60 / 60+ days buckets) | Khata |
 
 ### Chunk 3 — Differentiating
 
@@ -898,6 +1160,29 @@ QuickBooks is the dominant SMB accounting tool in Canada. Wave Accounting was fo
 | 3.35 | French language cashier POS + bilingual receipts (Quebec, Canada) | Canadian Localisation |
 | 3.36 | PIPEDA privacy compliance tooling (Canada) | Canadian Compliance |
 | 3.37 | QuickBooks Canada / Wave / FreshBooks / Sage 50 accounting integrations (Canada) | Canadian Accounting |
+| 3.38 | Multi-image per product + multi-language product names | Product Enrichment |
+| 3.39 | Custom product fields (warranty period, origin, care instructions, etc.) | Product Enrichment |
+| 3.40 | Product modifiers at POS (size, add-ons, custom options affecting price) | POS Operations |
+| 3.41 | Quick product creation from POS cashier screen | POS Operations |
+| 3.42 | Exchange workflow (return + replacement in single transaction) | Returns Depth |
+| 3.43 | Serial number verification on return | Returns Depth |
+| 3.44 | Birthday discount automation + WhatsApp re-engagement for at-risk customers | Customer Intelligence |
+| 3.45 | Customer lifetime value (CLV) report + referral tracking | Customer Intelligence |
+| 3.46 | Inventory aging report + GRN (Goods Received Note) | Inventory Ops |
+| 3.47 | Supplier invoice matching (attach invoice, flag discrepancy) | Supplier Depth |
+| 3.48 | Receipt printer assignment + per-device sales reporting | Device Health |
+| 3.49 | Customer feedback QR code + NPS tracking + negative feedback alerts | Customer Feedback |
+| 3.50 | ABC product classification + basket/affinity analysis | Reporting |
+| 3.51 | Staff productivity report + cash flow summary | Reporting |
+| 3.52 | Local delivery management (order, fee, status, assignment, confirmation) | Delivery |
+| 3.53 | Anomaly detection on stock movements + cashier loss report | Fraud Prevention |
+| 3.54 | Warranty tracking per sale + warranty lookup + expiry alerts | Warranty |
+| 3.55 | Customer self-service portal (purchase history, loyalty, Khata via web OTP) | Self-service |
+| 3.56 | Digital product catalogue / price list — shareable link + WhatsApp broadcast | Self-service |
+| 3.57 | Promotional bundle pricing ("any 3 for ₹299") | Advanced Promotions |
+| 3.58 | Loyalty multiplier events + customer-segment-specific promotions | Advanced Promotions |
+| 3.59 | Flash sale pricing + spend-and-save thresholds | Advanced Promotions |
+| 3.60 | Loyalty points deducted on return + expiry WhatsApp notifications | Loyalty |
 
 ---
 
