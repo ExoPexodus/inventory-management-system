@@ -380,7 +380,7 @@ function EditProductDialog({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl bg-surface shadow-xl"
+        className="w-full max-w-lg rounded-2xl bg-surface shadow-xl max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="ink-gradient rounded-t-2xl px-6 py-5">
@@ -492,7 +492,7 @@ function EditProductDialog({
               onChange={(e) => setNegativeInventory(e.target.checked)}
               className="rounded border-outline-variant/40 accent-primary"
             />
-            Allow sales when stock is zero
+            Allow sales when stock reaches zero (permit negative stock)
           </label>
           {err ? <p className="text-sm text-error">{err}</p> : null}
           <div className="flex gap-2 pt-2">
