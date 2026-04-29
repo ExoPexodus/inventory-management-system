@@ -1077,6 +1077,11 @@ class CreateProductBody(BaseModel):
     category: str | None = Field(default=None, max_length=128)
     product_group_id: UUID | None = None
     variant_label: str | None = Field(default=None, max_length=128)
+    barcode: str | None = Field(default=None, max_length=128)
+    cost_price_cents: int | None = Field(default=None, ge=0)
+    mrp_cents: int | None = Field(default=None, ge=0)
+    hsn_code: str | None = Field(default=None, max_length=32)
+    negative_inventory_allowed: bool = False
 
 
 class CreateProductResponse(BaseModel):
@@ -1090,6 +1095,11 @@ class CreateProductResponse(BaseModel):
     group_title: str | None = None
     variant_label: str | None = None
     reorder_point: int = 0
+    barcode: str | None = None
+    cost_price_cents: int | None = None
+    mrp_cents: int | None = None
+    hsn_code: str | None = None
+    negative_inventory_allowed: bool = False
 
 
 def _resolve_product_group(
@@ -1116,6 +1126,9 @@ class ProductListItem(BaseModel):
     reorder_point: int
     variant_label: str | None = None
     group_title: str | None = None
+    barcode: str | None = None
+    cost_price_cents: int | None = None
+    mrp_cents: int | None = None
 
 
 @router.get("/products", response_model=list[ProductListItem], dependencies=[require_permission("catalog:read")])
@@ -1148,6 +1161,9 @@ def admin_list_products(
             reorder_point=r.reorder_point,
             variant_label=r.variant_label,
             group_title=r.product_group.title if r.product_group else None,
+            barcode=r.barcode,
+            cost_price_cents=r.cost_price_cents,
+            mrp_cents=r.mrp_cents,
         )
         for r in rows
     ]
@@ -1169,6 +1185,11 @@ def admin_create_product(
         unit_price_cents=body.unit_price_cents,
         category=body.category.strip() if body.category else None,
         variant_label=body.variant_label.strip() if body.variant_label else None,
+        barcode=body.barcode.strip() if body.barcode else None,
+        cost_price_cents=body.cost_price_cents,
+        mrp_cents=body.mrp_cents,
+        hsn_code=body.hsn_code.strip() if body.hsn_code else None,
+        negative_inventory_allowed=body.negative_inventory_allowed,
     )
     db.add(prod)
     try:
@@ -1198,6 +1219,11 @@ def admin_create_product(
         group_title=group.title if group else None,
         variant_label=prod.variant_label,
         reorder_point=prod.reorder_point,
+        barcode=prod.barcode,
+        cost_price_cents=prod.cost_price_cents,
+        mrp_cents=prod.mrp_cents,
+        hsn_code=prod.hsn_code,
+        negative_inventory_allowed=prod.negative_inventory_allowed,
     )
 
 
@@ -1273,6 +1299,11 @@ class PatchProductBody(BaseModel):
     category: str | None = Field(default=None, max_length=128)
     unit_price_cents: int | None = Field(default=None, ge=0)
     reorder_point: int | None = Field(default=None, ge=0)
+    barcode: str | None = Field(default=None, max_length=128)
+    cost_price_cents: int | None = Field(default=None, ge=0)
+    mrp_cents: int | None = Field(default=None, ge=0)
+    hsn_code: str | None = Field(default=None, max_length=32)
+    negative_inventory_allowed: bool | None = None
 
 
 @router.patch("/products/{product_id}", response_model=CreateProductResponse, dependencies=[require_permission("catalog:write")])
@@ -1316,6 +1347,23 @@ def admin_patch_product(
     if "reorder_point" in patch and patch["reorder_point"] is not None:
         prod.reorder_point = patch["reorder_point"]
 
+    if "barcode" in patch:
+        bc = patch["barcode"]
+        prod.barcode = bc.strip() if isinstance(bc, str) and bc.strip() else None
+
+    if "cost_price_cents" in patch:
+        prod.cost_price_cents = patch["cost_price_cents"]
+
+    if "mrp_cents" in patch:
+        prod.mrp_cents = patch["mrp_cents"]
+
+    if "hsn_code" in patch:
+        hs = patch["hsn_code"]
+        prod.hsn_code = hs.strip() if isinstance(hs, str) and hs.strip() else None
+
+    if "negative_inventory_allowed" in patch and patch["negative_inventory_allowed"] is not None:
+        prod.negative_inventory_allowed = patch["negative_inventory_allowed"]
+
     group_title: str | None = None
     if "product_group_id" in patch:
         gid = patch["product_group_id"]
@@ -1353,6 +1401,11 @@ def admin_patch_product(
         group_title=group_title,
         variant_label=prod.variant_label,
         reorder_point=prod.reorder_point,
+        barcode=prod.barcode,
+        cost_price_cents=prod.cost_price_cents,
+        mrp_cents=prod.mrp_cents,
+        hsn_code=prod.hsn_code,
+        negative_inventory_allowed=prod.negative_inventory_allowed,
     )
 
 

@@ -7,7 +7,9 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from app.routers.admin_web import (
+    CreateProductResponse,
     DashboardSummaryOut,
+    ProductListItem,
     RecentActivityItem,
     SalesSeriesPoint,
     SalesSeriesResponse,
@@ -89,3 +91,44 @@ def test_supplier_out() -> None:
         created_at=datetime.now(UTC),
     )
     assert json.loads(s.model_dump_json())["name"] == "Acme"
+
+
+def test_create_product_response_includes_catalog_fields() -> None:
+    r = CreateProductResponse(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        sku="SKU-99",
+        name="Chai",
+        unit_price_cents=2500,
+        category="Beverages",
+        barcode="8901234567890",
+        cost_price_cents=1500,
+        mrp_cents=3000,
+        hsn_code="2101",
+        negative_inventory_allowed=False,
+    )
+    d = r.model_dump(mode="json")
+    assert d["barcode"] == "8901234567890"
+    assert d["cost_price_cents"] == 1500
+    assert d["mrp_cents"] == 3000
+    assert d["hsn_code"] == "2101"
+    assert d["negative_inventory_allowed"] is False
+
+
+def test_product_list_item_includes_catalog_fields() -> None:
+    item = ProductListItem(
+        id=uuid4(),
+        sku="SKU-1",
+        name="Widget",
+        status="active",
+        category=None,
+        unit_price_cents=500,
+        reorder_point=0,
+        barcode="1234567890123",
+        cost_price_cents=250,
+        mrp_cents=600,
+    )
+    d = item.model_dump(mode="json")
+    assert d["barcode"] == "1234567890123"
+    assert d["cost_price_cents"] == 250
+    assert d["mrp_cents"] == 600
