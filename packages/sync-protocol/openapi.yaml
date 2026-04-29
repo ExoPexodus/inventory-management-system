@@ -1052,6 +1052,28 @@ components:
           description: Applicable rate for this shop after overrides (0 if exempt).
         tax_exempt:
           type: boolean
+        product_group_id:
+          type: string
+          format: uuid
+          nullable: true
+        group_title:
+          type: string
+          nullable: true
+        variant_label:
+          type: string
+          nullable: true
+        barcode:
+          type: string
+          nullable: true
+          description: UPC/EAN barcode for POS scan lookup. Null if not assigned.
+        mrp_cents:
+          type: integer
+          nullable: true
+          description: Maximum Retail Price in minor currency units. POS must warn if selling price exceeds this.
+        negative_inventory_allowed:
+          type: boolean
+          default: false
+          description: When false, POS must block a sale that would drive stock below zero.
 
     StockSnapshotDTO:
       type: object

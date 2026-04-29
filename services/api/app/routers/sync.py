@@ -40,6 +40,9 @@ class ProductDTO(BaseModel):
     product_group_id: UUID | None = None
     group_title: str | None = None
     variant_label: str | None = None
+    barcode: str | None = None
+    mrp_cents: int | None = None
+    negative_inventory_allowed: bool = False
 
 
 class StockSnapshotDTO(BaseModel):
@@ -163,6 +166,9 @@ def sync_pull(
                 product_group_id=gid,
                 group_title=group_title_by_id.get(gid) if gid is not None else None,
                 variant_label=p.variant_label,
+                barcode=p.barcode,
+                mrp_cents=p.mrp_cents,
+                negative_inventory_allowed=p.negative_inventory_allowed,
             )
         )
 
