@@ -14,7 +14,7 @@ This is the live status tracker for all 56 feature domains. Update status and ch
 |--------|------|----------|--------|--------|
 | 1 | Customer Management (CRM) | General Retail | 1, 2 | Not Started |
 | 2 | Returns & Refunds | General Retail | 1 | Not Started |
-| 3 | Product Catalog (gaps) | General Retail | 1, 2, 3 | Not Started |
+| 3 | Product Catalog (gaps) | General Retail | 1, 2, 3 | In Progress |
 | 4 | Supplier & Purchasing (gaps) | General Retail | 1, 2 | Not Started |
 | 5 | Inventory Operations (gaps) | General Retail | 1, 2 | Not Started |
 | 6 | Discounts & Promotions | General Retail | 2, 3 | Not Started |
@@ -54,7 +54,7 @@ This is the live status tracker for all 56 feature domains. Update status and ch
 | 40 | Canadian Compliance & Privacy | Canada | 1, 2, 3 | Not Started |
 | 41 | Canadian Localisation & Language | Canada | 2, 3 | Not Started |
 | 42 | Canadian Accounting Integrations | Canada | 3 | Not Started |
-| 43 | Product Enrichment | General Retail | 1, 2, 3 | Not Started |
+| 43 | Product Enrichment | General Retail | 1, 2, 3 | In Progress |
 | 44 | Advanced POS Operations | General Retail | 2, 3 | Not Started |
 | 45 | Returns & Exchange (depth) | General Retail | 2, 3 | Not Started |
 | 46 | Customer Intelligence | General Retail | 2, 3 | Not Started |
@@ -102,13 +102,13 @@ This is the live status tracker for all 56 feature domains. Update status and ch
 ---
 
 ### Domain 3 — Product Catalog (gaps)
-**Chunks:** 1, 2, 3 | **Status:** Not Started
+**Chunks:** 1, 2, 3 | **Status:** In Progress
 
 #### Chunk 1
-- [ ] `barcode` / UPC / EAN field on products
-- [ ] `cost_price_cents` on products
-- [ ] `hsn_code` on products
-- [ ] `negative_inventory_allowed` flag per product
+- [x] `barcode` / UPC / EAN field on products
+- [x] `cost_price_cents` on products
+- [x] `hsn_code` on products
+- [x] `negative_inventory_allowed` flag per product
 
 #### Chunk 2
 - [ ] Unit of measure (kg, litre, metre, piece, pack)
@@ -386,11 +386,11 @@ This is the live status tracker for all 56 feature domains. Update status and ch
 ---
 
 ### Domain 43 — Product Enrichment
-**Chunks:** 1, 2, 3 | **Status:** Not Started
+**Chunks:** 1, 2, 3 | **Status:** In Progress
 
 #### Chunk 1
-- [ ] MRP (Maximum Retail Price) field on products
-- [ ] Price guard alerts (warn cashier if price is below cost or above MRP)
+- [x] MRP (Maximum Retail Price) field on products
+- [x] Price guard alerts (warn cashier if price is below cost or above MRP)
 
 #### Chunk 2
 - [ ] Product image upload (cloud storage, not just a URL)
