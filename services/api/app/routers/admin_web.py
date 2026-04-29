@@ -1129,6 +1129,8 @@ class ProductListItem(BaseModel):
     barcode: str | None = None
     cost_price_cents: int | None = None
     mrp_cents: int | None = None
+    hsn_code: str | None = None
+    negative_inventory_allowed: bool = False
 
 
 @router.get("/products", response_model=list[ProductListItem], dependencies=[require_permission("catalog:read")])
@@ -1164,6 +1166,8 @@ def admin_list_products(
             barcode=r.barcode,
             cost_price_cents=r.cost_price_cents,
             mrp_cents=r.mrp_cents,
+            hsn_code=r.hsn_code,
+            negative_inventory_allowed=r.negative_inventory_allowed,
         )
         for r in rows
     ]
