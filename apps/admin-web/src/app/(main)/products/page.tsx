@@ -28,6 +28,11 @@ type Product = {
   reorder_point: number;
   variant_label?: string | null;
   group_title?: string | null;
+  barcode?: string | null;
+  cost_price_cents?: number | null;
+  mrp_cents?: number | null;
+  hsn_code?: string | null;
+  negative_inventory_allowed?: boolean;
 };
 
 function statusTone(s: string): "default" | "good" | "warn" | "danger" {
@@ -168,16 +173,18 @@ export default function ProductsPage() {
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Category</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
                 <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Unit price</th>
+                <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">MRP</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Barcode</th>
                 <th className="px-6 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Reorder Pt.</th>
                 <th className="px-6 py-3 text-center text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
               {loading ? (
-                <LoadingRow colSpan={8} label="Loading products…" />
+                <LoadingRow colSpan={10} label="Loading products…" />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-0">
+                  <td colSpan={10} className="p-0">
                     <EmptyState title="No products match filters" detail="Adjust filters or create a SKU from the entry hub." />
                   </td>
                 </tr>
@@ -209,6 +216,14 @@ export default function ProductsPage() {
                     <Badge tone={statusTone(row.status)}>{row.status}</Badge>
                   </td>
                   <td className="px-6 py-3 text-right tabular-nums font-semibold text-on-surface">{formatMoney(row.unit_price_cents, currency)}</td>
+                  <td className="px-6 py-3 text-right tabular-nums text-on-surface-variant">
+                    {row.mrp_cents != null
+                      ? formatMoney(row.mrp_cents, currency)
+                      : <span className="text-on-surface-variant/40">—</span>}
+                  </td>
+                  <td className="px-6 py-3 font-mono text-xs text-on-surface-variant">
+                    {row.barcode ?? <span className="text-on-surface-variant/40">—</span>}
+                  </td>
                   <td className="px-6 py-3 text-center">
                     {row.reorder_point > 0 ? (
                       <span className="inline-flex items-center rounded-full bg-secondary/10 px-2 py-0.5 text-xs font-bold text-secondary">{row.reorder_point}</span>
@@ -297,6 +312,26 @@ function EditProductDialog({
   const [reorderPt, setReorderPt] = useState(String(product.reorder_point ?? 0));
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [barcode, setBarcode] = useState(product.barcode ?? "");
+  const [costPrice, setCostPrice] = useState(
+    product.cost_price_cents != null ? (product.cost_price_cents / 100).toFixed(2) : ""
+  );
+  const [mrpPrice, setMrpPrice] = useState(
+    product.mrp_cents != null ? (product.mrp_cents / 100).toFixed(2) : ""
+  );
+  const [hsnCode, setHsnCode] = useState(product.hsn_code ?? "");
+  const [negativeInventory, setNegativeInventory] = useState(product.negative_inventory_allowed ?? false);
+
+  const priceGuardWarning = (() => {
+    const p = Math.round(parseFloat(priceUsd) * 100);
+    const cost = costPrice.trim() ? Math.round(parseFloat(costPrice) * 100) : null;
+    const mrp = mrpPrice.trim() ? Math.round(parseFloat(mrpPrice) * 100) : null;
+    if (!isNaN(p)) {
+      if (cost !== null && p < cost) return "Selling price is below cost price.";
+      if (mrp !== null && p > mrp) return "Selling price exceeds MRP.";
+    }
+    return null;
+  })();
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -310,6 +345,8 @@ function EditProductDialog({
       setErr("Reorder point must be 0 or greater");
       return;
     }
+    const costCents = costPrice.trim() ? Math.round(parseFloat(costPrice) * 100) : null;
+    const mrpCents = mrpPrice.trim() ? Math.round(parseFloat(mrpPrice) * 100) : null;
     setSaving(true);
     setErr(null);
     const r = await fetch(`/api/ims/v1/admin/products/${product.id}`, {
@@ -321,6 +358,11 @@ function EditProductDialog({
         status: prodStatus,
         unit_price_cents: priceCents,
         reorder_point: rp,
+        barcode: barcode.trim() || null,
+        cost_price_cents: costCents,
+        mrp_cents: mrpCents,
+        hsn_code: hsnCode.trim() || null,
+        negative_inventory_allowed: negativeInventory,
       }),
     });
     if (r.ok) {
@@ -396,6 +438,62 @@ function EditProductDialog({
               />
             </label>
           </div>
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block text-sm font-medium text-on-surface">
+              Cost price
+              <TextInput
+                type="number"
+                min="0"
+                step="0.01"
+                className="mt-1"
+                value={costPrice}
+                onChange={(e) => setCostPrice(e.target.value)}
+                placeholder="e.g. 8.00"
+              />
+            </label>
+            <label className="block text-sm font-medium text-on-surface">
+              MRP
+              <TextInput
+                type="number"
+                min="0"
+                step="0.01"
+                className="mt-1"
+                value={mrpPrice}
+                onChange={(e) => setMrpPrice(e.target.value)}
+                placeholder="e.g. 25.00"
+              />
+            </label>
+          </div>
+          {priceGuardWarning ? (
+            <p className="text-sm text-error">{priceGuardWarning}</p>
+          ) : null}
+          <label className="block text-sm font-medium text-on-surface">
+            Barcode (UPC / EAN)
+            <TextInput
+              className="mt-1"
+              value={barcode}
+              onChange={(e) => setBarcode(e.target.value)}
+              placeholder="e.g. 8901234567890"
+            />
+          </label>
+          <label className="block text-sm font-medium text-on-surface">
+            HSN code
+            <TextInput
+              className="mt-1"
+              value={hsnCode}
+              onChange={(e) => setHsnCode(e.target.value)}
+              placeholder="e.g. 2101"
+            />
+          </label>
+          <label className="flex items-center gap-3 text-sm font-medium text-on-surface">
+            <input
+              type="checkbox"
+              checked={negativeInventory}
+              onChange={(e) => setNegativeInventory(e.target.checked)}
+              className="rounded border-outline-variant/40 accent-primary"
+            />
+            Allow sales when stock is zero
+          </label>
           {err ? <p className="text-sm text-error">{err}</p> : null}
           <div className="flex gap-2 pt-2">
             <PrimaryButton type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</PrimaryButton>
