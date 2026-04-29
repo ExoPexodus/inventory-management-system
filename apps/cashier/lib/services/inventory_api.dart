@@ -25,6 +25,9 @@ class ProductRow {
     this.productGroupId,
     this.groupTitle,
     this.variantLabel,
+    this.barcode,
+    this.mrpCents,
+    this.negativeInventoryAllowed = false,
   });
 
   final String id;
@@ -39,6 +42,9 @@ class ProductRow {
   final String? productGroupId;
   final String? groupTitle;
   final String? variantLabel;
+  final String? barcode;
+  final int? mrpCents;
+  final bool negativeInventoryAllowed;
 
   factory ProductRow.merged(Map<String, dynamic> product, int quantity) {
     return ProductRow(
@@ -53,6 +59,9 @@ class ProductRow {
       productGroupId: product['product_group_id'] as String?,
       groupTitle: product['group_title'] as String?,
       variantLabel: product['variant_label'] as String?,
+      barcode: product['barcode'] as String?,
+      mrpCents: (product['mrp_cents'] as num?)?.toInt(),
+      negativeInventoryAllowed: product['negative_inventory_allowed'] as bool? ?? false,
     );
   }
 }
