@@ -28,6 +28,11 @@ export default function EntriesPage() {
   const [newGroupTitle, setNewGroupTitle] = useState("");
   const [assetHint, setAssetHint] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [barcode, setBarcode] = useState("");
+  const [costPrice, setCostPrice] = useState("");
+  const [mrpPrice, setMrpPrice] = useState("");
+  const [hsnCode, setHsnCode] = useState("");
+  const [negativeInventory, setNegativeInventory] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -39,6 +44,16 @@ export default function EntriesPage() {
   const selectedGroupTitle = productGroups.find((g) => g.id === productGroupId)?.title ?? null;
   const previewPriceCents = Math.round(parseFloat(price) * 100);
   const priceOk = !Number.isNaN(previewPriceCents) && previewPriceCents > 0;
+  const previewCostCents = costPrice.trim() ? Math.round(parseFloat(costPrice) * 100) : null;
+  const previewMrpCents = mrpPrice.trim() ? Math.round(parseFloat(mrpPrice) * 100) : null;
+  const priceGuardWarning = (() => {
+    if (!priceOk) return null;
+    if (previewCostCents !== null && previewPriceCents < previewCostCents)
+      return "Selling price is below cost price.";
+    if (previewMrpCents !== null && previewPriceCents > previewMrpCents)
+      return "Selling price exceeds MRP.";
+    return null;
+  })();
 
   async function createGroup() {
     setMsg(null);
@@ -76,6 +91,11 @@ export default function EntriesPage() {
       name: pname,
       unit_price_cents: unit,
       category: category || null,
+      barcode: barcode.trim() || null,
+      cost_price_cents: previewCostCents,
+      mrp_cents: previewMrpCents,
+      hsn_code: hsnCode.trim() || null,
+      negative_inventory_allowed: negativeInventory,
     };
     if (productGroupId) body.product_group_id = productGroupId;
     const vl = variantLabel.trim();
@@ -91,6 +111,11 @@ export default function EntriesPage() {
       setSku("");
       setPname("");
       setVariantLabel("");
+      setBarcode("");
+      setCostPrice("");
+      setMrpPrice("");
+      setHsnCode("");
+      setNegativeInventory(false);
     }
   }
 
@@ -134,6 +159,62 @@ export default function EntriesPage() {
             <label className="block text-sm font-medium text-on-surface">
               Price ({currency.code})
               <TextInput required className="mt-1 tabular-nums" value={price} onChange={(e) => setPrice(e.target.value)} />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-medium text-on-surface">
+                Cost price
+                <TextInput
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="mt-1"
+                  value={costPrice}
+                  onChange={(e) => setCostPrice(e.target.value)}
+                  placeholder="e.g. 8.00"
+                />
+              </label>
+              <label className="block text-sm font-medium text-on-surface">
+                MRP
+                <TextInput
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="mt-1"
+                  value={mrpPrice}
+                  onChange={(e) => setMrpPrice(e.target.value)}
+                  placeholder="e.g. 25.00"
+                />
+              </label>
+            </div>
+            {priceGuardWarning ? (
+              <p className="text-sm text-error">{priceGuardWarning}</p>
+            ) : null}
+            <label className="block text-sm font-medium text-on-surface">
+              Barcode (UPC / EAN)
+              <TextInput
+                className="mt-1"
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                placeholder="e.g. 8901234567890"
+              />
+            </label>
+            <label className="block text-sm font-medium text-on-surface">
+              HSN code
+              <TextInput
+                className="mt-1"
+                value={hsnCode}
+                onChange={(e) => setHsnCode(e.target.value)}
+                placeholder="e.g. 2101"
+              />
+            </label>
+            <label className="flex items-center gap-3 text-sm font-medium text-on-surface">
+              <input
+                type="checkbox"
+                checked={negativeInventory}
+                onChange={(e) => setNegativeInventory(e.target.checked)}
+                className="rounded border-outline-variant/40 accent-primary"
+              />
+              Allow sales when stock reaches zero (permit negative stock)
             </label>
           </div>
 
