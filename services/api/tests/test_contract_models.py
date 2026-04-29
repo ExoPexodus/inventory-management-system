@@ -110,3 +110,39 @@ def test_transaction_list_response_json_shape() -> None:
     assert len(out["items"]) == 1
     assert out["items"][0]["tax_cents"] == 99
     assert out["items"][0]["lines"][0]["product_name"] == "Widget"
+
+
+def test_product_dto_includes_new_catalog_fields() -> None:
+    pid = uuid4()
+    p = ProductDTO(
+        id=pid,
+        sku="SKU-1",
+        name="Widget",
+        category=None,
+        unit_price_cents=100,
+        active=True,
+        effective_tax_rate_bps=0,
+        tax_exempt=False,
+        barcode="5901234123457",
+        mrp_cents=120,
+        negative_inventory_allowed=False,
+    )
+    out = p.model_dump(mode="json")
+    assert out["barcode"] == "5901234123457"
+    assert out["mrp_cents"] == 120
+    assert out["negative_inventory_allowed"] is False
+
+    minimal = ProductDTO(
+        id=pid,
+        sku="SKU-1",
+        name="Widget",
+        category=None,
+        unit_price_cents=100,
+        active=True,
+        effective_tax_rate_bps=0,
+        tax_exempt=False,
+    )
+    out2 = minimal.model_dump(mode="json")
+    assert out2["barcode"] is None
+    assert out2["mrp_cents"] is None
+    assert out2["negative_inventory_allowed"] is False
