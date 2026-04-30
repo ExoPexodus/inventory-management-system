@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from zoneinfo import ZoneInfo
 from typing import Annotated
 from uuid import UUID
 
@@ -24,10 +23,9 @@ from app.models import (
     Transaction,
     TransactionLine,
 )
+from app.services.localisation import effective_timezone
 
 router = APIRouter(prefix="/v1/admin/analytics", tags=["Admin Analytics"])
-
-from app.services.localisation import effective_timezone  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
