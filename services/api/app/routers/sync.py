@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.db.session import get_db
 from app.models import Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache, User
+from app.services.localisation import effective_timezone
 from app.services.stock import current_quantity
 from app.services.sync_push import process_push_batch
 from app.services.tax import effective_tax_bps_for_product
@@ -58,6 +59,7 @@ class SyncPullResponse(BaseModel):
     policy: TenantOfflinePolicyOut
     currency: TenantCurrencyOut
     shop_default_tax_rate_bps: int
+    shop_timezone: str
     employee_active: bool | None = None
     license_status: str | None = None
     license_trial_ends_at: str | None = None
@@ -196,6 +198,7 @@ def sync_pull(
             symbol_override=tenant.currency_symbol_override,
         ),
         shop_default_tax_rate_bps=shop_row.default_tax_rate_bps,
+        shop_timezone=effective_timezone(shop_row, tenant),
         employee_active=employee_active,
         **_license_fields(db, auth.tenant_id),
     )

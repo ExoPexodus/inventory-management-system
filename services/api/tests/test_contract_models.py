@@ -146,3 +146,19 @@ def test_product_dto_includes_new_catalog_fields() -> None:
     assert out2["barcode"] is None
     assert out2["mrp_cents"] is None
     assert out2["negative_inventory_allowed"] is False
+
+
+def test_sync_pull_response_includes_shop_timezone() -> None:
+    from app.routers.sync import SyncPullResponse, TenantCurrencyOut, TenantOfflinePolicyOut
+
+    r = SyncPullResponse(
+        cursor="0",
+        products=[],
+        stock_snapshots=[],
+        policy=TenantOfflinePolicyOut(tier="strict", max_offline_minutes=60, employee_session_timeout_minutes=30),
+        currency=TenantCurrencyOut(code="INR", exponent=2),
+        shop_default_tax_rate_bps=0,
+        shop_timezone="Asia/Kolkata",
+    )
+    d = r.model_dump(mode="json")
+    assert d["shop_timezone"] == "Asia/Kolkata"

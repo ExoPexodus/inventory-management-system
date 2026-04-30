@@ -1029,6 +1029,10 @@ components:
           $ref: "#/components/schemas/TenantCurrency"
         shop_default_tax_rate_bps:
           type: integer
+        shop_timezone:
+          type: string
+          description: Resolved IANA timezone string for this shop (shop override → tenant → "UTC").
+      required: [shop_timezone]
 
     ProductDTO:
       type: object
