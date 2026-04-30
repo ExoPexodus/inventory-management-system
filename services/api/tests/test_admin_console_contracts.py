@@ -132,3 +132,17 @@ def test_product_list_item_includes_catalog_fields() -> None:
     assert d["barcode"] == "1234567890123"
     assert d["cost_price_cents"] == 250
     assert d["mrp_cents"] == 600
+
+
+def test_localisation_settings_schema() -> None:
+    from app.routers.admin_platform import LocalisationSettingsOut
+
+    out = LocalisationSettingsOut(timezone="Asia/Kolkata", financial_year_start_month=4)
+    d = out.model_dump(mode="json")
+    assert d["timezone"] == "Asia/Kolkata"
+    assert d["financial_year_start_month"] == 4
+
+    null_out = LocalisationSettingsOut(timezone=None, financial_year_start_month=None)
+    d2 = null_out.model_dump(mode="json")
+    assert d2["timezone"] is None
+    assert d2["financial_year_start_month"] is None

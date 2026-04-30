@@ -212,3 +212,82 @@ def patch_reconciliation_settings(
         auto_resolve_shortage_cents=tenant.auto_resolve_shortage_cents,
         auto_resolve_overage_cents=tenant.auto_resolve_overage_cents,
     )
+
+
+# ---------------------------------------------------------------------------
+# Localisation settings
+# ---------------------------------------------------------------------------
+
+from app.services.localisation import validate_iana_timezone  # noqa: E402
+
+
+class LocalisationSettingsOut(BaseModel):
+    timezone: str | None
+    financial_year_start_month: int | None
+
+
+class PatchLocalisationBody(BaseModel):
+    timezone: str | None = None
+    financial_year_start_month: int | None = Field(default=None, ge=1, le=12)
+
+
+@router.get(
+    "/tenant-settings/localisation",
+    response_model=LocalisationSettingsOut,
+    dependencies=[require_permission("settings:read")],
+)
+def get_localisation_settings(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> LocalisationSettingsOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return LocalisationSettingsOut(
+        timezone=tenant.timezone,
+        financial_year_start_month=tenant.financial_year_start_month,
+    )
+
+
+@router.patch(
+    "/tenant-settings/localisation",
+    response_model=LocalisationSettingsOut,
+    dependencies=[require_permission("settings:write")],
+)
+def patch_localisation_settings(
+    body: PatchLocalisationBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> LocalisationSettingsOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    if body.timezone is not None and not validate_iana_timezone(body.timezone):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid_timezone",
+        )
+
+    sent = body.model_fields_set
+    if "timezone" in sent:
+        tenant.timezone = body.timezone
+    if "financial_year_start_month" in sent:
+        tenant.financial_year_start_month = body.financial_year_start_month
+
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="update_localisation_settings",
+        resource_type="tenant",
+        resource_id=str(tenant_id),
+    )
+    db.commit()
+    db.refresh(tenant)
+    return LocalisationSettingsOut(
+        timezone=tenant.timezone,
+        financial_year_start_month=tenant.financial_year_start_month,
+    )
