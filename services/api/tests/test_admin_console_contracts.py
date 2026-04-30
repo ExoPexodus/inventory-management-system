@@ -146,3 +146,29 @@ def test_localisation_settings_schema() -> None:
     d2 = null_out.model_dump(mode="json")
     assert d2["timezone"] is None
     assert d2["financial_year_start_month"] is None
+
+
+def test_shop_out_includes_timezone() -> None:
+    from app.routers.admin_shops import ShopOut
+
+    s = ShopOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        name="Test Shop",
+        default_tax_rate_bps=0,
+        auto_resolve_shortage_cents_override=None,
+        auto_resolve_overage_cents_override=None,
+        timezone="Asia/Jakarta",
+    )
+    d = s.model_dump(mode="json")
+    assert d["timezone"] == "Asia/Jakarta"
+
+    s_null = ShopOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        name="Test Shop",
+        default_tax_rate_bps=0,
+        auto_resolve_shortage_cents_override=None,
+        auto_resolve_overage_cents_override=None,
+    )
+    assert s_null.model_dump(mode="json")["timezone"] is None

@@ -12,6 +12,7 @@ from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import Shop
 from app.services.audit_service import write_audit
+from app.services.localisation import validate_iana_timezone
 
 router = APIRouter(prefix="/v1/admin/shops", tags=["Admin Shops"])
 
@@ -37,6 +38,7 @@ class ShopOut(BaseModel):
     default_tax_rate_bps: int
     auto_resolve_shortage_cents_override: int | None
     auto_resolve_overage_cents_override: int | None
+    timezone: str | None = None
 
 
 class PatchShopBody(BaseModel):
@@ -44,6 +46,7 @@ class PatchShopBody(BaseModel):
     default_tax_rate_bps: int | None = Field(default=None, ge=0)
     auto_resolve_shortage_cents_override: int | None = Field(default=None, ge=0)
     auto_resolve_overage_cents_override: int | None = Field(default=None, ge=0)
+    timezone: str | None = None
 
     model_config = {"extra": "forbid"}
 
@@ -56,6 +59,7 @@ def _to_out(shop: Shop) -> ShopOut:
         default_tax_rate_bps=shop.default_tax_rate_bps,
         auto_resolve_shortage_cents_override=shop.auto_resolve_shortage_cents_override,
         auto_resolve_overage_cents_override=shop.auto_resolve_overage_cents_override,
+        timezone=shop.timezone,
     )
 
 
@@ -91,6 +95,12 @@ def patch_shop(
     shop = db.get(Shop, shop_id)
     if shop is None or shop.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
+
+    if body.timezone is not None and not validate_iana_timezone(body.timezone):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid_timezone",
+        )
 
     # Only apply fields the caller actually sent (distinguishes unset from null)
     sent = body.model_fields_set
