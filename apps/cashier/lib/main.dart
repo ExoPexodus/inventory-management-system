@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:timezone/data/latest.dart' as tz_data;
 
 import 'models/cart_model.dart';
 import 'models/catalog_model.dart';
@@ -17,6 +18,7 @@ import 'theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  tz_data.initializeTimeZones();
   runApp(
     MultiProvider(
       providers: [
