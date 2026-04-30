@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -131,6 +132,8 @@ class Tenant(Base):
     billing_country: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     auto_resolve_shortage_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     auto_resolve_overage_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    financial_year_start_month: Mapped[Optional[int]] = mapped_column(SmallInteger(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     shops: Mapped[list[Shop]] = relationship(back_populates="tenant")
@@ -148,6 +151,7 @@ class Shop(Base):
     default_tax_rate_bps: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     auto_resolve_shortage_cents_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     auto_resolve_overage_cents_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     tenant: Mapped[Tenant] = relationship(back_populates="shops")
