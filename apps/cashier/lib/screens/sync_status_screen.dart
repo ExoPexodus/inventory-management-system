@@ -7,6 +7,7 @@ import '../models/sync_state_model.dart';
 import '../services/authenticated_api.dart';
 import '../services/inventory_api.dart';
 import '../services/outbox_service.dart';
+import '../services/policy_store.dart';
 import '../services/session_store.dart';
 import '../util/datetime_format.dart';
 import '../widgets/metric_card.dart';
@@ -21,11 +22,15 @@ class SyncStatusScreen extends StatefulWidget {
 class _SyncStatusScreenState extends State<SyncStatusScreen> {
   bool _flushing = false;
   String _connectivity = 'checking...';
+  String _shopTimezone = 'UTC';
 
   @override
   void initState() {
     super.initState();
     _refreshConnectivity();
+    PolicyStore.getShopTimezone().then((tz) {
+      if (mounted) setState(() => _shopTimezone = tz);
+    });
   }
 
   Future<void> _refreshConnectivity() async {
@@ -90,7 +95,7 @@ class _SyncStatusScreenState extends State<SyncStatusScreen> {
             title: 'Last sync',
             value: sync.lastSyncIso == null
                 ? 'Never'
-                : formatShortLocalDateTime(sync.lastSyncIso!),
+                : formatShortLocalDateTime(sync.lastSyncIso!, shopTimezone: _shopTimezone),
             icon: Icons.schedule_rounded,
           ),
           const SizedBox(height: CashierSpacing.sm),

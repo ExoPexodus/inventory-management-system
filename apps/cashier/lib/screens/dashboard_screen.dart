@@ -9,6 +9,7 @@ import '../models/sync_state_model.dart';
 import '../models/shift_model.dart';
 import '../services/authenticated_api.dart';
 import '../services/inventory_api.dart';
+import '../services/policy_store.dart';
 import '../services/session_store.dart';
 import '../util/datetime_format.dart';
 import '../util/money_format.dart';
@@ -43,6 +44,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _search = TextEditingController();
   String _connectivity = 'Checking...';
+  String _shopTimezone = 'UTC';
   List<Map<String, dynamic>> _recentTx = [];
   Map<String, dynamic>? _shift;
   Map<String, dynamic>? _activeShift;
@@ -52,6 +54,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _refreshNet();
+    PolicyStore.getShopTimezone().then((tz) {
+      if (mounted) setState(() => _shopTimezone = tz);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadDashData();
     });
@@ -518,7 +523,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   title: 'Last sync',
                   value: sync.lastSyncIso == null || sync.lastSyncIso!.isEmpty
                       ? 'Not yet'
-                      : formatShortLocalDateTime(sync.lastSyncIso!),
+                      : formatShortLocalDateTime(sync.lastSyncIso!, shopTimezone: _shopTimezone),
                   icon: Icons.schedule_rounded,
                 ),
                 const SizedBox(height: CashierSpacing.sm),
@@ -572,7 +577,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     symbolOverride: sym,
                   );
                   final createdRaw = t['created_at'] as String;
-                  final created = formatShortLocalDateTime(createdRaw);
+                  final created = formatShortLocalDateTime(createdRaw, shopTimezone: _shopTimezone);
                   final status = t['status'] as String? ?? '';
                   return CompactTransactionRow(
                     amountLabel: total,

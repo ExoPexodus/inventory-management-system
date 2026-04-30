@@ -5,6 +5,7 @@ import '../services/authenticated_api.dart';
 import '../services/debug_log.dart';
 import '../services/inventory_api.dart';
 import '../services/outbox_service.dart';
+import '../services/policy_store.dart';
 import '../services/session_store.dart';
 import 'catalog_model.dart';
 import 'sync_state_model.dart';
@@ -87,6 +88,7 @@ class InventoryFeedModel extends ChangeNotifier {
       _currencyExponent = (currency?['exponent'] as int?) ?? 2;
       _currencySymbolOverride = currency?['symbol_override'] as String?;
       _shopDefaultTaxRateBps = (data['shop_default_tax_rate_bps'] as num?)?.toInt() ?? 0;
+      final shopTimezone = (data['shop_timezone'] as String?) ?? 'UTC';
       // employeeActive == false means the linked employee was deactivated in admin.
       _employeeDeactivated = employeeActive == false;
       _loading = false;
@@ -105,6 +107,7 @@ class InventoryFeedModel extends ChangeNotifier {
         exponent: _currencyExponent,
         symbolOverride: _currencySymbolOverride,
       );
+      await PolicyStore.setShopTimezone(shopTimezone);
       catalog.applyFromProducts(rows);
       await sync.refreshFromStorage();
       await OutboxService.flush(auth, sync);

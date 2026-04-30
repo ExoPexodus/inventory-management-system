@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../cashier_tokens.dart';
 import '../services/authenticated_api.dart';
+import '../services/policy_store.dart';
 import '../services/session_store.dart' show SessionStore;
 import '../util/datetime_format.dart';
 import '../util/money_format.dart';
@@ -19,6 +20,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   final _searchCtrl = TextEditingController();
   List<Map<String, dynamic>> _items = [];
   String? _nextCursor;
+  String _shopTimezone = 'UTC';
   String _currencyCode = 'USD';
   int _currencyExponent = 2;
   String? _currencySymbolOverride;
@@ -32,6 +34,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
     super.initState();
     _searchCtrl.addListener(() {
       setState(() {});
+    });
+    PolicyStore.getShopTimezone().then((tz) {
+      if (mounted) setState(() => _shopTimezone = tz);
     });
     _load(reset: true);
   }
@@ -310,7 +315,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       symbolOverride: _currencySymbolOverride,
                     );
                     final createdRaw = t['created_at'] as String;
-                    final created = formatShortLocalDateTime(createdRaw);
+                    final created = formatShortLocalDateTime(createdRaw, shopTimezone: _shopTimezone);
                     final lines = (t['lines'] as List<dynamic>).cast<Map<String, dynamic>>();
                     final pays = (t['payments'] as List<dynamic>)
                         .map((p) => (p as Map<String, dynamic>)['tender_type'] as String)

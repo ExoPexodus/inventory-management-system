@@ -13,6 +13,7 @@ class PolicyStore {
   static const _currencyCode = 'ims_currency_code';
   static const _currencyExponent = 'ims_currency_exponent';
   static const _currencySymbolOverride = 'ims_currency_symbol_override';
+  static const _shopTimezone = 'ims_shop_timezone';
 
   static Future<void> saveMaxOfflineMinutes(int minutes) async {
     final p = await SharedPreferences.getInstance();
@@ -64,6 +65,16 @@ class PolicyStore {
     return p.getString(_currencySymbolOverride);
   }
 
+  static Future<void> setShopTimezone(String tz) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_shopTimezone, tz);
+  }
+
+  static Future<String> getShopTimezone() async {
+    final p = await SharedPreferences.getInstance();
+    return p.getString(_shopTimezone) ?? 'UTC';
+  }
+
   static Future<void> clear() async {
     final p = await SharedPreferences.getInstance();
     await p.remove(_maxOfflineMinutes);
@@ -71,5 +82,6 @@ class PolicyStore {
     await p.remove(_currencyCode);
     await p.remove(_currencyExponent);
     await p.remove(_currencySymbolOverride);
+    await p.remove(_shopTimezone);
   }
 }
