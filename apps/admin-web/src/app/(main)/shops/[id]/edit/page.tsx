@@ -8,9 +8,11 @@ import {
   Panel,
   PrimaryButton,
   SecondaryButton,
+  SelectInput,
   TextInput,
   Toggle,
 } from "@/components/ui/primitives";
+import { TIMEZONE_OPTIONS } from "@/lib/timezones";
 
 type ShopDetail = {
   id: string;
@@ -19,6 +21,7 @@ type ShopDetail = {
   default_tax_rate_bps: number;
   auto_resolve_shortage_cents_override: number | null;
   auto_resolve_overage_cents_override: number | null;
+  timezone: string | null;
 };
 
 type TenantReconSettings = {
@@ -56,6 +59,7 @@ export default function EditShopPage() {
   const [shortageValue, setShortageValue] = useState("0");
   const [overageOverrideOn, setOverageOverrideOn] = useState(false);
   const [overageValue, setOverageValue] = useState("0");
+  const [shopTimezone, setShopTimezone] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
 
@@ -82,6 +86,7 @@ export default function EditShopPage() {
         setShortageValue(String(shopData.auto_resolve_shortage_cents_override ?? 0));
         setOverageOverrideOn(shopData.auto_resolve_overage_cents_override !== null);
         setOverageValue(String(shopData.auto_resolve_overage_cents_override ?? 0));
+        setShopTimezone(shopData.timezone ?? "");
       } catch {
         setLoadErr("Network error loading shop.");
       }
@@ -92,7 +97,7 @@ export default function EditShopPage() {
     setSaving(true);
     setSaveErr(null);
 
-    const body: Record<string, number | null> = {};
+    const body: Record<string, number | string | null> = {};
     if (shortageOverrideOn) {
       const v = parseInt(shortageValue, 10);
       if (Number.isNaN(v) || v < 0) {
@@ -115,6 +120,7 @@ export default function EditShopPage() {
     } else {
       body.auto_resolve_overage_cents_override = null;
     }
+    body.timezone = shopTimezone || null;
 
     try {
       const resp = await fetch(`/api/ims/v1/admin/shops/${params.id}`, {
@@ -212,6 +218,22 @@ export default function EditShopPage() {
                 </span>
               </div>
             )}
+          </div>
+
+          <div className="pt-4 border-t border-outline-variant/10">
+            <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant mb-3">Timezone</p>
+            <p className="text-sm text-on-surface-variant mb-2">
+              Override the tenant timezone for this specific shop. Leave blank to inherit the tenant default.
+            </p>
+            <SelectInput
+              value={shopTimezone}
+              onChange={setShopTimezone}
+              placeholder="Inherit from tenant…"
+              options={[
+                { value: "", label: "— Inherit from tenant —" },
+                ...TIMEZONE_OPTIONS.map((t) => ({ value: t.value, label: t.label })),
+              ]}
+            />
           </div>
         </div>
       </Panel>
