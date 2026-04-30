@@ -6,6 +6,8 @@ from zoneinfo import available_timezones
 
 FALLBACK_TZ = "UTC"
 
+_VALID_TIMEZONES: frozenset[str] = frozenset(available_timezones())
+
 
 def effective_timezone(shop, tenant) -> str:
     """Return resolved IANA timezone: shop override → tenant → UTC."""
@@ -18,7 +20,7 @@ def effective_timezone(shop, tenant) -> str:
 
 def validate_iana_timezone(tz: str) -> bool:
     """Return True if tz is a valid IANA timezone string."""
-    return tz in available_timezones()
+    return tz in _VALID_TIMEZONES
 
 
 def fy_range(financial_year_start_month: int | None, reference_date: date) -> tuple[date, date]:
