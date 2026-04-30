@@ -162,8 +162,8 @@ export default function EditShopPage() {
       <PageHeader title={`Edit shop: ${shop.name}`} />
 
       <Panel
-        title="Reconciliation overrides"
-        subtitle="Optional per-shop overrides for the tenant auto-resolve thresholds."
+        title="Shop overrides"
+        subtitle="Optional per-shop overrides for reconciliation thresholds and timezone."
       >
         <div className="space-y-6">
           <div>
@@ -228,7 +228,6 @@ export default function EditShopPage() {
             <SelectInput
               value={shopTimezone}
               onChange={setShopTimezone}
-              placeholder="Inherit from tenant…"
               options={[
                 { value: "", label: "— Inherit from tenant —" },
                 ...TIMEZONE_OPTIONS.map((t) => ({ value: t.value, label: t.label })),
