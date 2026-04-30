@@ -13,8 +13,9 @@ import {
   TextInput,
 } from "@/components/ui/primitives";
 import { DateInput } from "@/components/ui/DateInput";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, fmtDatetime } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
+import { useShopTimezone } from "@/lib/localisation-context";
 
 type RecRow = {
   id: string;
@@ -43,17 +44,9 @@ function recTone(status: string): "default" | "good" | "warn" | "danger" {
   return "default";
 }
 
-function fmtDatetime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 export default function ReconciliationPage() {
   const currency = useCurrency();
+  const timezone = useShopTimezone();
   const [rows, setRows] = useState<RecRow[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
@@ -279,9 +272,9 @@ export default function ReconciliationPage() {
                             <div className="rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-4">
                               <div className="grid grid-cols-2 gap-x-8 gap-y-1 text-sm sm:grid-cols-4">
                                 <span className="text-on-surface-variant">Opened</span>
-                                <span className="font-medium text-on-surface">{fmtDatetime(r.opened_at)}</span>
+                                <span className="font-medium text-on-surface">{fmtDatetime(r.opened_at, timezone)}</span>
                                 <span className="text-on-surface-variant">Closed</span>
-                                <span className="font-medium text-on-surface">{r.closed_at ? fmtDatetime(r.closed_at) : "—"}</span>
+                                <span className="font-medium text-on-surface">{r.closed_at ? fmtDatetime(r.closed_at, timezone) : "—"}</span>
                                 <span className="text-on-surface-variant">Shop</span>
                                 <span className="font-medium text-on-surface">{r.shop_name ?? "—"}</span>
                                 <span className="text-on-surface-variant">Discrepancy</span>

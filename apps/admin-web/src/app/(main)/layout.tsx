@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { CurrencyProvider } from "@/lib/currency-context";
+import { LocalisationProvider } from "@/lib/localisation-context";
 import { OPERATOR_META_COOKIE } from "@/lib/auth/constants";
 import { parseMetaCookie } from "@/lib/auth/parse-meta-cookie";
 import { UserProvider } from "@/lib/auth/user-context";
@@ -13,7 +14,9 @@ export default async function MainLayout({ children }: { children: ReactNode }) 
   return (
     <UserProvider role={role} permissions={permissions}>
       <DashboardChrome>
-        <CurrencyProvider>{children}</CurrencyProvider>
+        <CurrencyProvider>
+          <LocalisationProvider>{children}</LocalisationProvider>
+        </CurrencyProvider>
       </DashboardChrome>
     </UserProvider>
   );

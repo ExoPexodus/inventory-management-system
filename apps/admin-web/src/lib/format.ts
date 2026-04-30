@@ -17,3 +17,13 @@ export function formatMoney(cents: number, cfg: CurrencyConfig): string {
     maximumFractionDigits: cfg.exponent,
   });
 }
+
+export function fmtDatetime(iso: string, timeZone: string = "UTC"): string {
+  return new Date(iso).toLocaleString(undefined, {
+    timeZone,
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}

@@ -13,8 +13,9 @@ import {
   TextInput,
 } from "@/components/ui/primitives";
 import { DateInput } from "@/components/ui/DateInput";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, fmtDatetime } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
+import { useShopTimezone } from "@/lib/localisation-context";
 
 type Shift = {
   id: string;
@@ -35,15 +36,6 @@ type ShiftPage = { items: Shift[] };
 
 type Shop = { id: string; name: string };
 
-function fmtDatetime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function fmtDuration(openedAt: string, closedAt: string | null) {
   const start = new Date(openedAt).getTime();
   const end = closedAt ? new Date(closedAt).getTime() : Date.now();
@@ -55,6 +47,7 @@ function fmtDuration(openedAt: string, closedAt: string | null) {
 
 export default function ShiftsPage() {
   const currency = useCurrency();
+  const timezone = useShopTimezone();
   const [rows, setRows] = useState<Shift[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
@@ -270,8 +263,8 @@ export default function ShiftsPage() {
                 rows.map((s) => (
                   <tr key={s.id} className="group transition-colors hover:bg-surface-container-low/50">
                     <td className="px-6 py-4 font-medium text-on-surface">{s.shop_name ?? "—"}</td>
-                    <td className="px-6 py-4 text-on-surface-variant">{fmtDatetime(s.opened_at)}</td>
-                    <td className="px-6 py-4 text-on-surface-variant">{s.closed_at ? fmtDatetime(s.closed_at) : "—"}</td>
+                    <td className="px-6 py-4 text-on-surface-variant">{fmtDatetime(s.opened_at, timezone)}</td>
+                    <td className="px-6 py-4 text-on-surface-variant">{s.closed_at ? fmtDatetime(s.closed_at, timezone) : "—"}</td>
                     <td className="px-6 py-4 text-on-surface">{fmtDuration(s.opened_at, s.closed_at)}</td>
                     <td className="px-6 py-4 text-right tabular-nums text-on-surface">{s.transaction_count}</td>
                     <td className="px-6 py-4 text-right tabular-nums font-semibold text-on-surface">{formatMoney(s.gross_cents, currency)}</td>
@@ -354,7 +347,7 @@ export default function ShiftsPage() {
             <div className="ink-gradient rounded-t-2xl px-6 py-5">
               <p className="text-xs font-bold uppercase tracking-widest text-on-primary/80">End-of-day</p>
               <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">Close shift</p>
-              <p className="mt-0.5 text-sm text-on-primary/70">{closeShift.shop_name ?? "Unknown shop"} — opened {fmtDatetime(closeShift.opened_at)}</p>
+              <p className="mt-0.5 text-sm text-on-primary/70">{closeShift.shop_name ?? "Unknown shop"} — opened {fmtDatetime(closeShift.opened_at, timezone)}</p>
             </div>
             <form onSubmit={(e) => void handleCloseShift(e)} className="space-y-4 p-6">
               <div className="rounded-lg bg-surface-container-low p-4">
