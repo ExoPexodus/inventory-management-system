@@ -42,7 +42,7 @@ This is the live status tracker for all 56 feature domains. Update status and ch
 | 28 | Tally & Accounting Export | India | 3 | Not Started |
 | 29 | Indian Localisation | India | 2, 3 | Not Started |
 | 30 | i18n Framework & Translation Infrastructure | i18n Foundation | 1, 2 | Not Started |
-| 31 | Timezone per Tenant & Shop | i18n Foundation | 1 | Not Started |
+| 31 | Timezone per Tenant & Shop | i18n Foundation | 1 | Done |
 | 32 | Country-aware Tax Engine | i18n Foundation | 1, 2 | Not Started |
 | 33 | Country-aware Address & Phone Validation | i18n Foundation | 2 | Not Started |
 | 34 | QRIS & Indonesian Payment Methods | Indonesia | 1, 2, 3 | Not Started |
@@ -720,13 +720,13 @@ This is the live status tracker for all 56 feature domains. Update status and ch
 ---
 
 ### Domain 31 — Timezone per Tenant & Shop
-**Chunks:** 1 | **Status:** Not Started
+**Chunks:** 1 | **Status:** Done
 
 #### Chunk 1
-- [ ] `timezone` field on Tenant (IANA timezone string, e.g. `Asia/Kolkata`)
-- [ ] `timezone` field on Shop (override tenant default — needed for multi-timezone countries)
-- [ ] All shift reports and daily analytics displayed in the shop's local timezone
-- [ ] Financial year boundary awareness per tenant (India: Apr–Mar; others: calendar year)
+- [x] `timezone` field on Tenant (IANA timezone string, e.g. `Asia/Kolkata`)
+- [x] `timezone` field on Shop (override tenant default — needed for multi-timezone countries)
+- [x] All shift reports and daily analytics displayed in the shop's local timezone
+- [x] Financial year boundary awareness per tenant (India: Apr–Mar; others: calendar year)
 
 ---
 
