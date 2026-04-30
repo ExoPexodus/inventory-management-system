@@ -9,7 +9,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from sqlalchemy import Select, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
@@ -1475,9 +1475,16 @@ _VALID_REASONS = {"correction", "damage", "loss", "found", "other"}
 class AdjustmentIn(BaseModel):
     shop_id: UUID
     product_id: UUID
-    quantity_delta: int = Field(ne=0)
+    quantity_delta: int
     reason: str
     notes: str | None = None
+
+    @field_validator("quantity_delta")
+    @classmethod
+    def nonzero(cls, v: int) -> int:
+        if v == 0:
+            raise ValueError("quantity_delta cannot be zero")
+        return v
 
 
 @router.post("/inventory/adjustments", response_model=StockMovementOut, status_code=status.HTTP_201_CREATED, dependencies=[require_permission("inventory:write")])

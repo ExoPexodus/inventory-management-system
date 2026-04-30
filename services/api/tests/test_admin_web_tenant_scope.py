@@ -11,9 +11,10 @@ from app.routers.admin_web import _coerce_tenant_scope, _require_operator_tenant
 
 def _ctx(*, tenant_id=None, legacy=False) -> AdminContext:
     return AdminContext(
-        operator_id=uuid4(),
+        user_id=uuid4(),
         tenant_id=tenant_id,
         role="admin",
+        role_id=None,
         is_legacy_token=legacy,
     )
 
