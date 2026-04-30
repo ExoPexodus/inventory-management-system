@@ -67,6 +67,7 @@ export default function SettingsPage() {
   const [localisationLoading, setLocalisationLoading] = useState(true);
   const [localisationMessage, setLocalisationMessage] = useState<string | null>(null);
   const [localisationError, setLocalisationError] = useState<string | null>(null);
+  const [localisationSaving, setLocalisationSaving] = useState(false);
 
   useEffect(() => {
     async function loadEmailSettings() {
@@ -278,20 +279,27 @@ export default function SettingsPage() {
   async function saveLocalisation() {
     setLocalisationMessage(null);
     setLocalisationError(null);
-    const body: Record<string, string | number | null> = {
-      timezone: localisationTimezone || null,
-      financial_year_start_month: localisationFyMonth ? parseInt(localisationFyMonth, 10) : null,
-    };
-    const r = await fetch("/api/ims/v1/admin/tenant-settings/localisation", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (r.ok) {
-      setLocalisationMessage("Localisation settings saved.");
-    } else {
-      const b = await r.json().catch(() => ({})) as { detail?: string };
-      setLocalisationError(b.detail ?? `Save failed (${r.status})`);
+    setLocalisationSaving(true);
+    try {
+      const body: Record<string, string | number | null> = {
+        timezone: localisationTimezone || null,
+        financial_year_start_month: localisationFyMonth ? parseInt(localisationFyMonth, 10) : null,
+      };
+      const r = await fetch("/api/ims/v1/admin/tenant-settings/localisation", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (r.ok) {
+        setLocalisationMessage("Localisation settings saved.");
+      } else {
+        const b = await r.json().catch(() => ({})) as { detail?: string };
+        setLocalisationError(b.detail ?? `Save failed (${r.status})`);
+      }
+    } catch {
+      setLocalisationError("Network error. Please try again.");
+    } finally {
+      setLocalisationSaving(false);
     }
   }
 
@@ -558,8 +566,8 @@ export default function SettingsPage() {
         </section>
 
         {/* Localisation */}
-        <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm space-y-4">
-          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Localisation</p>
+        <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm space-y-4">
+          <h3 className="font-headline text-lg font-bold text-primary">Localisation</h3>
           {localisationLoading ? (
             <p className="mt-4 text-sm text-on-surface-variant">Loading localisation settings…</p>
           ) : (
@@ -592,10 +600,12 @@ export default function SettingsPage() {
               </label>
               {localisationMessage && <p className="text-sm text-primary">{localisationMessage}</p>}
               {localisationError && <p className="text-sm text-error">{localisationError}</p>}
-              <PrimaryButton onClick={() => void saveLocalisation()}>Save localisation</PrimaryButton>
+              <PrimaryButton type="button" disabled={localisationSaving} onClick={() => void saveLocalisation()}>
+                {localisationSaving ? "Saving…" : "Save localisation"}
+              </PrimaryButton>
             </>
           )}
-        </div>
+        </section>
 
         <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
           <h3 className="font-headline text-lg font-bold text-primary">Notifications</h3>
