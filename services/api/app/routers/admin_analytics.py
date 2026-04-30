@@ -279,55 +279,6 @@ def analytics_summary(
     )
 
 
-@router.get("/sales-series", response_model=SalesSeriesOut, dependencies=[require_permission("analytics:read")])
-def sales_series_v2(
-    ctx: AdminAuthDep,
-    db: Annotated[Session, Depends(get_db_admin)],
-    tenant_id: UUID | None = None,
-    days: int = Query(default=30, ge=1, le=366),
-    granularity: str = Query(default="day", pattern="^(day|week|month)$"),
-    shop_id: UUID | None = None,
-) -> SalesSeriesOut:
-    """Time-series sales data — shop-filterable, granularity-aware, for mobile charts."""
-    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
-    filters, _start = _tx_filters(tenant_id, days, shop_id)
-    period_start, period_end = _period_meta(days)
-
-    if granularity == "day":
-        bucket = func.date_trunc("day", Transaction.created_at).label("bucket")
-    elif granularity == "week":
-        bucket = func.date_trunc("week", Transaction.created_at).label("bucket")
-    else:
-        bucket = func.date_trunc("month", Transaction.created_at).label("bucket")
-
-    stmt = (
-        select(
-            bucket,
-            func.coalesce(func.sum(Transaction.total_cents), 0).label("gross"),
-            func.count(Transaction.id).label("cnt"),
-        )
-        .where(*filters)
-        .group_by(bucket)
-        .order_by(bucket)
-    )
-    rows = db.execute(stmt).all()
-    points = []
-    for r in rows:
-        d = r.bucket
-        if hasattr(d, "date"):
-            label = d.date().isoformat()
-        else:
-            label = str(d)[:10]
-        points.append(SalesPoint(label=label, gross_cents=int(r.gross), transaction_count=int(r.cnt)))
-
-    return SalesSeriesOut(
-        period_start=period_start,
-        period_end=period_end,
-        granularity=granularity,
-        points=points,
-    )
-
-
 @router.get("/category-revenue", response_model=CategoryRevenueOut, dependencies=[require_permission("analytics:read")])
 def category_revenue(
     ctx: AdminAuthDep,

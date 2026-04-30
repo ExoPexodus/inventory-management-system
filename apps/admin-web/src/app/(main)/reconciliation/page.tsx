@@ -15,7 +15,7 @@ import {
 import { DateInput } from "@/components/ui/DateInput";
 import { formatMoney, fmtDatetime } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
-import { useShopTimezone } from "@/lib/localisation-context";
+import { useTenantTimezone } from "@/lib/localisation-context";
 
 type RecRow = {
   id: string;
@@ -46,7 +46,7 @@ function recTone(status: string): "default" | "good" | "warn" | "danger" {
 
 export default function ReconciliationPage() {
   const currency = useCurrency();
-  const timezone = useShopTimezone();
+  const timezone = useTenantTimezone();
   const [rows, setRows] = useState<RecRow[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);

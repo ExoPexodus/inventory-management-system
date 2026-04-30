@@ -39,7 +39,7 @@ export function LocalisationProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useShopTimezone(): string {
+export function useTenantTimezone(): string {
   return useContext(LocalisationContext).timezone;
 }
 

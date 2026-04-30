@@ -15,7 +15,7 @@ import {
 import { DateInput } from "@/components/ui/DateInput";
 import { formatMoney, fmtDatetime } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
-import { useShopTimezone } from "@/lib/localisation-context";
+import { useTenantTimezone } from "@/lib/localisation-context";
 
 type Shift = {
   id: string;
@@ -47,7 +47,7 @@ function fmtDuration(openedAt: string, closedAt: string | null) {
 
 export default function ShiftsPage() {
   const currency = useCurrency();
-  const timezone = useShopTimezone();
+  const timezone = useTenantTimezone();
   const [rows, setRows] = useState<Shift[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
