@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Annotated
 from uuid import UUID
 
@@ -19,11 +20,14 @@ from app.models import (
     PurchaseOrder,
     Shop,
     StockMovement,
+    Tenant,
     Transaction,
     TransactionLine,
 )
 
 router = APIRouter(prefix="/v1/admin/analytics", tags=["Admin Analytics"])
+
+from app.services.localisation import effective_timezone  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -419,17 +423,22 @@ def hourly_heatmap(
 ) -> HourlyHeatmapOut:
     """Returns avg revenue and transaction count per hour of day — identifies peak trading hours."""
     tenant_id = _coerce_tenant_scope(ctx, tenant_id)
+    tenant = db.get(Tenant, tenant_id)
+    shop = db.get(Shop, shop_id) if shop_id else None
+    tz = effective_timezone(shop, tenant)
+
     filters, start = _tx_filters(tenant_id, days, shop_id)
     period_start, period_end = _period_meta(days)
 
-    # Count distinct days with transactions (avoids dividing by full `days` when there are gaps)
+    local_ts = func.timezone(tz, Transaction.created_at)
+
     distinct_days = int(
         db.execute(
-            select(func.count(func.distinct(func.date_trunc("day", Transaction.created_at)))).where(*filters)
+            select(func.count(func.distinct(func.date_trunc("day", local_ts)))).where(*filters)
         ).scalar_one()
     ) or 1
 
-    hour_col = extract("hour", Transaction.created_at).label("hour")
+    hour_col = extract("hour", local_ts).label("hour")
     stmt = (
         select(
             hour_col,

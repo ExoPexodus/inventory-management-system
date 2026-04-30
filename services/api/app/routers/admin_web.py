@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Annotated
 from uuid import UUID
 
@@ -18,6 +19,7 @@ import bcrypt
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.services.audit_service import write_audit
+from app.services.localisation import effective_timezone
 from app.models import (
     Product,
     ProductGroup,
@@ -27,6 +29,7 @@ from app.models import (
     StockAdjustment,
     StockMovement,
     Supplier,
+    Tenant,
     Transaction,
     TransactionLine,
     User,
@@ -308,9 +311,14 @@ def dashboard_summary(
         ).scalar_one()
     )
 
-    now = datetime.now(UTC)
-    period_start = now - timedelta(days=30)
-    prev_start = now - timedelta(days=60)
+    tz = effective_timezone(None, db.get(Tenant, tenant_id))
+    local_now = datetime.now(ZoneInfo(tz))
+    period_start = (local_now - timedelta(days=30)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).astimezone(UTC)
+    prev_start = (local_now - timedelta(days=60)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).astimezone(UTC)
     curr_rev = int(
         db.execute(
             select(func.coalesce(func.sum(Transaction.total_cents), 0)).where(
@@ -394,20 +402,32 @@ def sales_series(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     tenant_id: UUID | None = None,
+    shop_id: UUID | None = None,
     days: int = Query(default=30, ge=1, le=366),
 ) -> SalesSeriesResponse:
     tenant_id = _coerce_tenant_scope(ctx, tenant_id)
-    start = datetime.now(UTC) - timedelta(days=days)
-    day_bucket = func.date_trunc("day", Transaction.created_at).label("day")
+    tenant = db.get(Tenant, tenant_id)
+    shop = db.get(Shop, shop_id) if shop_id else None
+    tz = effective_timezone(shop, tenant)
+
+    local_now = datetime.now(ZoneInfo(tz))
+    start_utc = (local_now - timedelta(days=days)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).astimezone(UTC)
+
+    local_ts = func.timezone(tz, Transaction.created_at)
+    day_bucket = func.date_trunc("day", local_ts).label("day")
     stmt = (
         select(
             day_bucket,
             func.coalesce(func.sum(Transaction.total_cents), 0).label("gross"),
             func.count(Transaction.id).label("cnt"),
         )
-        .where(Transaction.status == "posted", Transaction.created_at >= start)
+        .where(Transaction.status == "posted", Transaction.created_at >= start_utc)
     )
     stmt = stmt.where(Transaction.tenant_id == tenant_id)
+    if shop_id:
+        stmt = stmt.where(Transaction.shop_id == shop_id)
     stmt = stmt.group_by(day_bucket).order_by(day_bucket)
     rows = db.execute(stmt).all()
     points: list[SalesSeriesPoint] = []
