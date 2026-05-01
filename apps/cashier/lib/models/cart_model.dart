@@ -36,6 +36,35 @@ class CartLine {
 class CartModel extends ChangeNotifier {
   final List<CartLine> _lines = [];
 
+  // Customer attachment
+  String? _customerId;
+  String? _customerPhone;
+  String? _customerName;
+
+  String? get customerId => _customerId;
+  String? get customerPhone => _customerPhone;
+  String? get customerName => _customerName;
+
+  String? get customerDisplayLabel {
+    if (_customerName != null && _customerName!.isNotEmpty) return _customerName;
+    if (_customerPhone != null) return _customerPhone;
+    return null;
+  }
+
+  void setCustomer({String? id, String? phone, String? name}) {
+    _customerId = id;
+    _customerPhone = phone;
+    _customerName = name;
+    notifyListeners();
+  }
+
+  void clearCustomer() {
+    _customerId = null;
+    _customerPhone = null;
+    _customerName = null;
+    notifyListeners();
+  }
+
   List<CartLine> get lines => List.unmodifiable(_lines);
 
   int get lineKindCount => _lines.length;
@@ -87,6 +116,6 @@ class CartModel extends ChangeNotifier {
 
   void clear() {
     _lines.clear();
-    notifyListeners();
+    clearCustomer();
   }
 }

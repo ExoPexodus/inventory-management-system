@@ -88,6 +88,29 @@ class TransactionListPage {
   }
 }
 
+class CustomerLookupItem {
+  CustomerLookupItem({
+    required this.id,
+    required this.phone,
+    this.name,
+    this.groupName,
+  });
+
+  final String id;
+  final String phone;
+  final String? name;
+  final String? groupName;
+
+  factory CustomerLookupItem.fromJson(Map<String, dynamic> json) {
+    return CustomerLookupItem(
+      id: json['id'] as String,
+      phone: json['phone'] as String,
+      name: json['name'] as String?,
+      groupName: json['group_name'] as String?,
+    );
+  }
+}
+
 class InventoryApi {
   InventoryApi(this.baseUrl);
 
@@ -186,6 +209,22 @@ class InventoryApi {
     final r = timeoutMs == null ? await req : await req.timeout(Duration(milliseconds: timeoutMs));
     if (r.statusCode >= 400) throw ApiException(r.statusCode, r.body);
     return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
+  Future<List<CustomerLookupItem>> customerLookup({
+    required String accessToken,
+    required String query,
+  }) async {
+    final r = await http.get(
+      _uri('/v1/sync/customers/lookup', {'q': query}),
+      headers: {'Authorization': 'Bearer $accessToken'},
+    );
+    if (r.statusCode >= 400) throw ApiException(r.statusCode, r.body);
+    final list = jsonDecode(r.body) as List<dynamic>;
+    return list
+        .cast<Map<String, dynamic>>()
+        .map(CustomerLookupItem.fromJson)
+        .toList();
   }
 
   Future<bool> ping({int timeoutMs = 2500}) async {
