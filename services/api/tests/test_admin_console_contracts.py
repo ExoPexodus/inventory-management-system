@@ -172,3 +172,38 @@ def test_shop_out_includes_timezone() -> None:
         auto_resolve_overage_cents_override=None,
     )
     assert s_null.model_dump(mode="json")["timezone"] is None
+
+
+def test_customer_group_out_schema() -> None:
+    from app.routers.admin_customers import CustomerGroupOut
+
+    g = CustomerGroupOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        name="VIP",
+        colour="#7C3AED",
+        created_at=datetime.now(UTC),
+    )
+    d = g.model_dump(mode="json")
+    assert d["name"] == "VIP"
+    assert d["colour"] == "#7C3AED"
+
+
+def test_customer_out_schema() -> None:
+    from app.routers.admin_customers import CustomerOut
+
+    c = CustomerOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        group_id=None,
+        group_name=None,
+        phone="9876543210",
+        name="Rajesh Kumar",
+        email=None,
+        city=None,
+        created_at=datetime.now(UTC),
+    )
+    d = c.model_dump(mode="json")
+    assert d["phone"] == "9876543210"
+    assert d["name"] == "Rajesh Kumar"
+    assert d["group_id"] is None

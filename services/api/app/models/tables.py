@@ -157,6 +157,47 @@ class Shop(Base):
     tenant: Mapped[Tenant] = relationship(back_populates="shops")
 
 
+class CustomerGroup(Base):
+    __tablename__ = "customer_groups"
+    __table_args__ = (UniqueConstraint("tenant_id", "name", name="uq_customer_group_tenant_name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    colour: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    customers: Mapped[list["Customer"]] = relationship(back_populates="group")
+
+
+class Customer(Base):
+    __tablename__ = "customers"
+    __table_args__ = (UniqueConstraint("tenant_id", "phone", name="uq_customer_tenant_phone"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    group_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customer_groups.id", ondelete="SET NULL"), nullable=True
+    )
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    address_line1: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    group: Mapped[Optional["CustomerGroup"]] = relationship(back_populates="customers")
+    transactions: Mapped[list["Transaction"]] = relationship(back_populates="customer")
+
+
 class Device(Base):
     __tablename__ = "devices"
 
@@ -284,12 +325,17 @@ class Transaction(Base):
     total_cents: Mapped[int] = mapped_column(Integer, nullable=False)
     tax_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     client_mutation_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
+    )
+    customer_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     lines: Mapped[list[TransactionLine]] = relationship(back_populates="transaction", cascade="all, delete-orphan")
     payments: Mapped[list[PaymentAllocation]] = relationship(
         back_populates="transaction", cascade="all, delete-orphan"
     )
+    customer: Mapped[Optional["Customer"]] = relationship(back_populates="transactions")
 
 
 class TransactionLine(Base):
