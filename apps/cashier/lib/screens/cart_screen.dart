@@ -18,6 +18,7 @@ import '../util/jwt_device_id.dart';
 import '../util/json_map.dart';
 import '../util/money_format.dart';
 import '../util/push_conflict_message.dart';
+import '../widgets/customer_picker_widget.dart';
 import '../widgets/gradient_primary_button.dart';
 
 class CartScreen extends StatefulWidget {
@@ -152,6 +153,16 @@ class _CartScreenState extends State<CartScreen> {
         },
       ],
     };
+
+    // Attach customer if set
+    if (cart.customerId != null) {
+      event['customer_id'] = cart.customerId;
+    } else if (cart.customerPhone != null) {
+      event['customer_phone'] = cart.customerPhone;
+      if (cart.customerName != null) {
+        event['customer_name'] = cart.customerName;
+      }
+    }
 
     if (_tender == 'cash' && !await _hasNetworkForCard()) {
       setState(() => _submitting = true);
@@ -510,6 +521,8 @@ class _CartScreenState extends State<CartScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const CustomerPickerWidget(),
+                  const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
