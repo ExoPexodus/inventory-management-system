@@ -38,6 +38,9 @@ type Tx = {
   lines: TxLine[];
   payments: TxPayment[];
   cashier_name?: string | null;
+  customer_id?: string | null;
+  customer_name?: string | null;
+  customer_phone?: string | null;
 };
 
 type Page = { items: Tx[]; next_cursor: string | null };
@@ -259,6 +262,7 @@ export default function OrdersPage() {
               <tr className="border-b border-outline-variant/10">
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Order ID</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Cashier</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Customer</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Timestamp</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
                 <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Amount</th>
@@ -267,11 +271,11 @@ export default function OrdersPage() {
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
               {loading && rows.length === 0 ? (
-                <LoadingRow colSpan={6} />
+                <LoadingRow colSpan={7} />
               ) : null}
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-10 text-center text-sm text-on-surface-variant">
+                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-on-surface-variant">
                     No transactions for this page.
                   </td>
                 </tr>
@@ -286,6 +290,9 @@ export default function OrdersPage() {
                         <Avatar name={cashier} className="h-9 w-9 text-[11px]" />
                         <span className="font-medium text-on-surface">{cashier}</span>
                       </div>
+                    </td>
+                    <td className="px-6 py-3 text-sm text-on-surface">
+                      {t.customer_name ?? t.customer_phone ?? <span className="text-on-surface-variant/40">—</span>}
                     </td>
                     <td className="px-6 py-3 text-xs text-on-surface-variant">
                       {new Date(t.created_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}{" "}
