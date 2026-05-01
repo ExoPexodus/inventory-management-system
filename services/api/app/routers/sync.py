@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.db.session import get_db
-from app.models import Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache, User
+from app.models import Customer, CustomerGroup, Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache, User
 from app.services.localisation import effective_timezone
 from app.services.stock import current_quantity
 from app.services.sync_push import process_push_batch
@@ -44,6 +44,13 @@ class ProductDTO(BaseModel):
     barcode: str | None = None
     mrp_cents: int | None = None
     negative_inventory_allowed: bool = False
+
+
+class CustomerLookupItemDTO(BaseModel):
+    id: UUID
+    phone: str
+    name: str | None = None
+    group_name: str | None = None
 
 
 class StockSnapshotDTO(BaseModel):
@@ -202,6 +209,36 @@ def sync_pull(
         employee_active=employee_active,
         **_license_fields(db, auth.tenant_id),
     )
+
+
+@router.get("/customers/lookup", response_model=list[CustomerLookupItemDTO])
+def sync_customer_lookup(
+    q: str,
+    auth: Annotated[DeviceAuth, Depends(get_device_auth)],
+    db: Annotated[Session, Depends(get_db)],
+) -> list[CustomerLookupItemDTO]:
+    """Device-auth customer search — phone prefix or name ilike, up to 10 results."""
+    from sqlalchemy.orm import selectinload
+    stmt = (
+        select(Customer)
+        .options(selectinload(Customer.group))
+        .where(
+            Customer.tenant_id == auth.tenant_id,
+            (Customer.phone.ilike(f"{q}%") | Customer.name.ilike(f"%{q}%")),
+        )
+        .order_by(Customer.name.asc())
+        .limit(10)
+    )
+    rows = db.execute(stmt).scalars().all()
+    return [
+        CustomerLookupItemDTO(
+            id=r.id,
+            phone=r.phone,
+            name=r.name,
+            group_name=r.group.name if r.group else None,
+        )
+        for r in rows
+    ]
 
 
 @router.post("/push", response_model=PushBatchResponse)

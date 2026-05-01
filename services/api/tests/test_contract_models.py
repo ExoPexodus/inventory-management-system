@@ -162,3 +162,20 @@ def test_sync_pull_response_includes_shop_timezone() -> None:
     )
     d = r.model_dump(mode="json")
     assert d["shop_timezone"] == "Asia/Kolkata"
+
+
+def test_customer_lookup_response_shape() -> None:
+    from app.routers.sync import CustomerLookupItemDTO
+
+    item = CustomerLookupItemDTO(
+        id=uuid4(),
+        phone="9876543210",
+        name="Rajesh",
+        group_name="VIP",
+    )
+    d = item.model_dump(mode="json")
+    assert d["phone"] == "9876543210"
+    assert d["group_name"] == "VIP"
+
+    minimal = CustomerLookupItemDTO(id=uuid4(), phone="9876543210")
+    assert minimal.model_dump(mode="json")["name"] is None

@@ -823,6 +823,19 @@ components:
         note:
           type: string
           nullable: true
+        customer_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID of an existing Customer to link to this sale. Takes precedence over customer_phone.
+        customer_phone:
+          type: string
+          nullable: true
+          description: Raw phone number for offline customer capture. Server resolves to customer on sync.
+        customer_name:
+          type: string
+          nullable: true
+          description: Optional name for auto-creating a new customer when customer_phone has no match.
       description: |
         **Connectivity:** If any `payment` uses `tender_type: card`, the client MUST submit this event
         while online; the server rejects offline-queued card sales unless a future tenant policy explicitly
@@ -1321,4 +1334,19 @@ components:
           nullable: true
         is_active:
           type: boolean
+          nullable: true
+
+    CustomerLookupItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        name:
+          type: string
+          nullable: true
+        group_name:
+          type: string
           nullable: true

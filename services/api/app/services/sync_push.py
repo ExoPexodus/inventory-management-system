@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Customer,
     Notification,
     PaymentAllocation,
     Product,
@@ -216,6 +217,38 @@ def apply_sale_completed(
         if user_row is not None:
             user_id = user_row.id
 
+    # Customer resolution
+    raw_customer_id = event.get("customer_id")
+    raw_customer_phone = event.get("customer_phone")
+    raw_customer_name = event.get("customer_name")
+
+    resolved_customer_id: uuid.UUID | None = None
+    unresolved_phone: str | None = None
+
+    if raw_customer_id:
+        cid = uuid.UUID(str(raw_customer_id))
+        c = db.get(Customer, cid)
+        if c and c.tenant_id == tenant_id:
+            resolved_customer_id = cid
+    elif raw_customer_phone:
+        phone_str = str(raw_customer_phone).strip()
+        existing = db.execute(
+            select(Customer).where(Customer.tenant_id == tenant_id, Customer.phone == phone_str)
+        ).scalar_one_or_none()
+        if existing:
+            resolved_customer_id = existing.id
+        elif raw_customer_name:
+            new_cust = Customer(
+                tenant_id=tenant_id,
+                phone=phone_str,
+                name=str(raw_customer_name).strip(),
+            )
+            db.add(new_cust)
+            db.flush()
+            resolved_customer_id = new_cust.id
+        else:
+            unresolved_phone = phone_str
+
     txn = Transaction(
         tenant_id=tenant_id,
         shop_id=shop_id,
@@ -224,6 +257,8 @@ def apply_sale_completed(
         total_cents=grand_total,
         tax_cents=tax_cents,
         client_mutation_id=client_mutation_id,
+        customer_id=resolved_customer_id,
+        customer_phone=unresolved_phone,
     )
     db.add(txn)
     db.flush()
