@@ -262,8 +262,9 @@ def patch_transaction_customer(
     cust_name: str | None = None
     if txn.customer_id:
         c = db.get(Customer, txn.customer_id)
-        cust_name = c.name if c else None
+        cust_name = (c.name or c.phone) if c else None
 
+    labels = _product_labels_for_lines(db, [txn])
     return TransactionOut(
         id=txn.id,
         shop_id=txn.shop_id,
@@ -273,7 +274,7 @@ def patch_transaction_customer(
         tax_cents=txn.tax_cents,
         client_mutation_id=txn.client_mutation_id,
         created_at=txn.created_at,
-        lines=[_line_dto(ln, _product_labels_for_lines(db, [txn])) for ln in txn.lines],
+        lines=[_line_dto(ln, labels) for ln in txn.lines],
         payments=[PaymentOut(tender_type=p.tender_type, amount_cents=p.amount_cents) for p in txn.payments],
         customer_id=txn.customer_id,
         customer_name=cust_name,
