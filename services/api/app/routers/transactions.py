@@ -44,6 +44,9 @@ class TransactionOut(BaseModel):
     lines: list[TransactionLineOut]
     payments: list[PaymentOut]
     cashier_name: str | None = None
+    customer_id: UUID | None = None
+    customer_name: str | None = None
+    customer_phone: str | None = None
 
 
 class TransactionListResponse(BaseModel):

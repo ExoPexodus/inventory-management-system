@@ -142,6 +142,14 @@ def admin_list_transactions(
         users = db.execute(select(User).where(User.id.in_(user_ids))).scalars().all()
         user_names = {u.id: u.name for u in users}
 
+    # Customer name lookup for linked customers
+    customer_ids = {t.customer_id for t in rows if t.customer_id is not None}
+    customer_names: dict[UUID, str] = {}
+    if customer_ids:
+        from app.models import Customer
+        custs = db.execute(select(Customer).where(Customer.id.in_(customer_ids))).scalars().all()
+        customer_names = {c.id: (c.name or c.phone) for c in custs}
+
     items: list[TransactionOut] = []
     for t in rows:
         items.append(
@@ -159,6 +167,9 @@ def admin_list_transactions(
                     PaymentOut(tender_type=p.tender_type, amount_cents=p.amount_cents) for p in t.payments
                 ],
                 cashier_name=user_names.get(t.user_id) if t.user_id else None,
+                customer_id=t.customer_id,
+                customer_name=customer_names.get(t.customer_id) if t.customer_id else None,
+                customer_phone=t.customer_phone,
             )
         )
     return TransactionListResponse(items=items, next_cursor=next_cur)
@@ -205,6 +216,69 @@ def patch_transaction_status(
     )
     db.commit()
     return {"id": str(tx_id), "status": body.status}
+
+
+class TxCustomerPatch(BaseModel):
+    customer_id: UUID | None = None
+
+
+@router.patch(
+    "/transactions/{transaction_id}/customer",
+    response_model=TransactionOut,
+    dependencies=[require_permission("customers:write")],
+)
+def patch_transaction_customer(
+    transaction_id: UUID,
+    body: TxCustomerPatch,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> TransactionOut:
+    from app.models import Customer
+    tenant_id = _require_operator_tenant(ctx)
+    txn = db.execute(
+        select(Transaction)
+        .options(selectinload(Transaction.lines), selectinload(Transaction.payments))
+        .where(Transaction.id == transaction_id, Transaction.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if txn is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="transaction_not_found")
+
+    if body.customer_id is not None:
+        cust = db.get(Customer, body.customer_id)
+        if cust is None or cust.tenant_id != tenant_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer_not_found")
+        txn.customer_id = cust.id
+        txn.customer_phone = None
+    else:
+        txn.customer_id = None
+        txn.customer_phone = None
+
+    write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id,
+                action="attach_customer", resource_type="transaction", resource_id=str(transaction_id),
+                after={"customer_id": str(body.customer_id) if body.customer_id else None})
+    db.commit()
+    db.refresh(txn)
+
+    cust_name: str | None = None
+    if txn.customer_id:
+        c = db.get(Customer, txn.customer_id)
+        cust_name = c.name if c else None
+
+    return TransactionOut(
+        id=txn.id,
+        shop_id=txn.shop_id,
+        kind=txn.kind,
+        status=txn.status,
+        total_cents=txn.total_cents,
+        tax_cents=txn.tax_cents,
+        client_mutation_id=txn.client_mutation_id,
+        created_at=txn.created_at,
+        lines=[_line_dto(ln, _product_labels_for_lines(db, [txn])) for ln in txn.lines],
+        payments=[PaymentOut(tender_type=p.tender_type, amount_cents=p.amount_cents) for p in txn.payments],
+        customer_id=txn.customer_id,
+        customer_name=cust_name,
+        customer_phone=txn.customer_phone,
+    )
 
 
 def _stock_alert_qty(db: Session, tenant_id: UUID | None, threshold: int) -> int:
