@@ -1,14 +1,14 @@
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.db.session import get_db
-from app.models import Customer, CustomerGroup, Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache, User
+from app.models import Customer, Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache, User
 from app.services.localisation import effective_timezone
 from app.services.stock import current_quantity
 from app.services.sync_push import process_push_batch
@@ -213,18 +213,21 @@ def sync_pull(
 
 @router.get("/customers/lookup", response_model=list[CustomerLookupItemDTO])
 def sync_customer_lookup(
-    q: str,
+    q: Annotated[str, Query(min_length=2, max_length=100)],
     auth: Annotated[DeviceAuth, Depends(get_device_auth)],
     db: Annotated[Session, Depends(get_db)],
 ) -> list[CustomerLookupItemDTO]:
     """Device-auth customer search — phone prefix or name ilike, up to 10 results."""
-    from sqlalchemy.orm import selectinload
+    q_esc = q.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
     stmt = (
         select(Customer)
         .options(selectinload(Customer.group))
         .where(
             Customer.tenant_id == auth.tenant_id,
-            (Customer.phone.ilike(f"{q}%") | Customer.name.ilike(f"%{q}%")),
+            (
+                Customer.phone.ilike(f"{q_esc}%", escape="\\")
+                | Customer.name.ilike(f"%{q_esc}%", escape="\\")
+            ),
         )
         .order_by(Customer.name.asc())
         .limit(10)
