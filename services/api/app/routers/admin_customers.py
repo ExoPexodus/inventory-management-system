@@ -1,13 +1,14 @@
 """Admin CRM — customer profiles, groups, and purchase history."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
@@ -98,7 +99,6 @@ class CreateCustomerBody(BaseModel):
 
 
 class PatchCustomerBody(BaseModel):
-    phone: str | None = Field(default=None, min_length=1, max_length=20)
     name: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=255)
     address_line1: str | None = Field(default=None, max_length=255)
@@ -144,8 +144,10 @@ def _resolve_group(db: Session, tenant_id: UUID, group_id: UUID | None) -> Custo
     if group_id is None:
         return None
     g = db.get(CustomerGroup, group_id)
-    if g is None or g.tenant_id != tenant_id:
+    if g is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer_group_not_found")
+    if g.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="cross_tenant_access")
     return g
 
 
@@ -181,7 +183,7 @@ def create_customer_group(
     db.add(g)
     try:
         db.flush()
-    except Exception:
+    except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="group_name_conflict")
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id,
@@ -202,8 +204,10 @@ def patch_customer_group(
 ) -> CustomerGroupOut:
     tenant_id = _require_tenant(ctx)
     g = db.get(CustomerGroup, group_id)
-    if g is None or g.tenant_id != tenant_id:
+    if g is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="group_not_found")
+    if g.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="cross_tenant_access")
     sent = body.model_fields_set
     if "name" in sent and body.name is not None:
         g.name = body.name.strip()
@@ -211,7 +215,11 @@ def patch_customer_group(
         g.colour = body.colour
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id,
                 action="update_customer_group", resource_type="customer_group", resource_id=str(group_id))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="group_name_conflict")
     db.refresh(g)
     return CustomerGroupOut(id=g.id, tenant_id=g.tenant_id, name=g.name,
                             colour=g.colour, created_at=g.created_at)
@@ -226,8 +234,10 @@ def delete_customer_group(
 ) -> None:
     tenant_id = _require_tenant(ctx)
     g = db.get(CustomerGroup, group_id)
-    if g is None or g.tenant_id != tenant_id:
+    if g is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="group_not_found")
+    if g.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="cross_tenant_access")
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id,
                 action="delete_customer_group", resource_type="customer_group", resource_id=str(group_id))
     db.delete(g)
@@ -310,7 +320,7 @@ def create_customer(
     db.add(c)
     try:
         db.flush()
-    except Exception:
+    except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="phone_conflict")
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id,
@@ -392,8 +402,6 @@ def patch_customer(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer_not_found")
 
     sent = body.model_fields_set
-    if "phone" in sent and body.phone:
-        c.phone = body.phone.strip()
     if "name" in sent:
         c.name = body.name.strip() if body.name else None
     if "email" in sent:
@@ -410,7 +418,11 @@ def patch_customer(
 
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id,
                 action="update_customer", resource_type="customer", resource_id=str(customer_id))
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="phone_conflict")
     db.refresh(c)
     if c.group_id:
         db.refresh(c, attribute_names=["group"])
@@ -426,8 +438,10 @@ def delete_customer(
 ) -> None:
     tenant_id = _require_tenant(ctx)
     c = db.get(Customer, customer_id)
-    if c is None or c.tenant_id != tenant_id:
+    if c is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="customer_not_found")
+    if c.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="cross_tenant_access")
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id,
                 action="delete_customer", resource_type="customer", resource_id=str(customer_id))
     db.delete(c)
