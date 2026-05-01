@@ -12,7 +12,7 @@ This is the live status tracker for all 56 feature domains. Update status and ch
 
 | Domain | Name | Category | Chunks | Status |
 |--------|------|----------|--------|--------|
-| 1 | Customer Management (CRM) | General Retail | 1, 2 | Not Started |
+| 1 | Customer Management (CRM) | General Retail | 1, 2 | In Progress |
 | 2 | Returns & Refunds | General Retail | 1 | Not Started |
 | 3 | Product Catalog (gaps) | General Retail | 1, 2, 3 | In Progress |
 | 4 | Supplier & Purchasing (gaps) | General Retail | 1, 2 | Not Started |
@@ -76,12 +76,12 @@ This is the live status tracker for all 56 feature domains. Update status and ch
 ---
 
 ### Domain 1 — Customer Management (CRM)
-**Chunks:** 1, 2 | **Status:** Not Started
+**Chunks:** 1, 2 | **Status:** In Progress
 
 #### Chunk 1
-- [ ] Customer profiles (name, phone, email, address, notes)
-- [ ] Customer purchase history
-- [ ] Customer groups / segments (VIP, regular, loyalty member)
+- [x] Customer profiles (name, phone, email, address, notes)
+- [x] Customer purchase history
+- [x] Customer groups / segments (VIP, regular, loyalty member)
 
 #### Chunk 2
 - [ ] Store credit / customer wallet balance
