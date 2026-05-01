@@ -65,7 +65,7 @@ export default function CustomerProfilePage() {
     }
   }
 
-  useEffect(() => { void load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void load(); }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className="p-8 text-sm text-on-surface-variant">Loading…</div>;
   if (err || !customer) return <div className="p-8 text-sm text-error">{err ?? "Not found"}</div>;
@@ -228,7 +228,12 @@ function EditCustomerModal({
           </label>
           <label className="block text-sm font-medium text-on-surface">
             Notes
-            <TextInput className="mt-1" value={notes} onChange={(e) => setNotes(e.target.value)} />
+            <textarea
+              className="mt-1 w-full resize-y rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
+              rows={3}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
           </label>
           {err && <p className="text-sm text-error">{err}</p>}
           <div className="flex gap-2 pt-2">
