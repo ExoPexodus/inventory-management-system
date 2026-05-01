@@ -254,15 +254,19 @@ def delete_customer_group(
 def lookup_customers(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
-    q: str = Query(min_length=1, max_length=100),
+    q: str = Query(min_length=2, max_length=100),
 ) -> list[CustomerLookupItem]:
     tenant_id = _require_tenant(ctx)
+    q_esc = q.replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
     stmt = (
         select(Customer)
         .options(selectinload(Customer.group))
         .where(
             Customer.tenant_id == tenant_id,
-            (Customer.phone.ilike(f"{q}%") | Customer.name.ilike(f"%{q}%")),
+            (
+                Customer.phone.ilike(f"{q_esc}%", escape="\\")
+                | Customer.name.ilike(f"%{q_esc}%", escape="\\")
+            ),
         )
         .order_by(Customer.name.asc())
         .limit(10)
@@ -290,8 +294,11 @@ def list_customers(
         .limit(limit)
     )
     if q and q.strip():
-        like = f"%{q.strip()}%"
-        stmt = stmt.where(Customer.phone.ilike(f"{q.strip()}%") | Customer.name.ilike(like))
+        q_esc = q.strip().replace("\\", "\\\\").replace("%", r"\%").replace("_", r"\_")
+        stmt = stmt.where(
+            Customer.phone.ilike(f"{q_esc}%", escape="\\")
+            | Customer.name.ilike(f"%{q_esc}%", escape="\\")
+        )
     if group_id:
         stmt = stmt.where(Customer.group_id == group_id)
     rows = db.execute(stmt).scalars().all()
@@ -311,11 +318,11 @@ def create_customer(
         tenant_id=tenant_id,
         group_id=group.id if group else None,
         phone=body.phone.strip(),
-        name=body.name.strip() if body.name else None,
-        email=body.email.strip() if body.email else None,
-        address_line1=body.address_line1.strip() if body.address_line1 else None,
-        city=body.city.strip() if body.city else None,
-        notes=body.notes,
+        name=(body.name.strip() or None) if body.name else None,
+        email=(body.email.strip() or None) if body.email else None,
+        address_line1=(body.address_line1.strip() or None) if body.address_line1 else None,
+        city=(body.city.strip() or None) if body.city else None,
+        notes=(body.notes.strip() or None) if body.notes else None,
     )
     db.add(c)
     try:
@@ -403,13 +410,13 @@ def patch_customer(
 
     sent = body.model_fields_set
     if "name" in sent:
-        c.name = body.name.strip() if body.name else None
+        c.name = (body.name.strip() or None) if body.name else None
     if "email" in sent:
-        c.email = body.email.strip() if body.email else None
+        c.email = (body.email.strip() or None) if body.email else None
     if "address_line1" in sent:
-        c.address_line1 = body.address_line1.strip() if body.address_line1 else None
+        c.address_line1 = (body.address_line1.strip() or None) if body.address_line1 else None
     if "city" in sent:
-        c.city = body.city.strip() if body.city else None
+        c.city = (body.city.strip() or None) if body.city else None
     if "notes" in sent:
         c.notes = body.notes
     if "group_id" in sent:
