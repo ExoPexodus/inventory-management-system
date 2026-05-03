@@ -2,20 +2,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Annotated
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import RedirectResponse
+from fastapi import APIRouter
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
 
-from app.auth.admin_deps import AdminAuthDep, require_permission
-from app.auth.deps import DeviceAuth, get_device_auth
 from app.config import settings
-from app.db.admin_deps_db import get_db_admin
-from app.db.session import get_db
-from app.models import Tenant
 
 router = APIRouter(tags=["App Updates"])
 logger = logging.getLogger(__name__)
@@ -71,7 +63,7 @@ def _fetch_manifest(download_token: str) -> list[dict]:
         resp = httpx.get(url, timeout=_MANIFEST_TIMEOUT)
         resp.raise_for_status()
         return resp.json().get("apps", [])
-    except (httpx.HTTPError, ValueError, KeyError) as exc:
+    except Exception as exc:
         logger.warning("Failed to fetch platform manifest: %s", exc)
         return []
 
