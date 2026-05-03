@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Auto Backup rules for API level 30 and below.
+    For API 31+ see data_extraction_rules.xml.
+
+    Included:
+      - FlutterSharedPreferences: device enrollment tokens, sync state, policies, employee sessions
+      - cashier_outbox.db: offline sale events waiting to sync to the server
+
+    Excluded:
+      - FlutterSecureStorage: EncryptedSharedPreferences backed by Android Keystore;
+        the key is device-bound and cannot be restored, so backing up the ciphertext
+        without the key would corrupt data on restore.
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="FlutterSharedPreferences" />
+    <include domain="database" path="cashier_outbox.db" />
+    <exclude domain="sharedpref" path="FlutterSecureStorage" />
+</full-backup-content>
