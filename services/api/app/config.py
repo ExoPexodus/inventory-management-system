@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     platform_api_secret: str = ""
     platform_base_url: str = "http://platform:8000"
     platform_web_url: str = "http://localhost:3200"
+    platform_download_base_url: str = ""
+    # Public-facing URL of the platform service for shareable download page links.
+    # Falls back to platform_base_url when empty.
     ims_platform_sync_mode: str = "polling"  # "polling" or "offline"
     ims_platform_sync_interval_seconds: int = 300
     license_sync_interval_seconds: int = 300

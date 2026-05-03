@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
+    app_updates,
     admin,
     admin_analytics,
     admin_audit,
@@ -85,3 +86,4 @@ app.include_router(audit.router)
 app.include_router(notifications.router)
 app.include_router(internal_sync.router)
 app.include_router(platform_provision.router)
+app.include_router(app_updates.router)

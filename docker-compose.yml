@@ -40,6 +40,7 @@ services:
       PLATFORM_API_URL: ${PLATFORM_API_URL:-http://platform:8000}
       PLATFORM_API_SECRET: ${PLATFORM_API_SECRET:-platform-dev-jwt-secret}
       PLATFORM_WEB_URL: ${PLATFORM_WEB_URL:-http://localhost:3200}
+      PLATFORM_DOWNLOAD_BASE_URL: ${PLATFORM_DOWNLOAD_BASE_URL:-http://localhost:8002}
     ports:
       # Default 8001 avoids clashing with other stacks on :8000 (override with API_PUBLISH_PORT).
       - "${API_PUBLISH_PORT:-8001}:8000"
