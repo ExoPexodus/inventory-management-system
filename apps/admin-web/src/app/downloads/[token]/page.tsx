@@ -1,4 +1,4 @@
-import { internalApiUrl } from "@/lib/api/internal-url";
+import { internalPlatformUrl } from "@/lib/api/internal-url";
 import { notFound } from "next/navigation";
 
 type AppItem = {
@@ -18,7 +18,7 @@ type Manifest = {
 
 async function getManifest(token: string): Promise<Manifest | null> {
   try {
-    const r = await fetch(`${internalApiUrl()}/downloads/${token}/manifest`, {
+    const r = await fetch(`${internalPlatformUrl()}/downloads/${token}/manifest`, {
       cache: "no-store",
     });
     if (!r.ok) return null;
@@ -40,25 +40,22 @@ export default async function PublicDownloadPage({
 }) {
   const { token } = await params;
   const manifest = await getManifest(token);
-
   if (!manifest) notFound();
 
   return (
     <div className="min-h-screen bg-surface">
-      {/* Header */}
-      <div className="ink-gradient px-6 py-10 text-center">
-        <p className="text-xs font-bold uppercase tracking-widest text-on-primary/70">
+      <div className="bg-on-surface px-6 py-10 text-center">
+        <p className="text-xs font-bold uppercase tracking-widest text-surface/70">
           {manifest.tenant_name}
         </p>
-        <h1 className="mt-2 font-headline text-3xl font-extrabold text-on-primary">
+        <h1 className="mt-2 font-headline text-3xl font-extrabold text-surface">
           Download Apps
         </h1>
-        <p className="mt-2 text-sm text-on-primary/80">
-          Install the latest apps for your team. No login required.
+        <p className="mt-2 text-sm text-surface/70">
+          Install the latest apps on your Android device. No login required.
         </p>
       </div>
 
-      {/* App cards */}
       <div className="mx-auto max-w-2xl space-y-4 px-6 py-10">
         {manifest.apps.map((app) => (
           <div
@@ -104,7 +101,7 @@ export default async function PublicDownloadPage({
               {app.available ? (
                 <a
                   href={`/downloads/${token}/${app.app_name}`}
-                  className="ink-gradient inline-flex w-full items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold text-on-primary shadow-sm transition hover:opacity-90 active:scale-[0.98]"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-on-surface px-6 py-3 text-sm font-semibold text-surface shadow-sm transition hover:opacity-90 active:scale-[0.98]"
                 >
                   <span className="material-symbols-outlined text-lg">download</span>
                   Download APK

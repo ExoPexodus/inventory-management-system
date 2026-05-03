@@ -57,6 +57,7 @@ export function middleware(req: NextRequest) {
   if (pathname.startsWith("/api")) return NextResponse.next();
   if (pathname.startsWith("/login")) return NextResponse.next();
   if (pathname.startsWith("/_next")) return NextResponse.next();
+  if (pathname.startsWith("/downloads")) return NextResponse.next();
   if (pathname === "/favicon.ico") return NextResponse.next();
 
   const token = req.cookies.get(OPERATOR_JWT_COOKIE)?.value;

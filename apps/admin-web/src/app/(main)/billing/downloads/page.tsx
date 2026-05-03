@@ -59,7 +59,8 @@ export default function DownloadsPage() {
     void load();
   }, []);
 
-  const publicUrl = info?.download_base_url ?? null;
+  const token = info?.download_token ?? null;
+  const publicUrl = token ? `${typeof window !== "undefined" ? window.location.origin : ""}/downloads/${token}` : null;
 
   const handleCopy = () => {
     if (publicUrl) {
@@ -116,13 +117,13 @@ export default function DownloadsPage() {
                 name="Cashier POS"
                 icon="point_of_sale"
                 description="Offline-first point-of-sale app for your staff. Handles sales, inventory lookup, and shift management."
-                downloadUrl={publicUrl ? `${publicUrl}/cashier/latest` : null}
+                downloadUrl={token ? `/downloads/${token}/cashier` : null}
               />
               <AppCard
                 name="Admin Mobile"
                 icon="admin_panel_settings"
                 description="Mobile companion for store owners. View orders, analytics, and manage staff on the go."
-                downloadUrl={publicUrl ? `${publicUrl}/admin_mobile/latest` : null}
+                downloadUrl={token ? `/downloads/${token}/admin_mobile` : null}
               />
             </div>
           </section>

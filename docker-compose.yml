@@ -70,6 +70,7 @@ services:
       dockerfile: Dockerfile
     environment:
       API_INTERNAL_URL: http://api:8000
+      PLATFORM_INTERNAL_URL: http://platform:8000
       # Plain HTTP on LAN / localhost: keep "false". Set "true" only behind HTTPS.
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     ports:
