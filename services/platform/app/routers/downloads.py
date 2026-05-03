@@ -28,6 +28,7 @@ class AppManifestItem(BaseModel):
     display_name: str
     description: str
     version: str | None
+    version_code: int | None
     changelog: str | None
     size_mb: float | None
     available: bool
@@ -98,6 +99,7 @@ def download_manifest(
             display_name=display_name,
             description=description,
             version=release.version if release else None,
+            version_code=release.version_code if release else None,
             changelog=release.changelog if release else None,
             size_mb=round(release.file_size_bytes / (1024 * 1024), 1) if release and release.file_size_bytes else None,
             available=release is not None,
