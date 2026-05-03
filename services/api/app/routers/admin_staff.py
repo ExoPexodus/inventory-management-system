@@ -459,8 +459,10 @@ def invite_employee(
             )
 
     shop_id = employee.shop_id
-    if shop_id is None and body.app_target != "admin_mobile":
-        shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=None)
+    if shop_id is None:
+        shops = db.execute(select(Shop).where(Shop.tenant_id == tenant_id)).scalars().all()
+        if len(shops) == 1:
+            shop_id = shops[0].id
     token, expires_at = _create_enrollment_token(
         db,
         tenant_id=tenant_id,
@@ -516,7 +518,11 @@ def re_enroll_employee(
     employee.device_id = None
     shop_id = employee.shop_id
     if shop_id is None:
-        shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=None)
+        # Auto-assign only when there is exactly one shop; otherwise keep None
+        # (admin mobile sees all shops; cashier with no shop will be assigned at login).
+        shops = db.execute(select(Shop).where(Shop.tenant_id == tenant_id)).scalars().all()
+        if len(shops) == 1:
+            shop_id = shops[0].id
     token, expires_at = _create_enrollment_token(
         db,
         tenant_id=tenant_id,
