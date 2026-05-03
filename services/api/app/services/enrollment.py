@@ -34,14 +34,16 @@ def enroll_device(
 
     set_rls_context(db, is_admin=False, tenant_id=row.tenant_id)
 
-    shop = db.get(Shop, row.shop_id)
-    if shop is None:
-        raise ValueError("shop_missing")
+    # shop_id is None for admin_mobile enrollments with no shop restriction.
+    if row.shop_id is not None:
+        shop = db.get(Shop, row.shop_id)
+        if shop is None:
+            raise ValueError("shop_missing")
 
     refresh_raw = secrets.token_urlsafe(48)
     device = Device(
         tenant_id=row.tenant_id,
-        default_shop_id=row.shop_id,
+        default_shop_id=row.shop_id,  # None = no shop restriction (admin mobile all-shops)
         fingerprint=fingerprint,
         refresh_token_hash=hash_token(refresh_raw),
     )
@@ -55,19 +57,20 @@ def enroll_device(
         if user is not None and user.tenant_id == row.tenant_id:
             user.device_id = device.id
             user_name = user.name
-            # Derive credential type from which hash is set
             if user.pin_hash:
                 user_credential_type = "pin"
             elif user.password_hash:
                 user_credential_type = "password"
 
+    # Empty shop_ids in the JWT means the device can access all shops for the tenant.
+    enrolled_shop_ids = [row.shop_id] if row.shop_id is not None else []
     access, ttl = create_access_token(
         device_id=device.id,
         tenant_id=device.tenant_id,
-        shop_ids=[row.shop_id],
+        shop_ids=enrolled_shop_ids,
     )
     db.commit()
-    return access, refresh_raw, device.tenant_id, [row.shop_id], ttl, row.user_id, user_name, user_credential_type
+    return access, refresh_raw, device.tenant_id, enrolled_shop_ids, ttl, row.user_id, user_name, user_credential_type
 
 
 def refresh_device_tokens(
@@ -85,7 +88,7 @@ def refresh_device_tokens(
 
     set_rls_context(db, is_admin=False, tenant_id=device.tenant_id)
 
-    shop_ids = [device.default_shop_id]
+    shop_ids = [device.default_shop_id] if device.default_shop_id is not None else []
     new_refresh = secrets.token_urlsafe(48)
     device.refresh_token_hash = hash_token(new_refresh)
     db.flush()

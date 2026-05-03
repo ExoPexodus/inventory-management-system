@@ -108,7 +108,7 @@ def _create_enrollment_token(
     db: Session,
     *,
     tenant_id: UUID,
-    shop_id: UUID,
+    shop_id: UUID | None,
     user_id: UUID,
     ttl_hours: int,
     app_target: str = "cashier",
@@ -334,7 +334,13 @@ def create_employee(
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> EmployeeOut:
     tenant_id = _require_operator_tenant(ctx)
-    shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=body.shop_id)
+    # shop_id is optional — admin mobile users have no shop (sees all shops).
+    # For cashier users with no explicit shop, auto-assign when there's only one shop.
+    if body.shop_id is None:
+        shops = db.execute(select(Shop).where(Shop.tenant_id == tenant_id)).scalars().all()
+        shop_id: UUID | None = shops[0].id if len(shops) == 1 else None
+    else:
+        shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=body.shop_id)
     role_id = _resolve_role_for_position(db, tenant_id, body.position)
     hashed = _hash_credential(body.initial_credential.strip())
     row = User(
@@ -389,7 +395,10 @@ def patch_employee(
     if "position" in patch and patch["position"] is not None:
         row.role_id = _resolve_role_for_position(db, tenant_id, patch["position"])
     if "shop_id" in patch:
-        row.shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=patch["shop_id"])
+        if patch["shop_id"] is None:
+            row.shop_id = None
+        else:
+            row.shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=patch["shop_id"])
     if "is_active" in patch and patch["is_active"] is not None:
         row.is_active = patch["is_active"]
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.user_id, action="update_employee", resource_type="user", resource_id=str(employee_id))
@@ -450,7 +459,7 @@ def invite_employee(
             )
 
     shop_id = employee.shop_id
-    if shop_id is None:
+    if shop_id is None and body.app_target != "admin_mobile":
         shop_id = _resolve_shop_for_employee(db, tenant_id=tenant_id, requested_shop_id=None)
     token, expires_at = _create_enrollment_token(
         db,
