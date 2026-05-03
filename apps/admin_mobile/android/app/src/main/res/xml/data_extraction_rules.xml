@@ -3,20 +3,15 @@
     Data extraction rules for API level 31+.
     For API 30 and below see backup_rules.xml.
 
-    Included:
-      - FlutterSharedPreferences: auth tokens, server URL, user session
-
-    Excluded:
-      - FlutterSecureStorage: EncryptedSharedPreferences backed by Android Keystore;
-        the key is device-bound and cannot be restored on a different device or after reinstall.
+    Using <include> means only the listed paths are backed up; everything else
+    (including FlutterSecureStorage / EncryptedSharedPreferences) is implicitly
+    excluded — no need for an explicit <exclude> rule.
 -->
 <data-extraction-rules disableIfNoEncryptionCapabilities="true">
     <cloud-backup>
         <include domain="sharedpref" path="FlutterSharedPreferences" />
-        <exclude domain="sharedpref" path="FlutterSecureStorage" />
     </cloud-backup>
     <device-transfer>
         <include domain="sharedpref" path="FlutterSharedPreferences" />
-        <exclude domain="sharedpref" path="FlutterSecureStorage" />
     </device-transfer>
 </data-extraction-rules>

@@ -3,24 +3,17 @@
     Data extraction rules for API level 31+.
     For API 30 and below see backup_rules.xml.
 
-    Included:
-      - FlutterSharedPreferences: device enrollment tokens, sync state, policies, employee sessions
-      - cashier_outbox.db: offline sale events waiting to sync to the server
-
-    Excluded:
-      - FlutterSecureStorage: EncryptedSharedPreferences backed by Android Keystore;
-        the key is device-bound and cannot be restored, so backing up the ciphertext
-        without the key would corrupt data on restore.
+    Using <include> means only the listed paths are backed up; everything else
+    (including FlutterSecureStorage / EncryptedSharedPreferences) is implicitly
+    excluded — no need for an explicit <exclude> rule.
 -->
 <data-extraction-rules disableIfNoEncryptionCapabilities="true">
     <cloud-backup>
         <include domain="sharedpref" path="FlutterSharedPreferences" />
         <include domain="database" path="cashier_outbox.db" />
-        <exclude domain="sharedpref" path="FlutterSecureStorage" />
     </cloud-backup>
     <device-transfer>
         <include domain="sharedpref" path="FlutterSharedPreferences" />
         <include domain="database" path="cashier_outbox.db" />
-        <exclude domain="sharedpref" path="FlutterSecureStorage" />
     </device-transfer>
 </data-extraction-rules>

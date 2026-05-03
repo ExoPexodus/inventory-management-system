@@ -3,14 +3,10 @@
     Auto Backup rules for API level 30 and below.
     For API 31+ see data_extraction_rules.xml.
 
-    Included:
-      - FlutterSharedPreferences: auth tokens, server URL, user session
-
-    Excluded:
-      - FlutterSecureStorage: EncryptedSharedPreferences backed by Android Keystore;
-        the key is device-bound and cannot be restored on a different device or after reinstall.
+    Using <include> means only the listed paths are backed up; everything else
+    (including FlutterSecureStorage / EncryptedSharedPreferences) is implicitly
+    excluded — no need for an explicit <exclude> rule.
 -->
 <full-backup-content>
     <include domain="sharedpref" path="FlutterSharedPreferences" />
-    <exclude domain="sharedpref" path="FlutterSecureStorage" />
 </full-backup-content>
