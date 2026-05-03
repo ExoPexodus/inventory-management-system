@@ -10,6 +10,7 @@ import 'screens/enrollment_screen.dart';
 import 'screens/login_screen.dart';
 import 'services/admin_api.dart';
 import 'services/session_store.dart';
+import 'services/update_service.dart';
 import 'theme.dart';
 
 void main() {
@@ -67,6 +68,25 @@ class _StartupGateState extends State<_StartupGate> {
         _loading = false;
       });
     }
+    // Fire OTA update check using the device token (not operator login token).
+    // /v1/apps/update-check requires device JWT, not operator JWT.
+    if (enrolled && baseUrl != null) {
+      final deviceToken = await SessionStore.getDeviceToken();
+      if (deviceToken != null) {
+        unawaited(_checkForUpdate(baseUrl, deviceToken));
+      }
+    }
+  }
+
+  Future<void> _checkForUpdate(String baseUrl, String deviceToken) async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    final update = await UpdateService.checkForUpdate(
+      baseUrl: baseUrl,
+      accessToken: deviceToken,
+      appName: 'admin_mobile',
+    );
+    if (update == null || !mounted) return;
+    await showUpdateDialog(context, update, deviceToken);
   }
 
   void _onEnrolled() {
