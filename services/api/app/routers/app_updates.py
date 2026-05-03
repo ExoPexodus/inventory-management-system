@@ -80,6 +80,10 @@ def _find_app(apps: list[dict], app_name: str) -> dict | None:
     return next((a for a in apps if a.get("app_name") == app_name), None)
 
 
+def _apk_redirect_url(download_token: str, app_name: str) -> str:
+    return f"{_platform_download_base()}/downloads/{download_token}/{app_name}/latest"
+
+
 # ── Device endpoints ──────────────────────────────────────────────────────────
 
 @router.get("/v1/apps/update-check", response_model=UpdateCheckOut)
@@ -129,7 +133,7 @@ def device_app_download(
     tenant = db.get(Tenant, ctx.tenant_id)
     if tenant is None or not tenant.download_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No download configured for this tenant")
-    target = f"{settings.platform_base_url.rstrip('/')}/downloads/{tenant.download_token}/{app_name}/latest"
+    target = _apk_redirect_url(tenant.download_token, app_name)
     return RedirectResponse(url=target, status_code=302)
 
 
@@ -190,5 +194,5 @@ def admin_app_download(
     tenant = db.get(Tenant, ctx.tenant_id)
     if tenant is None or not tenant.download_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No download configured for this tenant")
-    target = f"{settings.platform_base_url.rstrip('/')}/downloads/{tenant.download_token}/{app_name}/latest"
+    target = _apk_redirect_url(tenant.download_token, app_name)
     return RedirectResponse(url=target, status_code=302)
