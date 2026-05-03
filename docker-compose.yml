@@ -104,6 +104,7 @@ services:
       REDIS_URL: redis://redis:6379/1
       JWT_SECRET: ${PLATFORM_JWT_SECRET:-platform-dev-jwt-secret}
       MAIN_API_URL: http://api:8000
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-change-me-admin-token}
       STORAGE_PATH: /data/uploads
     ports:
       - "${PLATFORM_PUBLISH_PORT:-8002}:8000"

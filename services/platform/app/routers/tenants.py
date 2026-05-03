@@ -18,6 +18,7 @@ from app.db.session import get_db
 from app.models import PlatformTenant
 from app.services.audit_service import write_audit
 from app.services.tenant_config_push import push_tenant_currency_config
+from app.services.tenant_provision import provision_tenant
 
 router = APIRouter(prefix="/v1/platform/tenants", tags=["Platform Tenants"])
 
@@ -37,6 +38,8 @@ class TenantCreate(BaseModel):
     currency_exponent: int = Field(default=2, ge=0, le=4)
     currency_symbol_override: str | None = Field(default=None, max_length=8)
     deployment_mode: str = Field(default="cloud", pattern="^(cloud|on_prem)$")
+    initial_admin_email: str
+    initial_admin_password: str = Field(min_length=8)
 
 
 class TenantPatch(BaseModel):
@@ -158,6 +161,17 @@ def create_tenant(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tenant slug already exists")
 
     write_audit(db, operator_id=ctx.operator_id, action="create_tenant", resource_type="tenant", resource_id=str(tenant.id))
+
+    # Provision the tenant in the main API (creates tenant + owner role + initial admin).
+    # Roll back if the API call fails so no orphan platform tenant is created.
+    result = provision_tenant(tenant, body.initial_admin_email, body.initial_admin_password)
+    if not result.ok:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Tenant created but API provisioning failed: {result.error}",
+        )
+
     db.commit()
     db.refresh(tenant)
     return _to_out(tenant)

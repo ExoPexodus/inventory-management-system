@@ -28,6 +28,7 @@ from app.routers import (
     health,
     internal_sync,
     inventory,
+    platform_provision,
     notifications,
     reporting,
     shops,
@@ -83,3 +84,4 @@ app.include_router(admin_reports.router)
 app.include_router(audit.router)
 app.include_router(notifications.router)
 app.include_router(internal_sync.router)
+app.include_router(platform_provision.router)

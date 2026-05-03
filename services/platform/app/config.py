@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     jwt_secret: str = "platform-dev-only-change-me"
     jwt_access_expire_minutes: int = 60 * 24
     main_api_url: str = "http://localhost:8001"
+    admin_api_token: str = "change-me-admin-token"
     storage_path: str = "./uploads"
 
 

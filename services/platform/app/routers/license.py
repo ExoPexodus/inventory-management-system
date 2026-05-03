@@ -100,6 +100,7 @@ def get_license(
             current_period_end=None,
             grace_period_days=0,
             is_in_grace_period=False,
+            download_token=tenant.download_token,
         )
 
     db.commit()  # persist any status changes (e.g. past_due → expired)
