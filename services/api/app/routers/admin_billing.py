@@ -367,11 +367,8 @@ def get_app_downloads(
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
     base_url = None
-    if tenant.download_token and settings.platform_api_url:
-        # In production, platform_api_url is the public-facing platform URL
-        # For dev, we use the public port (8002)
-        platform_public = settings.platform_api_url.replace("http://platform:8000", "http://localhost:8002")
-        base_url = f"{platform_public}/downloads/{tenant.download_token}"
+    if tenant.download_token:
+        base_url = f"{settings.platform_web_url.rstrip('/')}/downloads/{tenant.download_token}"
     return AppDownloadOut(
         download_token=tenant.download_token,
         download_base_url=base_url,

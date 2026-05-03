@@ -11,6 +11,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse, HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,21 @@ from app.services.rate_limiter import download_page_limiter, file_download_limit
 from app.services.storage_service import get_file_path
 
 router = APIRouter(tags=["Public Downloads"])
+
+
+class AppManifestItem(BaseModel):
+    app_name: str
+    display_name: str
+    description: str
+    version: str | None
+    changelog: str | None
+    size_mb: float | None
+    available: bool
+
+
+class DownloadManifest(BaseModel):
+    tenant_name: str
+    apps: list[AppManifestItem]
 
 _jinja_env: Environment | None = None
 
@@ -57,6 +73,37 @@ def _latest_releases(db: Session) -> dict[str, AppRelease | None]:
         ).scalar_one_or_none()
         result[app_name] = row
     return result
+
+
+@router.get("/downloads/{token}/manifest", response_model=DownloadManifest)
+def download_manifest(
+    token: str,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> DownloadManifest:
+    """JSON manifest used by the platform-web download page (no auth required)."""
+    download_page_limiter.check(get_client_ip(request))
+    tenant = _resolve_tenant(db, token)
+    releases = _latest_releases(db)
+
+    apps = []
+    meta = {
+        "cashier": ("Cashier POS", "Offline-first point-of-sale app for your staff."),
+        "admin_mobile": ("Admin Mobile", "Mobile companion for store owners and managers."),
+    }
+    for app_name, release in releases.items():
+        display_name, description = meta[app_name]
+        apps.append(AppManifestItem(
+            app_name=app_name,
+            display_name=display_name,
+            description=description,
+            version=release.version if release else None,
+            changelog=release.changelog if release else None,
+            size_mb=round(release.file_size_bytes / (1024 * 1024), 1) if release and release.file_size_bytes else None,
+            available=release is not None,
+        ))
+
+    return DownloadManifest(tenant_name=tenant.name, apps=apps)
 
 
 @router.get("/downloads/{token}", response_class=HTMLResponse)
