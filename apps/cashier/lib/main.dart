@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -14,6 +16,7 @@ import 'services/authenticated_api.dart';
 import 'services/outbox_crypto.dart';
 import 'services/outbox_db.dart';
 import 'services/session_store.dart';
+import 'services/update_service.dart';
 import 'theme.dart';
 
 void main() {
@@ -66,6 +69,20 @@ class _CashierBootstrapState extends State<CashierBootstrap> {
       _session = s;
       _loading = false;
     });
+    if (s != null) {
+      unawaited(_checkForUpdate(s));
+    }
+  }
+
+  Future<void> _checkForUpdate(SessionData session) async {
+    await Future<void>.delayed(const Duration(seconds: 2));
+    final update = await UpdateService.checkForUpdate(
+      baseUrl: session.baseUrl,
+      accessToken: session.accessToken,
+      appName: 'cashier',
+    );
+    if (update == null || !mounted) return;
+    await showUpdateDialog(context, update, session.accessToken);
   }
 
   @override
