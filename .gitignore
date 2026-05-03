@@ -34,3 +34,4 @@ apps/cashier/.dart_tool/
 apps/cashier/build/
 apps/admin_mobile/.dart_tool/
 apps/admin_mobile/build/
+.worktrees/
