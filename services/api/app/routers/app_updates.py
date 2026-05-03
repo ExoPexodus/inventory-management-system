@@ -81,7 +81,13 @@ def _find_app(apps: list[dict], app_name: str) -> dict | None:
 
 
 def _apk_redirect_url(download_token: str, app_name: str) -> str:
-    return f"{_platform_download_base()}/downloads/{download_token}/{app_name}/latest"
+    base = settings.platform_download_base_url
+    if not base:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PLATFORM_DOWNLOAD_BASE_URL is not configured — contact your administrator.",
+        )
+    return f"{base.rstrip('/')}/downloads/{download_token}/{app_name}/latest"
 
 
 # ── Device endpoints ──────────────────────────────────────────────────────────

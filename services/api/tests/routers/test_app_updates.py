@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminContext
 from app.auth.deps import DeviceAuth
+from app.config import settings
 from app.models import Tenant
 from app.routers.app_updates import (
     DownloadsOut,
@@ -126,6 +127,51 @@ def test_device_app_download_no_token_raises_404(db: Session, tenant: Tenant) ->
 def test_admin_app_download_redirects(db: Session, tenant: Tenant) -> None:
     tenant.download_token = "tok123"
     db.commit()
-    result = admin_app_download(app_name="cashier", ctx=_admin_ctx(tenant.id), db=db)
+    with patch.object(settings, "platform_download_base_url", "http://platform.example.com"):
+        result = admin_app_download(app_name="cashier", ctx=_admin_ctx(tenant.id), db=db)
     assert isinstance(result, RedirectResponse)
     assert result.status_code == 302
+    location = result.headers.get("location", "")
+    assert "tok123" in location
+    assert "cashier" in location
+
+
+def test_device_app_download_redirects(db: Session, tenant: Tenant) -> None:
+    tenant.download_token = "tok456"
+    db.commit()
+    with patch.object(settings, "platform_download_base_url", "http://platform.example.com"):
+        result = device_app_download(app_name="cashier", ctx=_device_ctx(tenant.id), db=db)
+    assert isinstance(result, RedirectResponse)
+    assert result.status_code == 302
+    location = result.headers.get("location", "")
+    assert "tok456" in location
+    assert "cashier" in location
+
+
+def test_device_app_download_503_when_no_download_base_url(db: Session, tenant: Tenant) -> None:
+    tenant.download_token = "tok789"
+    db.commit()
+    with patch.object(settings, "platform_download_base_url", ""):
+        with pytest.raises(HTTPException) as exc:
+            device_app_download(app_name="cashier", ctx=_device_ctx(tenant.id), db=db)
+    assert exc.value.status_code == 503
+
+
+def test_admin_downloads_no_tenant_context_raises_403(db: Session) -> None:
+    ctx = AdminContext(
+        user_id=None, tenant_id=None, role=None,
+        role_id=None, is_legacy_token=False, permissions=frozenset(),
+    )
+    with pytest.raises(HTTPException) as exc:
+        admin_downloads(ctx=ctx, db=db)
+    assert exc.value.status_code == 403
+
+
+def test_admin_app_download_no_tenant_context_raises_403(db: Session) -> None:
+    ctx = AdminContext(
+        user_id=None, tenant_id=None, role=None,
+        role_id=None, is_legacy_token=False, permissions=frozenset(),
+    )
+    with pytest.raises(HTTPException) as exc:
+        admin_app_download(app_name="cashier", ctx=ctx, db=db)
+    assert exc.value.status_code == 403

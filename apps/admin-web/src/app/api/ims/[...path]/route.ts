@@ -31,6 +31,8 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
   const res = new NextResponse(body, { status: r.status });
   const outCt = r.headers.get("content-type");
   if (outCt) res.headers.set("content-type", outCt);
+  const loc = r.headers.get("location");
+  if (loc) res.headers.set("location", loc);
   return res;
 }
 
