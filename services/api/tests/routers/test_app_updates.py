@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminContext
@@ -136,25 +136,28 @@ def test_admin_app_download_redirects(db: Session, tenant: Tenant) -> None:
     assert "cashier" in location
 
 
-def test_device_app_download_redirects(db: Session, tenant: Tenant) -> None:
+def test_device_app_download_streams_apk(db: Session, tenant: Tenant) -> None:
     tenant.download_token = "tok456"
     db.commit()
-    with patch.object(settings, "platform_download_base_url", "http://platform.example.com"):
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-length": "1000"}
+    mock_response.iter_bytes.return_value = iter([b"fake-apk-data"])
+
+    mock_client = MagicMock()
+    mock_client.build_request.return_value = MagicMock()
+    mock_client.send.return_value = mock_response
+
+    with patch("app.routers.app_updates.httpx.Client", return_value=mock_client):
         result = device_app_download(app_name="cashier", ctx=_device_ctx(tenant.id), db=db)
-    assert isinstance(result, RedirectResponse)
-    assert result.status_code == 302
-    location = result.headers.get("location", "")
-    assert "tok456" in location
-    assert "cashier" in location
 
-
-def test_device_app_download_503_when_no_download_base_url(db: Session, tenant: Tenant) -> None:
-    tenant.download_token = "tok789"
-    db.commit()
-    with patch.object(settings, "platform_download_base_url", ""):
-        with pytest.raises(HTTPException) as exc:
-            device_app_download(app_name="cashier", ctx=_device_ctx(tenant.id), db=db)
-    assert exc.value.status_code == 503
+    assert isinstance(result, StreamingResponse)
+    assert result.media_type == "application/vnd.android.package-archive"
+    # Platform URL is never exposed — the client only calls the tenant API
+    call_url = mock_client.build_request.call_args[0][1]
+    assert "tok456" in call_url
+    assert "cashier" in call_url
 
 
 def test_admin_downloads_no_tenant_context_raises_403(db: Session) -> None:

@@ -6,7 +6,7 @@ from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -133,14 +133,34 @@ def device_app_download(
     app_name: str,
     ctx: Annotated[DeviceAuth, Depends(get_device_auth)],
     db: Annotated[Session, Depends(get_db)],
-) -> RedirectResponse:
+) -> StreamingResponse:
     if app_name not in _APP_META:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown app_name")
     tenant = db.get(Tenant, ctx.tenant_id)
     if tenant is None or not tenant.download_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No download configured for this tenant")
-    target = _apk_redirect_url(tenant.download_token, app_name)
-    return RedirectResponse(url=target, status_code=302)
+
+    # Stream APK bytes from the platform service so devices only ever talk to the
+    # tenant API — the platform URL is never exposed to clients.
+    url = f"{settings.platform_base_url.rstrip('/')}/downloads/{tenant.download_token}/{app_name}/latest"
+    client = httpx.Client()
+    r = client.send(client.build_request("GET", url), stream=True)
+    if r.status_code != 200:
+        r.close()
+        client.close()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No active release for {app_name}")
+
+    def _stream():
+        try:
+            yield from r.iter_bytes()
+        finally:
+            r.close()
+            client.close()
+
+    headers = {"Content-Disposition": f'attachment; filename="{app_name}-latest.apk"'}
+    if cl := r.headers.get("content-length"):
+        headers["Content-Length"] = cl
+    return StreamingResponse(_stream(), media_type="application/vnd.android.package-archive", headers=headers)
 
 
 # ── Admin endpoints ───────────────────────────────────────────────────────────
