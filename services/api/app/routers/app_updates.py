@@ -2,12 +2,20 @@
 from __future__ import annotations
 
 import logging
+from typing import Annotated
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
+from app.auth.admin_deps import AdminAuthDep, require_permission
+from app.auth.deps import DeviceAuth, get_device_auth
 from app.config import settings
+from app.db.admin_deps_db import get_db_admin
+from app.db.session import get_db
+from app.models import Tenant
 
 router = APIRouter(tags=["App Updates"])
 logger = logging.getLogger(__name__)
@@ -70,3 +78,117 @@ def _fetch_manifest(download_token: str) -> list[dict]:
 
 def _find_app(apps: list[dict], app_name: str) -> dict | None:
     return next((a for a in apps if a.get("app_name") == app_name), None)
+
+
+# ── Device endpoints ──────────────────────────────────────────────────────────
+
+@router.get("/v1/apps/update-check", response_model=UpdateCheckOut)
+def update_check(
+    ctx: Annotated[DeviceAuth, Depends(get_device_auth)],
+    db: Annotated[Session, Depends(get_db)],
+    app_name: str = Query(...),
+) -> UpdateCheckOut:
+    if app_name not in _APP_META:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown app_name")
+
+    tenant = db.get(Tenant, ctx.tenant_id)
+    if tenant is None or not tenant.download_token:
+        return UpdateCheckOut(
+            app_name=app_name, version=None, version_code=None,
+            changelog=None, size_mb=None, download_url=None, available=False,
+        )
+
+    apps = _fetch_manifest(tenant.download_token)
+    app = _find_app(apps, app_name)
+    if app is None or not app.get("available"):
+        return UpdateCheckOut(
+            app_name=app_name, version=None, version_code=None,
+            changelog=None, size_mb=None, download_url=None, available=False,
+        )
+
+    download_url = f"{settings.public_api_url.rstrip('/')}/v1/apps/{app_name}/download"
+    return UpdateCheckOut(
+        app_name=app_name,
+        version=app.get("version"),
+        version_code=app.get("version_code"),
+        changelog=app.get("changelog"),
+        size_mb=app.get("size_mb"),
+        download_url=download_url,
+        available=True,
+    )
+
+
+@router.get("/v1/apps/{app_name}/download")
+def device_app_download(
+    app_name: str,
+    ctx: Annotated[DeviceAuth, Depends(get_device_auth)],
+    db: Annotated[Session, Depends(get_db)],
+) -> RedirectResponse:
+    if app_name not in _APP_META:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown app_name")
+    tenant = db.get(Tenant, ctx.tenant_id)
+    if tenant is None or not tenant.download_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No download configured for this tenant")
+    target = f"{settings.platform_base_url.rstrip('/')}/downloads/{tenant.download_token}/{app_name}/latest"
+    return RedirectResponse(url=target, status_code=302)
+
+
+# ── Admin endpoints ───────────────────────────────────────────────────────────
+
+@router.get(
+    "/v1/admin/apps/downloads",
+    response_model=DownloadsOut,
+    dependencies=[require_permission("settings:read")],
+)
+def admin_downloads(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> DownloadsOut:
+    if ctx.tenant_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant context required")
+    tenant = db.get(Tenant, ctx.tenant_id)
+    if tenant is None or not tenant.download_token:
+        return DownloadsOut(download_page_url="", apps=[])
+
+    page_url = f"{_platform_download_base()}/downloads/{tenant.download_token}"
+    raw_apps = _fetch_manifest(tenant.download_token)
+
+    apps: list[AppInfo] = []
+    for raw in raw_apps:
+        app_name = raw.get("app_name", "")
+        if app_name not in _APP_META:
+            continue
+        display_name, description = _APP_META[app_name]
+        apps.append(AppInfo(
+            app_name=app_name,
+            display_name=raw.get("display_name") or display_name,
+            description=raw.get("description") or description,
+            version=raw.get("version"),
+            version_code=raw.get("version_code"),
+            changelog=raw.get("changelog"),
+            size_mb=raw.get("size_mb"),
+            available=raw.get("available", False),
+            admin_download_url=f"/v1/admin/apps/{app_name}/download" if raw.get("available") else None,
+        ))
+
+    return DownloadsOut(download_page_url=page_url, apps=apps)
+
+
+@router.get(
+    "/v1/admin/apps/{app_name}/download",
+    dependencies=[require_permission("settings:read")],
+)
+def admin_app_download(
+    app_name: str,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> RedirectResponse:
+    if app_name not in _APP_META:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown app_name")
+    if ctx.tenant_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tenant context required")
+    tenant = db.get(Tenant, ctx.tenant_id)
+    if tenant is None or not tenant.download_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No download configured for this tenant")
+    target = f"{settings.platform_base_url.rstrip('/')}/downloads/{tenant.download_token}/{app_name}/latest"
+    return RedirectResponse(url=target, status_code=302)
