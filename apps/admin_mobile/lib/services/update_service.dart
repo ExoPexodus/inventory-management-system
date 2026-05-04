@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
@@ -32,10 +34,9 @@ class UpdateService {
   static const _kChannelId = 'ims_app_updates';
   static const _kNotifId = 1001;
 
-  // Path of downloaded APK, kept so notification tap can trigger install.
   static String? _pendingApkPath;
-  // Throttle: skip notification update if change < 3%.
   static int _lastNotifPercent = -1;
+  static const _kInstallChannel = MethodChannel('ims/apk_install');
 
   // ── Initialization ───────────────────────────────────────────────────────
 
@@ -265,7 +266,41 @@ class UpdateService {
     }
   }
 
-  static Future<void> installApk(String filePath) async {
+  /// Returns true if install was attempted, false if permission was missing
+  /// (in which case the "Install unknown apps" settings screen was opened).
+  static Future<bool> installApk(String filePath) async {
+    try {
+      final canInstall =
+          await _kInstallChannel.invokeMethod<bool>('canInstallPackages') ?? true;
+      if (!canInstall) {
+        await _kInstallChannel.invokeMethod('openInstallSettings');
+        // Settings opened — user needs to enable permission, then tap notification to retry.
+        await _showPermissionRequiredNotification();
+        return false;
+      }
+    } on MissingPluginException {
+      // Platform channel not available (e.g. on iOS / desktop preview) — fall through.
+    }
     await OpenFile.open(filePath, type: 'application/vnd.android.package-archive');
+    return true;
+  }
+
+  static Future<void> _showPermissionRequiredNotification() async {
+    await _plugin.show(
+      _kNotifId,
+      'Permission required',
+      'Enable "Install unknown apps" for this app in Settings, then tap here to install.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _kChannelId,
+          'App Updates',
+          channelDescription: 'App update download progress',
+          importance: Importance.high,
+          priority: Priority.high,
+          ongoing: false,
+          playSound: true,
+        ),
+      ),
+    );
   }
 }

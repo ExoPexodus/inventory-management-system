@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
@@ -34,6 +36,7 @@ class UpdateService {
 
   static String? _pendingApkPath;
   static int _lastNotifPercent = -1;
+  static const _kInstallChannel = MethodChannel('ims/apk_install');
 
   // ── Initialization ───────────────────────────────────────────────────────
 
@@ -258,7 +261,38 @@ class UpdateService {
     }
   }
 
-  static Future<void> installApk(String filePath) async {
+  static Future<bool> installApk(String filePath) async {
+    try {
+      final canInstall =
+          await _kInstallChannel.invokeMethod<bool>('canInstallPackages') ?? true;
+      if (!canInstall) {
+        await _kInstallChannel.invokeMethod('openInstallSettings');
+        await _showPermissionRequiredNotification();
+        return false;
+      }
+    } on MissingPluginException {
+      // Fall through if channel unavailable.
+    }
     await OpenFile.open(filePath, type: 'application/vnd.android.package-archive');
+    return true;
+  }
+
+  static Future<void> _showPermissionRequiredNotification() async {
+    await _plugin.show(
+      _kNotifId,
+      'Permission required',
+      'Enable "Install unknown apps" for this app in Settings, then tap here to install.',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _kChannelId,
+          'App Updates',
+          channelDescription: 'App update download progress',
+          importance: Importance.high,
+          priority: Priority.high,
+          ongoing: false,
+          playSound: true,
+        ),
+      ),
+    );
   }
 }
