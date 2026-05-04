@@ -54,22 +54,27 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
     _load();
   }
 
+  static const _pageSize = 20;
+
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; _nextCursor = null; });
     try {
       final session = await SessionStore.load();
       if (session == null) { widget.onLogout(); return; }
       _api = AdminApi(session.baseUrl, session.token);
-      final data = await _api!.getPurchaseOrders(
+      final raw = await _api!.getPurchaseOrders(
         status: _filterStatus.toLowerCase() == 'all' ? null : _filterStatus.toLowerCase(),
+        limit: _pageSize,
       );
       if (!mounted) return;
-      final items = (data['items'] as List<dynamic>? ?? [])
+      final items = raw
           .map((e) => PurchaseOrder.fromJson(e as Map<String, dynamic>))
           .toList();
+      // Use the last item's created_at as cursor if a full page was returned.
+      final cursor = items.length >= _pageSize ? items.last.createdAt : null;
       setState(() {
         _orders = items;
-        _nextCursor = data['next_cursor'] as String?;
+        _nextCursor = cursor;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -84,17 +89,19 @@ class _PurchaseOrdersScreenState extends State<PurchaseOrdersScreen> {
     if (_loadingMore || _nextCursor == null || _api == null) return;
     setState(() => _loadingMore = true);
     try {
-      final data = await _api!.getPurchaseOrders(
+      final raw = await _api!.getPurchaseOrders(
         status: _filterStatus.toLowerCase() == 'all' ? null : _filterStatus.toLowerCase(),
         cursor: _nextCursor,
+        limit: _pageSize,
       );
-      final items = (data['items'] as List<dynamic>? ?? [])
+      final items = raw
           .map((e) => PurchaseOrder.fromJson(e as Map<String, dynamic>))
           .toList();
       if (!mounted) return;
+      final cursor = items.length >= _pageSize ? items.last.createdAt : null;
       setState(() {
         _orders.addAll(items);
-        _nextCursor = data['next_cursor'] as String?;
+        _nextCursor = cursor;
         _loadingMore = false;
       });
     } catch (_) {

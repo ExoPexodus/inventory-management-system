@@ -256,7 +256,7 @@ class AdminApi {
   // ── Purchase Orders ──────────────────────────────────────────────────
 
   /// Returns {items: [...POOut], next_cursor: String?}
-  Future<Map<String, dynamic>> getPurchaseOrders({
+  Future<List<dynamic>> getPurchaseOrders({
     String? status,
     String? cursor,
     int limit = 20,
@@ -264,7 +264,7 @@ class AdminApi {
     final params = <String, String>{'limit': '$limit'};
     if (status != null && status != 'all') params['status'] = status;
     if (cursor != null) params['cursor'] = cursor;
-    return _get('/v1/admin/purchase-orders', params);
+    return _getList('/v1/admin/purchase-orders', params);
   }
 
   Future<PurchaseOrder> getPurchaseOrder(String id) async {
