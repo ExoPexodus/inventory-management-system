@@ -68,25 +68,31 @@ class _StartupGateState extends State<_StartupGate> {
         _loading = false;
       });
     }
-    // Fire OTA update check using the device token (not operator login token).
-    // /v1/apps/update-check requires device JWT, not operator JWT.
+    // Fire OTA update check. Prefer the operator token (long-lived) so device
+    // token expiry (24h) doesn't silently kill the update prompt.
     if (enrolled && baseUrl != null) {
+      final operatorToken = session?.token;
       final deviceToken = await SessionStore.getDeviceToken();
-      if (deviceToken != null) {
-        unawaited(_checkForUpdate(baseUrl, deviceToken));
+      final token = operatorToken ?? deviceToken;
+      if (token != null) {
+        unawaited(_checkForUpdate(baseUrl, token, useAdminEndpoint: operatorToken != null));
       }
     }
   }
 
-  Future<void> _checkForUpdate(String baseUrl, String deviceToken) async {
+  Future<void> _checkForUpdate(String baseUrl, String token, {bool useAdminEndpoint = false}) async {
     await Future<void>.delayed(const Duration(seconds: 2));
     final update = await UpdateService.checkForUpdate(
       baseUrl: baseUrl,
-      accessToken: deviceToken,
+      accessToken: token,
       appName: 'admin_mobile',
+      useAdminEndpoint: useAdminEndpoint,
     );
     if (update == null || !mounted) return;
-    await showUpdateDialog(context, update, deviceToken);
+    // Download always uses the device endpoint (streams APK via device JWT).
+    // If we only have an operator token, pass it — the download endpoint also
+    // accepts operator JWT via /v1/admin/apps/{name}/download redirect.
+    await showUpdateDialog(context, update, token);
   }
 
   void _onEnrolled() {

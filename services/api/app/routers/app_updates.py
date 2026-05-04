@@ -128,6 +128,54 @@ def update_check(
     )
 
 
+# ── Admin update-check (operator JWT) ────────────────────────────────────────
+
+@router.get(
+    "/v1/admin/apps/update-check",
+    response_model=UpdateCheckOut,
+    dependencies=[require_permission("settings:read")],
+)
+def admin_update_check(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+    app_name: str = Query(...),
+) -> UpdateCheckOut:
+    """Update check for the admin mobile app using operator JWT (avoids device token expiry)."""
+    if app_name not in _APP_META:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown app_name")
+    if ctx.tenant_id is None:
+        return UpdateCheckOut(
+            app_name=app_name, version=None, version_code=None,
+            changelog=None, size_mb=None, download_url=None, available=False,
+        )
+
+    tenant = db.get(Tenant, ctx.tenant_id)
+    if tenant is None or not tenant.download_token:
+        return UpdateCheckOut(
+            app_name=app_name, version=None, version_code=None,
+            changelog=None, size_mb=None, download_url=None, available=False,
+        )
+
+    apps = _fetch_manifest(tenant.download_token)
+    app = _find_app(apps, app_name)
+    if app is None or not app.get("available"):
+        return UpdateCheckOut(
+            app_name=app_name, version=None, version_code=None,
+            changelog=None, size_mb=None, download_url=None, available=False,
+        )
+
+    download_url = f"{settings.public_api_url.rstrip('/')}/v1/apps/{app_name}/download"
+    return UpdateCheckOut(
+        app_name=app_name,
+        version=app.get("version"),
+        version_code=app.get("version_code"),
+        changelog=app.get("changelog"),
+        size_mb=app.get("size_mb"),
+        download_url=download_url,
+        available=True,
+    )
+
+
 @router.get("/v1/apps/{app_name}/download")
 def device_app_download(
     app_name: str,

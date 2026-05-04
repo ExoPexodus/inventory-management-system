@@ -31,11 +31,13 @@ class UpdateService {
     required String baseUrl,
     required String accessToken,
     required String appName,
+    bool useAdminEndpoint = false,
   }) async {
     try {
       final trimmedBase =
           baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
-      final uri = Uri.parse('$trimmedBase/v1/apps/update-check')
+      final path = useAdminEndpoint ? '/v1/admin/apps/update-check' : '/v1/apps/update-check';
+      final uri = Uri.parse('$trimmedBase$path')
           .replace(queryParameters: {'app_name': appName});
       final resp = await http
           .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
