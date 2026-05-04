@@ -20,9 +20,10 @@ import 'services/session_store.dart';
 import 'services/update_service.dart';
 import 'theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   tz_data.initializeTimeZones();
+  await UpdateService.initialize();
   runApp(
     MultiProvider(
       providers: [
@@ -106,7 +107,11 @@ class _CashierBootstrapState extends State<CashierBootstrap> {
       appName: 'cashier',
     );
     if (update == null || !mounted) return;
-    await showUpdateDialog(context, update, accessToken);
+    await UpdateService.startBackgroundDownload(
+      info: update,
+      accessToken: accessToken,
+      context: mounted ? context : null,
+    );
   }
 
   @override

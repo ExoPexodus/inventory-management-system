@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 import 'package:open_file/open_file.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -27,15 +28,42 @@ class UpdateInfo {
 class UpdateService {
   UpdateService._();
 
-  /// Returns [UpdateInfo] if a newer version is available, null otherwise.
-  /// Never throws — any error returns null so startup is never blocked.
+  static final _plugin = FlutterLocalNotificationsPlugin();
+  static const _kChannelId = 'ims_app_updates';
+  static const _kNotifId = 1001;
+
+  static String? _pendingApkPath;
+  static int _lastNotifPercent = -1;
+
+  // ── Initialization ───────────────────────────────────────────────────────
+
+  static Future<void> initialize() async {
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    await _plugin.initialize(
+      const InitializationSettings(android: androidSettings),
+      onDidReceiveNotificationResponse: _onNotifTap,
+    );
+    await _plugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
+  }
+
+  static Future<void> _onNotifTap(NotificationResponse response) async {
+    final path = _pendingApkPath;
+    if (path != null) await installApk(path);
+  }
+
+  // ── Update detection ─────────────────────────────────────────────────────
+
   static Future<UpdateInfo?> checkForUpdate({
     required String baseUrl,
     required String accessToken,
     required String appName,
   }) async {
     try {
-      final uri = Uri.parse('${baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl}/v1/apps/update-check')
+      final trimmedBase =
+          baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+      final uri = Uri.parse('$trimmedBase/v1/apps/update-check')
           .replace(queryParameters: {'app_name': appName});
       final resp = await http
           .get(uri, headers: {'Authorization': 'Bearer $accessToken'})
@@ -64,9 +92,145 @@ class UpdateService {
     }
   }
 
-  /// Streams the APK from [downloadUrl] to a temp file. Calls [onProgress]
-  /// with a 0.0–1.0 fraction as data arrives. Returns the local file path.
-  static Future<String> downloadApk({
+  // ── Background download ──────────────────────────────────────────────────
+
+  static Future<void> startBackgroundDownload({
+    required UpdateInfo info,
+    required String accessToken,
+    BuildContext? context,
+  }) async {
+    _lastNotifPercent = -1;
+    _pendingApkPath = null;
+    await _showProgress(0, 0.0, info.sizeMb, null);
+
+    final startTime = DateTime.now();
+
+    try {
+      final path = await _downloadApk(
+        downloadUrl: info.downloadUrl,
+        accessToken: accessToken,
+        onProgress: (fraction) async {
+          final percent = (fraction * 100).toInt();
+          if (percent - _lastNotifPercent < 3 && percent < 99) return;
+          _lastNotifPercent = percent;
+
+          double? bytesPerSec;
+          final elapsed = DateTime.now().difference(startTime).inSeconds;
+          if (elapsed > 0 && info.sizeMb != null) {
+            bytesPerSec = (fraction * info.sizeMb! * 1024 * 1024) / elapsed;
+          }
+          await _showProgress(percent, fraction, info.sizeMb, bytesPerSec);
+        },
+      );
+
+      _pendingApkPath = path;
+      await _showComplete(info.version);
+
+      if (context != null && context.mounted) {
+        await _showInstallDialog(context, info.version, path);
+      }
+    } catch (_) {
+      await _plugin.cancel(_kNotifId);
+    }
+  }
+
+  // ── Notifications ────────────────────────────────────────────────────────
+
+  static Future<void> _showProgress(
+    int percent,
+    double fraction,
+    double? sizeMb,
+    double? bytesPerSec,
+  ) async {
+    String body;
+    if (sizeMb != null) {
+      final downloaded = (fraction * sizeMb).toStringAsFixed(1);
+      body = '$downloaded / ${sizeMb.toStringAsFixed(1)} MB';
+    } else {
+      body = '$percent%';
+    }
+    if (bytesPerSec != null && bytesPerSec > 0 && fraction < 0.99 && sizeMb != null) {
+      final remainingSec = ((1 - fraction) * sizeMb * 1024 * 1024) / bytesPerSec;
+      final etaStr = remainingSec < 60
+          ? '${remainingSec.toInt()}s left'
+          : '${(remainingSec / 60).toInt()}m ${(remainingSec % 60).toInt()}s left';
+      body += ' · $etaStr';
+    }
+
+    await _plugin.show(
+      _kNotifId,
+      'Downloading update  $percent%',
+      body,
+      NotificationDetails(
+        android: AndroidNotificationDetails(
+          _kChannelId,
+          'App Updates',
+          channelDescription: 'App update download progress',
+          importance: Importance.low,
+          priority: Priority.low,
+          showProgress: true,
+          maxProgress: 100,
+          progress: percent,
+          ongoing: true,
+          onlyAlertOnce: true,
+          playSound: false,
+          enableVibration: false,
+        ),
+      ),
+    );
+  }
+
+  static Future<void> _showComplete(String version) async {
+    await _plugin.show(
+      _kNotifId,
+      'Update v$version ready',
+      'Tap to install',
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          _kChannelId,
+          'App Updates',
+          channelDescription: 'App update download progress',
+          importance: Importance.high,
+          priority: Priority.high,
+          ongoing: false,
+          playSound: true,
+        ),
+      ),
+    );
+  }
+
+  // ── Install dialog ───────────────────────────────────────────────────────
+
+  static Future<void> _showInstallDialog(
+    BuildContext context,
+    String version,
+    String apkPath,
+  ) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('v$version ready to install'),
+        content: const Text('The update has been downloaded. Install now?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Later'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await installApk(apkPath);
+            },
+            child: const Text('Install Now'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Download / Install ───────────────────────────────────────────────────
+
+  static Future<String> _downloadApk({
     required String downloadUrl,
     required String accessToken,
     required void Function(double) onProgress,
@@ -94,129 +258,7 @@ class UpdateService {
     }
   }
 
-  /// Opens the downloaded APK with the Android install intent.
   static Future<void> installApk(String filePath) async {
     await OpenFile.open(filePath, type: 'application/vnd.android.package-archive');
-  }
-}
-
-
-// ── Update dialog ─────────────────────────────────────────────────────────────
-
-/// Shows a modal update dialog over the current screen.
-Future<void> showUpdateDialog(
-  BuildContext context,
-  UpdateInfo info,
-  String accessToken,
-) {
-  return showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (_) => _UpdateDialog(info: info, accessToken: accessToken),
-  );
-}
-
-enum _Phase { prompt, downloading, done, error }
-
-class _UpdateDialog extends StatefulWidget {
-  const _UpdateDialog({required this.info, required this.accessToken});
-  final UpdateInfo info;
-  final String accessToken;
-
-  @override
-  State<_UpdateDialog> createState() => _UpdateDialogState();
-}
-
-class _UpdateDialogState extends State<_UpdateDialog> {
-  _Phase _phase = _Phase.prompt;
-  double _progress = 0;
-  String? _errorMessage;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: _phase == _Phase.prompt || _phase == _Phase.error,
-      child: AlertDialog(
-        title: Text('Update available  v${widget.info.version}'),
-        content: _buildContent(),
-        actions: _buildActions(),
-      ),
-    );
-  }
-
-  Widget _buildContent() {
-    switch (_phase) {
-      case _Phase.prompt:
-        final sizePart = widget.info.sizeMb != null
-            ? '${widget.info.sizeMb!.toStringAsFixed(1)} MB'
-            : '';
-        final changelog = widget.info.changelog ?? '';
-        final detail = [sizePart, changelog].where((s) => s.isNotEmpty).join(' · ');
-        return Text(
-          detail.isEmpty ? 'A new version is ready to install.' : detail,
-          style: const TextStyle(fontSize: 13),
-        );
-      case _Phase.downloading:
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            LinearProgressIndicator(value: _progress > 0 ? _progress : null),
-            const SizedBox(height: 8),
-            Text('${(_progress * 100).toStringAsFixed(0)}%  Downloading…'),
-          ],
-        );
-      case _Phase.done:
-        return const Text('Installing…');
-      case _Phase.error:
-        return Text(_errorMessage ?? 'Download failed. Please try again later.');
-    }
-  }
-
-  List<Widget>? _buildActions() {
-    switch (_phase) {
-      case _Phase.prompt:
-        return [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Later'),
-          ),
-          ElevatedButton(
-            onPressed: _startDownload,
-            child: const Text('Update Now'),
-          ),
-        ];
-      case _Phase.downloading:
-      case _Phase.done:
-        return null;
-      case _Phase.error:
-        return [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Dismiss'),
-          ),
-        ];
-    }
-  }
-
-  Future<void> _startDownload() async {
-    setState(() => _phase = _Phase.downloading);
-    try {
-      final path = await UpdateService.downloadApk(
-        downloadUrl: widget.info.downloadUrl,
-        accessToken: widget.accessToken,
-        onProgress: (p) {
-          if (mounted) setState(() => _progress = p);
-        },
-      );
-      if (!mounted) return;
-      setState(() => _phase = _Phase.done);
-      await UpdateService.installApk(path);
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _phase = _Phase.error;
-        _errorMessage = 'Download failed. Please try again later.';
-      });
-    }
   }
 }

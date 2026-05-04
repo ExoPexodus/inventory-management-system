@@ -13,8 +13,9 @@ import 'services/session_store.dart';
 import 'services/update_service.dart';
 import 'theme.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await UpdateService.initialize();
   runApp(const AdminApp());
 }
 
@@ -89,10 +90,11 @@ class _StartupGateState extends State<_StartupGate> {
       useAdminEndpoint: useAdminEndpoint,
     );
     if (update == null || !mounted) return;
-    // Download always uses the device endpoint (streams APK via device JWT).
-    // If we only have an operator token, pass it — the download endpoint also
-    // accepts operator JWT via /v1/admin/apps/{name}/download redirect.
-    await showUpdateDialog(context, update, token);
+    await UpdateService.startBackgroundDownload(
+      info: update,
+      accessToken: token,
+      context: mounted ? context : null,
+    );
   }
 
   void _onEnrolled() {
