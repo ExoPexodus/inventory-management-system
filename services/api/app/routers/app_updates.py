@@ -164,7 +164,9 @@ def admin_update_check(
             changelog=None, size_mb=None, download_url=None, available=False,
         )
 
-    download_url = f"{settings.public_api_url.rstrip('/')}/v1/apps/{app_name}/download"
+    # Use the admin download endpoint — it accepts operator JWT and streams bytes
+    # directly so the phone never needs to reach the platform service.
+    download_url = f"{settings.public_api_url.rstrip('/')}/v1/admin/apps/{app_name}/download"
     return UpdateCheckOut(
         app_name=app_name,
         version=app.get("version"),
@@ -260,7 +262,7 @@ def admin_app_download(
     app_name: str,
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
-) -> RedirectResponse:
+) -> StreamingResponse:
     if app_name not in _APP_META:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown app_name")
     if ctx.tenant_id is None:
@@ -268,5 +270,25 @@ def admin_app_download(
     tenant = db.get(Tenant, ctx.tenant_id)
     if tenant is None or not tenant.download_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No download configured for this tenant")
-    target = _apk_redirect_url(tenant.download_token, app_name)
-    return RedirectResponse(url=target, status_code=302)
+
+    # Stream bytes through the tenant API so the phone never needs to reach the
+    # platform service directly (it may only be accessible on the server's network).
+    url = f"{settings.platform_base_url.rstrip('/')}/downloads/{tenant.download_token}/{app_name}/latest"
+    client = httpx.Client()
+    r = client.send(client.build_request("GET", url), stream=True)
+    if r.status_code != 200:
+        r.close()
+        client.close()
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No active release for {app_name}")
+
+    def _stream():
+        try:
+            yield from r.iter_bytes()
+        finally:
+            r.close()
+            client.close()
+
+    headers = {"Content-Disposition": f'attachment; filename="{app_name}-latest.apk"'}
+    if cl := r.headers.get("content-length"):
+        headers["Content-Length"] = cl
+    return StreamingResponse(_stream(), media_type="application/vnd.android.package-archive", headers=headers)
