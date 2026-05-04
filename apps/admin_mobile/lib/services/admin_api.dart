@@ -155,12 +155,9 @@ class AdminApi {
     return AnalyticsSummary.fromJson(data);
   }
 
-  Future<List<SalesPoint>> getSalesSeries({int days = 7, String granularity = 'day'}) async {
-    final data = await _get('/v1/admin/analytics/sales-series', {
-      'days': '$days',
-      'granularity': granularity,
-    });
-    final items = data['items'] as List<dynamic>? ?? [];
+  Future<List<SalesPoint>> getSalesSeries({int days = 7}) async {
+    final data = await _get('/v1/admin/analytics/sales-series', {'days': '$days'});
+    final items = data['points'] as List<dynamic>? ?? [];
     return items.map((e) => SalesPoint.fromJson(e as Map<String, dynamic>)).toList();
   }
 

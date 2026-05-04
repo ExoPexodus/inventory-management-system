@@ -42,11 +42,26 @@ class SalesPoint {
   final int grossCents;
   final int transactionCount;
 
-  factory SalesPoint.fromJson(Map<String, dynamic> j) => SalesPoint(
-        label: j['label'] as String? ?? '',
-        grossCents: j['gross_cents'] as int? ?? 0,
-        transactionCount: j['transaction_count'] as int? ?? 0,
-      );
+  static const _monthAbbr = [
+    'Jan','Feb','Mar','Apr','May','Jun',
+    'Jul','Aug','Sep','Oct','Nov','Dec',
+  ];
+
+  factory SalesPoint.fromJson(Map<String, dynamic> j) {
+    final dayStr = j['day'] as String? ?? j['label'] as String? ?? '';
+    String label = dayStr;
+    if (dayStr.length >= 10) {
+      try {
+        final dt = DateTime.parse(dayStr);
+        label = '${_monthAbbr[dt.month - 1]} ${dt.day}';
+      } catch (_) {}
+    }
+    return SalesPoint(
+      label: label,
+      grossCents: j['gross_cents'] as int? ?? 0,
+      transactionCount: j['transaction_count'] as int? ?? 0,
+    );
+  }
 }
 
 class CategoryItem {

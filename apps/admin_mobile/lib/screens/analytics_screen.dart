@@ -43,7 +43,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final api = AdminApi(session.baseUrl, session.token);
       final results = await Future.wait([
         api.getAnalyticsSummary(days: _days),
-        api.getSalesSeries(days: _days, granularity: _days <= 1 ? 'hour' : 'day'),
+        api.getSalesSeries(days: _days),
         api.getCategoryRevenue(days: _days),
         api.getTopProducts(days: _days, limit: 5),
       ]);

@@ -60,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
       final api = AdminApi(session.baseUrl, session.token);
       final results = await Future.wait([
         api.getAnalyticsSummary(days: 1),
-        api.getSalesSeries(days: 1, granularity: 'hour'),
+        api.getSalesSeries(days: 1),
         api.getEmployees(),
       ]);
       if (!mounted) return;
