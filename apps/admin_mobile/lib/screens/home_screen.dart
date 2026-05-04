@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import '../admin_tokens.dart';
 import '../models/analytics.dart';
 import '../models/currency.dart';
-import '../models/employee.dart';
+import 'stock_alerts_screen.dart';
 import '../services/admin_api.dart';
 import '../services/session_store.dart';
 import '../widgets/metric_card.dart';
@@ -18,13 +18,11 @@ import 'app_shell.dart';
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
-    required this.onNavigateToStaff,
-    required this.onNavigateToOrders,
+    required this.onNavigateToPurchases,
     required this.onLogout,
   });
 
-  final VoidCallback onNavigateToStaff;
-  final VoidCallback onNavigateToOrders;
+  final VoidCallback onNavigateToPurchases;
   final VoidCallback onLogout;
 
   @override
@@ -36,7 +34,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _error;
   AnalyticsSummary? _summary;
   List<SalesPoint> _series = [];
-  int _activeStaff = 0;
   String _email = '';
 
   @override
@@ -59,16 +56,13 @@ class _HomeScreenState extends State<HomeScreen> {
       _email = session.email;
       final api = AdminApi(session.baseUrl, session.token);
       final results = await Future.wait([
-        api.getAnalyticsSummary(days: 1),
-        api.getSalesSeries(days: 1),
-        api.getEmployees(),
+        api.getAnalyticsSummary(days: 7),
+        api.getSalesSeries(days: 7),
       ]);
       if (!mounted) return;
       setState(() {
         _summary = results[0] as AnalyticsSummary;
         _series = (results[1] as List).cast<SalesPoint>();
-        final employees = (results[2] as List).cast<Employee>();
-        _activeStaff = employees.where((e) => e.isActive).length;
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -309,29 +303,45 @@ class _HomeScreenState extends State<HomeScreen> {
                   childAspectRatio: 1.35,
                   children: [
                     AdminMetricCard(
-                      title: 'Revenue Today',
-                      value: summary != null ? currency.formatAbbreviated(summary.grossCents) : '--',
+                      title: 'Revenue (7d)',
+                      value: summary != null
+                          ? currency.formatAbbreviated(summary.grossCents)
+                          : '--',
                       icon: Icons.attach_money_rounded,
-                      trend: summary != null ? _formatDelta(summary.deltaPct) : null,
-                      trendPositive: summary != null && (summary.deltaPct ?? 0) >= 0,
+                      trend: summary != null && summary.deltaPct != null
+                          ? _formatDelta(summary.deltaPct)
+                          : null,
+                      trendPositive:
+                          summary != null && (summary.deltaPct ?? 0) >= 0,
                     ),
                     AdminMetricCard(
-                      title: 'Active Staff',
-                      value: '$_activeStaff',
-                      icon: Icons.badge_outlined,
-                      onTap: widget.onNavigateToStaff,
+                      title: 'Transactions (7d)',
+                      value: summary != null
+                          ? '${summary.transactionCount}'
+                          : '--',
+                      icon: Icons.swap_horiz_rounded,
                     ),
                     AdminMetricCard(
-                      title: 'Orders Today',
-                      value: summary != null ? '${summary.transactionCount}' : '--',
-                      icon: Icons.receipt_long_outlined,
-                      onTap: widget.onNavigateToOrders,
+                      title: 'Pending POs',
+                      value: summary != null
+                          ? '${summary.pendingOrderCount}'
+                          : '--',
+                      icon: Icons.shopping_bag_outlined,
+                      onTap: widget.onNavigateToPurchases,
                     ),
                     AdminMetricCard(
                       title: 'Stock Alerts',
-                      value: summary != null ? '${summary.stockAlertCount}' : '--',
+                      value: summary != null
+                          ? '${summary.stockAlertCount}'
+                          : '--',
                       icon: Icons.warning_amber_rounded,
-                      trendPositive: summary != null && summary.stockAlertCount == 0,
+                      trendPositive: summary != null &&
+                          summary.stockAlertCount == 0,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const StockAlertsScreen(),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -347,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const SectionHeader(
-                        label: 'Today',
+                        label: 'Last 7 days',
                         title: 'Revenue Trend',
                       ),
                       const SizedBox(height: AdminSpacing.md),
@@ -379,17 +389,13 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SectionHeader(label: 'Jump to', title: 'Quick Actions'),
                       const SizedBox(height: AdminSpacing.md),
                       _QuickActionTile(
-                        icon: Icons.person_add_rounded,
-                        title: 'Onboard New Staff',
-                        subtitle: 'Add and enroll an employee',
-                        onTap: widget.onNavigateToStaff,
-                      ),
-                      const SizedBox(height: AdminSpacing.sm),
-                      _QuickActionTile(
-                        icon: Icons.receipt_long_rounded,
-                        title: 'View All Orders',
-                        subtitle: 'Browse sales transactions',
-                        onTap: widget.onNavigateToOrders,
+                        icon: Icons.shopping_bag_outlined,
+                        title: 'Purchase Orders',
+                        subtitle: summary != null &&
+                                summary.pendingOrderCount > 0
+                            ? '${summary.pendingOrderCount} pending'
+                            : 'View and manage orders',
+                        onTap: widget.onNavigateToPurchases,
                       ),
                       const SizedBox(height: AdminSpacing.sm),
                       _QuickActionTile(
@@ -398,17 +404,11 @@ class _HomeScreenState extends State<HomeScreen> {
                         subtitle: summary != null
                             ? '${summary.stockAlertCount} product${summary.stockAlertCount == 1 ? '' : 's'} low on stock'
                             : 'Check stock levels',
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                summary != null && summary.stockAlertCount > 0
-                                    ? '${summary.stockAlertCount} products are low on stock'
-                                    : 'No stock alerts at the moment',
-                              ),
-                            ),
-                          );
-                        },
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const StockAlertsScreen(),
+                          ),
+                        ),
                       ),
                     ],
                   ),
