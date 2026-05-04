@@ -5,6 +5,9 @@ import 'package:http/http.dart' as http;
 import '../models/analytics.dart';
 import '../models/employee.dart';
 // import '../models/transaction.dart';
+import '../models/purchase_order.dart';
+import '../models/stock_alert.dart';
+import '../models/supplier.dart';
 
 class ApiException implements Exception {
   const ApiException(this.statusCode, this.body);
@@ -226,5 +229,113 @@ class AdminApi {
     if (status != null) params['status'] = status;
     if (cursor != null) params['cursor'] = cursor;
     return await _get('/v1/admin/transactions', params);
+  }
+
+  // ── Stock Alerts ─────────────────────────────────────────────────────
+
+  Future<List<StockAlert>> getStockAlerts({int threshold = 5}) async {
+    final list = await _getList(
+      '/v1/notifications/stock-alerts',
+      {'threshold': '$threshold'},
+    );
+    return list.map((e) => StockAlert.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  // ── Suppliers & Products ─────────────────────────────────────────────
+
+  Future<List<Supplier>> getSuppliers() async {
+    final list = await _getList('/v1/admin/suppliers');
+    return list.map((e) => Supplier.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  /// Search products by name/SKU for the PO line-item picker.
+  Future<List<Map<String, dynamic>>> searchProducts(String q) async {
+    final list = await _getList('/v1/admin/products', {'q': q, 'limit': '20'});
+    return list.map((e) => e as Map<String, dynamic>).toList();
+  }
+
+  // ── Purchase Orders ──────────────────────────────────────────────────
+
+  /// Returns {items: [...POOut], next_cursor: String?}
+  Future<Map<String, dynamic>> getPurchaseOrders({
+    String? status,
+    String? cursor,
+    int limit = 20,
+  }) async {
+    final params = <String, String>{'limit': '$limit'};
+    if (status != null && status != 'all') params['status'] = status;
+    if (cursor != null) params['cursor'] = cursor;
+    return _get('/v1/admin/purchase-orders', params);
+  }
+
+  Future<PurchaseOrder> getPurchaseOrder(String id) async {
+    final data = await _get('/v1/admin/purchase-orders/$id');
+    return PurchaseOrder.fromJson(data);
+  }
+
+  Future<PurchaseOrder> createPurchaseOrder({
+    required String supplierId,
+    String? notes,
+    String? expectedDeliveryDate,
+  }) async {
+    final body = <String, dynamic>{'supplier_id': supplierId};
+    if (notes != null && notes.isNotEmpty) body['notes'] = notes;
+    if (expectedDeliveryDate != null) {
+      body['expected_delivery_date'] = expectedDeliveryDate;
+    }
+    final data = await _post('/v1/admin/purchase-orders', body);
+    return PurchaseOrder.fromJson(data);
+  }
+
+  Future<PurchaseOrder> updatePurchaseOrder(
+    String id, {
+    String? status,
+    String? notes,
+    String? expectedDeliveryDate,
+  }) async {
+    final body = <String, dynamic>{};
+    if (status != null) body['status'] = status;
+    if (notes != null) body['notes'] = notes;
+    if (expectedDeliveryDate != null) {
+      body['expected_delivery_date'] = expectedDeliveryDate;
+    }
+    final data = await _patch('/v1/admin/purchase-orders/$id', body);
+    return PurchaseOrder.fromJson(data);
+  }
+
+  Future<void> addPOLine(
+    String poId, {
+    required String productId,
+    required int quantity,
+    required int unitCostCents,
+  }) async {
+    await _post('/v1/admin/purchase-orders/$poId/lines', {
+      'product_id': productId,
+      'quantity_ordered': quantity,
+      'unit_cost_cents': unitCostCents,
+    });
+  }
+
+  Future<void> deletePOLine(String poId, String lineId) =>
+      _delete('/v1/admin/purchase-orders/$poId/lines/$lineId');
+
+  // ── Analytics extensions ─────────────────────────────────────────────
+
+  Future<List<PaymentMethod>> getPaymentMethods(int days) async {
+    final data = await _get('/v1/admin/analytics/payment-methods', {'days': '$days'});
+    final items = data['items'] as List<dynamic>? ?? [];
+    return items.map((e) => PaymentMethod.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<HeatmapBucket>> getHourlyHeatmap(int days) async {
+    final data = await _get('/v1/admin/analytics/hourly-heatmap', {'days': '$days'});
+    final buckets = data['buckets'] as List<dynamic>? ?? [];
+    return buckets.map((e) => HeatmapBucket.fromJson(e as Map<String, dynamic>)).toList();
+  }
+
+  Future<List<ShopRevenue>> getShopRevenue(int days) async {
+    final data = await _get('/v1/admin/analytics/shop-revenue', {'days': '$days'});
+    final items = data['items'] as List<dynamic>? ?? [];
+    return items.map((e) => ShopRevenue.fromJson(e as Map<String, dynamic>)).toList();
   }
 }
