@@ -84,6 +84,13 @@ class _PurchaseOrderDetailScreenState
           SnackBar(content: Text('Failed (${e.statusCode})')),
         );
       }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _acting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Connection error')),
+        );
+      }
     }
   }
 

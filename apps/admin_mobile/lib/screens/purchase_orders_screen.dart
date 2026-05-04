@@ -6,8 +6,8 @@ import '../models/purchase_order.dart';
 import '../services/admin_api.dart';
 import '../services/session_store.dart';
 import 'app_shell.dart';
-import 'create_edit_purchase_order_screen.dart'; // TODO: created in Task 7
-import 'purchase_order_detail_screen.dart'; // TODO: created in Task 8
+import 'create_edit_purchase_order_screen.dart';
+import 'purchase_order_detail_screen.dart';
 
 const _statuses = ['All', 'Draft', 'Ordered', 'Received', 'Cancelled'];
 

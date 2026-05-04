@@ -177,7 +177,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final currency = context.watch<CurrencyModel>();
     final today = DateFormat('EEEE, MMMM d, y').format(DateTime.now());
     final summary = _summary;
-    final recentSeries = _series.length > 6 ? _series.sublist(_series.length - 6) : _series;
+    final recentSeries = _series;
 
     return Scaffold(
       body: RefreshIndicator(
