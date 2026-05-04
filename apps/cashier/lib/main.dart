@@ -13,6 +13,7 @@ import 'screens/cashier_shell.dart';
 import 'screens/employee_login_screen.dart';
 import 'screens/onboarding_screen.dart';
 import 'services/authenticated_api.dart';
+import 'services/inventory_api.dart';
 import 'services/outbox_crypto.dart';
 import 'services/outbox_db.dart';
 import 'services/session_store.dart';
@@ -76,13 +77,36 @@ class _CashierBootstrapState extends State<CashierBootstrap> {
 
   Future<void> _checkForUpdate(SessionData session) async {
     await Future<void>.delayed(const Duration(seconds: 2));
+
+    // Device access tokens expire after 24h. Refresh upfront so the update
+    // check doesn't silently fail with a 401 on long-lived enrolled devices.
+    var accessToken = session.accessToken;
+    try {
+      final api = InventoryApi(session.baseUrl);
+      final body = await api.refresh(refreshToken: session.refreshToken);
+      final newAccess = body['access_token'] as String?;
+      final newRefresh = body['refresh_token'] as String?;
+      if (newAccess != null && newRefresh != null) {
+        accessToken = newAccess;
+        await SessionStore.save(
+          baseUrl: session.baseUrl,
+          accessToken: newAccess,
+          refreshToken: newRefresh,
+          tenantId: session.tenantId,
+          shopIds: session.shopIds,
+        );
+      }
+    } catch (_) {
+      // Refresh failed — proceed with existing token (best effort)
+    }
+
     final update = await UpdateService.checkForUpdate(
       baseUrl: session.baseUrl,
-      accessToken: session.accessToken,
+      accessToken: accessToken,
       appName: 'cashier',
     );
     if (update == null || !mounted) return;
-    await showUpdateDialog(context, update, session.accessToken);
+    await showUpdateDialog(context, update, accessToken);
   }
 
   @override
