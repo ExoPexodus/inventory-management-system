@@ -10,15 +10,11 @@ class StaffCard extends StatelessWidget {
     required this.employee,
     required this.onDeactivate,
     required this.onReactivate,
-    required this.onReEnroll,
-    required this.onResetCredentials,
   });
 
   final Employee employee;
   final VoidCallback onDeactivate;
   final VoidCallback onReactivate;
-  final VoidCallback onReEnroll;
-  final VoidCallback onResetCredentials;
 
   @override
   Widget build(BuildContext context) {
@@ -169,16 +165,6 @@ class StaffCard extends StatelessWidget {
               ),
               const SizedBox(height: AdminSpacing.sm),
               if (emp.isActive) ...[
-                _BottomSheetAction(
-                  icon: Icons.qr_code_rounded,
-                  label: 'Re-enroll Device',
-                  onTap: () { Navigator.pop(ctx); onReEnroll(); },
-                ),
-                _BottomSheetAction(
-                  icon: Icons.lock_reset_rounded,
-                  label: 'Reset Credentials',
-                  onTap: () { Navigator.pop(ctx); onResetCredentials(); },
-                ),
                 _BottomSheetAction(
                   icon: Icons.person_off_rounded,
                   label: 'Deactivate',

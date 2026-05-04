@@ -7,6 +7,7 @@ import '../models/currency.dart';
 import '../services/admin_api.dart';
 import '../services/session_store.dart';
 import '../widgets/metric_card.dart';
+import '../widgets/hourly_heatmap_widget.dart';
 import '../widgets/revenue_bar_chart.dart';
 import '../widgets/section_header.dart';
 import 'app_shell.dart';
@@ -28,6 +29,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   List<SalesPoint> _series = [];
   List<CategoryItem> _categories = [];
   List<TopProduct> _topProducts = [];
+  List<PaymentMethod> _paymentMethods = [];
+  List<HeatmapBucket> _heatmap = [];
+  List<ShopRevenue> _shopRevenue = [];
 
   @override
   void initState() {
@@ -43,9 +47,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
       final api = AdminApi(session.baseUrl, session.token);
       final results = await Future.wait([
         api.getAnalyticsSummary(days: _days),
-        api.getSalesSeries(days: _days, granularity: _days <= 1 ? 'hour' : 'day'),
+        api.getSalesSeries(days: _days),
         api.getCategoryRevenue(days: _days),
         api.getTopProducts(days: _days, limit: 5),
+        api.getPaymentMethods(_days),
+        api.getHourlyHeatmap(_days),
+        api.getShopRevenue(_days),
       ]);
       if (!mounted) return;
       setState(() {
@@ -53,6 +60,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         _series = (results[1] as List).cast<SalesPoint>();
         _categories = (results[2] as List).cast<CategoryItem>();
         _topProducts = (results[3] as List).cast<TopProduct>();
+        _paymentMethods = (results[4] as List).cast<PaymentMethod>();
+        _heatmap = (results[5] as List).cast<HeatmapBucket>();
+        _shopRevenue = (results[6] as List).cast<ShopRevenue>();
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -307,7 +317,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               if (_topProducts.isNotEmpty)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(
-                    AdminSpacing.gutter, AdminSpacing.xl, AdminSpacing.gutter, AdminSpacing.xl,
+                    AdminSpacing.gutter, AdminSpacing.xl, AdminSpacing.gutter, 0,
                   ),
                   sliver: SliverToBoxAdapter(
                     child: Column(
@@ -370,6 +380,188 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                                     Divider(
                                       height: 1,
                                       indent: AdminSpacing.md + 24 + AdminSpacing.sm,
+                                      endIndent: AdminSpacing.md,
+                                      color: AdminColors.outlineVariant.withValues(alpha: 0.4),
+                                    ),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Payment methods
+              if (_paymentMethods.isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AdminSpacing.gutter, AdminSpacing.xl, AdminSpacing.gutter, 0,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SectionHeader(label: 'How customers pay', title: 'Payment Methods'),
+                        const SizedBox(height: AdminSpacing.md),
+                        Material(
+                          color: AdminColors.card,
+                          borderRadius: BorderRadius.circular(AdminRadius.quickTile),
+                          child: Column(
+                            children: _paymentMethods.asMap().entries.map((entry) {
+                              final i = entry.key;
+                              final pm = entry.value;
+                              final isLast = i == _paymentMethods.length - 1;
+                              IconData icon;
+                              switch (pm.tenderType.toLowerCase()) {
+                                case 'cash':
+                                  icon = Icons.money_rounded;
+                                  break;
+                                case 'card':
+                                  icon = Icons.credit_card_rounded;
+                                  break;
+                                default:
+                                  icon = Icons.payment_rounded;
+                              }
+                              return Column(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AdminSpacing.md,
+                                      vertical: AdminSpacing.sm,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(icon, size: 20, color: AdminColors.primary),
+                                        const SizedBox(width: AdminSpacing.sm),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                pm.tenderType[0].toUpperCase() + pm.tenderType.substring(1),
+                                                style: theme.textTheme.titleMedium,
+                                              ),
+                                              Text(
+                                                '${pm.transactionCount} transactions · ${pm.pct.toStringAsFixed(1)}%',
+                                                style: theme.textTheme.bodySmall?.copyWith(
+                                                  color: AdminColors.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Text(
+                                          currency.formatAbbreviated(pm.grossCents),
+                                          style: theme.textTheme.titleMedium?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!isLast)
+                                    Divider(
+                                      height: 1,
+                                      indent: AdminSpacing.md,
+                                      endIndent: AdminSpacing.md,
+                                      color: AdminColors.outlineVariant.withValues(alpha: 0.4),
+                                    ),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Hourly heatmap
+              if (_heatmap.isNotEmpty)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AdminSpacing.gutter, AdminSpacing.xl, AdminSpacing.gutter, 0,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SectionHeader(label: 'Busiest times', title: 'Peak Hours'),
+                        const SizedBox(height: AdminSpacing.md),
+                        Material(
+                          color: AdminColors.card,
+                          borderRadius: BorderRadius.circular(AdminRadius.quickTile),
+                          child: Padding(
+                            padding: const EdgeInsets.all(AdminSpacing.md),
+                            child: HourlyHeatmapWidget(
+                              buckets: _heatmap,
+                              formatValue: currency.formatAbbreviated,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+              // Shop revenue (multi-shop only)
+              if (_shopRevenue.length > 1)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AdminSpacing.gutter, AdminSpacing.xl, AdminSpacing.gutter, AdminSpacing.xl,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SectionHeader(label: 'By location', title: 'Shop Revenue'),
+                        const SizedBox(height: AdminSpacing.md),
+                        Material(
+                          color: AdminColors.card,
+                          borderRadius: BorderRadius.circular(AdminRadius.quickTile),
+                          child: Column(
+                            children: _shopRevenue.asMap().entries.map((entry) {
+                              final i = entry.key;
+                              final shop = entry.value;
+                              final isLast = i == _shopRevenue.length - 1;
+                              return Column(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AdminSpacing.md,
+                                      vertical: AdminSpacing.sm,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(shop.shopName, style: theme.textTheme.titleMedium),
+                                              Text(
+                                                '${shop.transactionCount} transactions · ${shop.pct.toStringAsFixed(1)}%',
+                                                style: theme.textTheme.bodySmall?.copyWith(
+                                                  color: AdminColors.onSurfaceVariant,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Text(
+                                          currency.formatAbbreviated(shop.grossCents),
+                                          style: theme.textTheme.titleMedium?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  if (!isLast)
+                                    Divider(
+                                      height: 1,
+                                      indent: AdminSpacing.md,
                                       endIndent: AdminSpacing.md,
                                       color: AdminColors.outlineVariant.withValues(alpha: 0.4),
                                     ),

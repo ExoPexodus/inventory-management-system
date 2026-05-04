@@ -42,11 +42,26 @@ class SalesPoint {
   final int grossCents;
   final int transactionCount;
 
-  factory SalesPoint.fromJson(Map<String, dynamic> j) => SalesPoint(
-        label: j['label'] as String? ?? '',
-        grossCents: j['gross_cents'] as int? ?? 0,
-        transactionCount: j['transaction_count'] as int? ?? 0,
-      );
+  static const _monthAbbr = [
+    'Jan','Feb','Mar','Apr','May','Jun',
+    'Jul','Aug','Sep','Oct','Nov','Dec',
+  ];
+
+  factory SalesPoint.fromJson(Map<String, dynamic> j) {
+    final dayStr = j['day'] as String? ?? j['label'] as String? ?? '';
+    String label = dayStr;
+    if (dayStr.length >= 10) {
+      try {
+        final dt = DateTime.parse(dayStr);
+        label = '${_monthAbbr[dt.month - 1]} ${dt.day}';
+      } catch (_) {}
+    }
+    return SalesPoint(
+      label: label,
+      grossCents: j['gross_cents'] as int? ?? 0,
+      transactionCount: j['transaction_count'] as int? ?? 0,
+    );
+  }
 }
 
 class CategoryItem {
@@ -94,5 +109,68 @@ class TopProduct {
         category: j['category'] as String?,
         qtySold: j['qty_sold'] as int? ?? 0,
         grossCents: j['gross_cents'] as int? ?? 0,
+      );
+}
+
+class PaymentMethod {
+  const PaymentMethod({
+    required this.tenderType,
+    required this.grossCents,
+    required this.transactionCount,
+    required this.pct,
+  });
+
+  final String tenderType;
+  final int grossCents;
+  final int transactionCount;
+  final double pct;
+
+  factory PaymentMethod.fromJson(Map<String, dynamic> j) => PaymentMethod(
+        tenderType: j['tender_type'] as String? ?? '',
+        grossCents: j['gross_cents'] as int? ?? 0,
+        transactionCount: j['transaction_count'] as int? ?? 0,
+        pct: (j['pct'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
+class HeatmapBucket {
+  const HeatmapBucket({
+    required this.hour,
+    required this.avgGrossCents,
+    required this.avgTxCount,
+  });
+
+  final int hour;
+  final int avgGrossCents;
+  final double avgTxCount;
+
+  factory HeatmapBucket.fromJson(Map<String, dynamic> j) => HeatmapBucket(
+        hour: j['hour'] as int? ?? 0,
+        avgGrossCents: (j['avg_gross_cents'] as num?)?.toInt() ?? 0,
+        avgTxCount: (j['avg_tx_count'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
+class ShopRevenue {
+  const ShopRevenue({
+    required this.shopId,
+    required this.shopName,
+    required this.grossCents,
+    required this.transactionCount,
+    required this.pct,
+  });
+
+  final String shopId;
+  final String shopName;
+  final int grossCents;
+  final int transactionCount;
+  final double pct;
+
+  factory ShopRevenue.fromJson(Map<String, dynamic> j) => ShopRevenue(
+        shopId: j['shop_id'] as String? ?? '',
+        shopName: j['shop_name'] as String? ?? '',
+        grossCents: j['gross_cents'] as int? ?? 0,
+        transactionCount: j['transaction_count'] as int? ?? 0,
+        pct: (j['pct'] as num?)?.toDouble() ?? 0.0,
       );
 }

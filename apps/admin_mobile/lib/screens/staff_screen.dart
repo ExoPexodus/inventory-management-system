@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../admin_tokens.dart';
 import '../models/employee.dart';
@@ -94,66 +93,6 @@ class _StaffScreenState extends State<StaffScreen> {
     try {
       await _api!.reactivateEmployee(emp.id);
       _load();
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed (${e.statusCode})')),
-      );
-    }
-  }
-
-  Future<void> _reEnroll(Employee emp) async {
-    try {
-      final data = await _api!.reEnrollEmployee(emp.id);
-      final token = data['enrollment_token'] as String? ?? data['token'] as String? ?? '';
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: Text('Re-enroll ${emp.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Scan this QR code on the cashier device to re-enroll.'),
-              const SizedBox(height: 16),
-              if (token.isNotEmpty)
-                QrImageView(data: token, size: 200)
-              else
-                const Text('No enrollment token received.'),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Done')),
-          ],
-        ),
-      );
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to re-enroll (${e.statusCode})')),
-      );
-    }
-  }
-
-  Future<void> _resetCredentials(Employee emp) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Reset credentials'),
-        content: Text('Reset PIN/password for ${emp.name}? They will need to set new credentials on next login.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reset')),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
-    try {
-      await _api!.resetEmployeeCredentials(emp.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Credentials reset for ${emp.name}')),
-      );
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -294,8 +233,6 @@ class _StaffScreenState extends State<StaffScreen> {
                       employee: emp,
                       onDeactivate: () => _deactivate(emp),
                       onReactivate: () => _reactivate(emp),
-                      onReEnroll: () => _reEnroll(emp),
-                      onResetCredentials: () => _resetCredentials(emp),
                     );
                   },
                 ),

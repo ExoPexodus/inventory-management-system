@@ -6,7 +6,7 @@ import '../models/session.dart';
 import '../services/session_store.dart';
 import 'analytics_screen.dart';
 import 'home_screen.dart';
-import 'orders_screen.dart';
+import 'purchase_orders_screen.dart';
 import 'staff_screen.dart';
 
 class AppShellModel extends ChangeNotifier {
@@ -42,12 +42,15 @@ final _allTabs = [
     label: 'Home',
     icon: Icons.home_outlined,
     selectedIcon: Icons.home_rounded,
-    buildScreen: (onLogout) => HomeScreen(
-      onNavigateToStaff: () {},
-      onNavigateToOrders: () {},
-      onLogout: onLogout,
-    ),
+    buildScreen: (onLogout) => HomeScreen(onNavigateToPurchases: () {}, onLogout: onLogout),
     permission: null,
+  ),
+  _TabDef(
+    label: 'Purchases',
+    icon: Icons.shopping_bag_outlined,
+    selectedIcon: Icons.shopping_bag_rounded,
+    buildScreen: (onLogout) => PurchaseOrdersScreen(onLogout: onLogout),
+    permission: 'procurement:read',
   ),
   _TabDef(
     label: 'Staff',
@@ -55,13 +58,6 @@ final _allTabs = [
     selectedIcon: Icons.people_rounded,
     buildScreen: (onLogout) => StaffScreen(onLogout: onLogout),
     permission: 'staff:read',
-  ),
-  _TabDef(
-    label: 'Orders',
-    icon: Icons.receipt_long_outlined,
-    selectedIcon: Icons.receipt_long_rounded,
-    buildScreen: (onLogout) => OrdersScreen(onLogout: onLogout),
-    permission: 'sales:read',
   ),
   _TabDef(
     label: 'Analytics',
@@ -112,8 +108,7 @@ class AppShell extends StatelessWidget {
         children: visibleTabs.map((tab) {
           if (tab.label == 'Home') {
             return HomeScreen(
-              onNavigateToStaff: () => navigateTo('staff:read'),
-              onNavigateToOrders: () => navigateTo('sales:read'),
+              onNavigateToPurchases: () => navigateTo('procurement:read'),
               onLogout: onLogoutCallback,
             );
           }
