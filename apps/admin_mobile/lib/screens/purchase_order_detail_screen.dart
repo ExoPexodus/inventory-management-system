@@ -76,6 +76,7 @@ class _PurchaseOrderDetailScreenState
     try {
       await _api!.updatePurchaseOrder(widget.poId, status: newStatus);
       await _load();
+      if (mounted) setState(() => _acting = false);
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _acting = false);
