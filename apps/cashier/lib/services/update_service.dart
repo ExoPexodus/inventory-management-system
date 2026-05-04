@@ -270,8 +270,12 @@ class UpdateService {
         await _showPermissionRequiredNotification();
         return false;
       }
+      await _kInstallChannel.invokeMethod<void>('install', {'path': filePath});
+      return true;
     } on MissingPluginException {
-      // Fall through if channel unavailable.
+      // Channel unavailable — fall back to open_file.
+    } catch (_) {
+      // install method threw — fall back to open_file.
     }
     await OpenFile.open(filePath, type: 'application/vnd.android.package-archive');
     return true;

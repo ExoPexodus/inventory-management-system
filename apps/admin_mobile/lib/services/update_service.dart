@@ -266,20 +266,23 @@ class UpdateService {
     }
   }
 
-  /// Returns true if install was attempted, false if permission was missing
-  /// (in which case the "Install unknown apps" settings screen was opened).
   static Future<bool> installApk(String filePath) async {
     try {
       final canInstall =
           await _kInstallChannel.invokeMethod<bool>('canInstallPackages') ?? true;
       if (!canInstall) {
         await _kInstallChannel.invokeMethod('openInstallSettings');
-        // Settings opened — user needs to enable permission, then tap notification to retry.
         await _showPermissionRequiredNotification();
         return false;
       }
+      // Use the platform channel to launch the installer directly via FileProvider —
+      // open_file's silent failure on some devices is bypassed this way.
+      await _kInstallChannel.invokeMethod<void>('install', {'path': filePath});
+      return true;
     } on MissingPluginException {
-      // Platform channel not available (e.g. on iOS / desktop preview) — fall through.
+      // Channel unavailable — fall back to open_file.
+    } catch (_) {
+      // install method threw (e.g. file not found) — fall back to open_file.
     }
     await OpenFile.open(filePath, type: 'application/vnd.android.package-archive');
     return true;
