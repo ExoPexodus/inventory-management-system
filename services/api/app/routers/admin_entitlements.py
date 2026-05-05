@@ -20,8 +20,9 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.billing.entitlements import invalidate_cache
 from app.billing.features import get_definition
+from app.billing.flags import invalidate_flag_cache
 from app.db.admin_deps_db import get_db_admin
-from app.models import TenantFeatureOverride
+from app.models import FeatureFlag, TenantFeatureOverride
 
 router = APIRouter(
     prefix="/v1/admin/entitlements",
@@ -148,9 +149,6 @@ def delete_override(
 
 # === Engineering flags ===
 
-from app.billing.flags import invalidate_flag_cache
-from app.models import FeatureFlag
-
 
 class FeatureFlagIn(BaseModel):
     key: str = Field(min_length=1, max_length=128)
@@ -216,12 +214,12 @@ def update_flag(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flag not found")
 
-    if body.default_state is not None:
-        row.default_state = body.default_state
-    if body.rollout_rules is not None:
-        row.rollout_rules = body.rollout_rules
-    if body.description is not None:
-        row.description = body.description
+    # exclude_unset distinguishes "field absent" from "field explicitly null".
+    # The PATCH-with-null pattern (e.g. {"rollout_rules": null} to clear rules)
+    # works correctly here; bare PATCH with no field doesn't touch any field.
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(row, field, value)
 
     db.commit()
     db.refresh(row)
