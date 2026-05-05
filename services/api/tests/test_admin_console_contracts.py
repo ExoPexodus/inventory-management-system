@@ -207,3 +207,40 @@ def test_customer_out_schema() -> None:
     assert d["phone"] == "9876543210"
     assert d["name"] == "Rajesh Kumar"
     assert d["group_id"] is None
+
+
+def test_tenant_feature_override_out_schema() -> None:
+    from app.routers.admin_entitlements import TenantFeatureOverrideOut
+
+    o = TenantFeatureOverrideOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        feature_key="headless_api",
+        value=True,
+        reason="Beta access for design partner",
+        expires_at=None,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = o.model_dump(mode="json")
+    assert d["feature_key"] == "headless_api"
+    assert d["value"] is True
+    assert d["reason"] == "Beta access for design partner"
+
+
+def test_feature_flag_out_schema() -> None:
+    from app.routers.admin_entitlements import FeatureFlagOut
+
+    f = FeatureFlagOut(
+        id=uuid4(),
+        key="stock_reservations_enabled",
+        default_state=False,
+        rollout_rules={"percent": 25, "allowlist": []},
+        description="Soft TTL stock reservation engine",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = f.model_dump(mode="json")
+    assert d["key"] == "stock_reservations_enabled"
+    assert d["default_state"] is False
+    assert d["rollout_rules"]["percent"] == 25
