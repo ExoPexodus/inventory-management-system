@@ -24,7 +24,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from app.auth.license_deps import LicenseContext, LicenseContextDep
+from app.auth.license_deps import LicenseContextDep
 from app.billing.entitlements import Entitlements, resolve_for_tenant
 from app.db.admin_deps_db import get_db_admin
 

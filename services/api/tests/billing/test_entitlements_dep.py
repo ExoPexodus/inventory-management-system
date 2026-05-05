@@ -1,3 +1,10 @@
+# NOTE: `from __future__ import annotations` is intentionally absent here.
+# Under PEP 563 lazy evaluation, FastAPI's get_type_hints() cannot resolve
+# `EntitlementsDep` from _build_app_with_route()'s local scope — the annotation
+# becomes a bare string and FastAPI silently treats `ents` as a query parameter,
+# producing 422 on every request. Hoisting the import to module scope is an
+# alternative fix; we keep the import inside the helper for symmetry with the
+# `dependency_overrides` setup, so PEP 563 must stay disabled in this file.
 import uuid
 
 import pytest
