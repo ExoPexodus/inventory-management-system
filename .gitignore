@@ -35,3 +35,4 @@ apps/cashier/build/
 apps/admin_mobile/.dart_tool/
 apps/admin_mobile/build/
 .worktrees/
+android-cmdtools.zip
