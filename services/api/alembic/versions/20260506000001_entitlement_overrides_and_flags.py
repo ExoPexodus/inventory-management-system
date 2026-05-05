@@ -31,11 +31,6 @@ def upgrade() -> None:
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint("tenant_id", "feature_key", name="uq_tenant_feature_override_key"),
     )
-    op.create_index(
-        "ix_tenant_feature_overrides_tenant_id",
-        "tenant_feature_overrides",
-        ["tenant_id"],
-    )
 
     # 2a. Drop the legacy unused feature_flags table from
     # 20260326200000_phase4_analytics_platform.py — that table was created but
@@ -75,7 +70,6 @@ def downgrade() -> None:
     ))
     conn.execute(sa.text("DELETE FROM permissions WHERE codename = 'entitlements:manage'"))
     op.drop_table("feature_flags")
-    op.drop_index("ix_tenant_feature_overrides_tenant_id", table_name="tenant_feature_overrides")
     op.drop_table("tenant_feature_overrides")
     # Re-create the legacy unused feature_flags table so the schema after
     # downgrade matches what 20260326200000_phase4_analytics_platform.py

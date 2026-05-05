@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -730,7 +730,7 @@ class TenantFeatureOverride(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
     )
     feature_key: Mapped[str] = mapped_column(String(128), nullable=False)
-    value: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    value: Mapped[Any] = mapped_column(JSONB, nullable=False)
     reason: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
