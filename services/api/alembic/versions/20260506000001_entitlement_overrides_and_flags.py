@@ -37,6 +37,12 @@ def upgrade() -> None:
         ["tenant_id"],
     )
 
+    # 2a. Drop the legacy unused feature_flags table from
+    # 20260326200000_phase4_analytics_platform.py — that table was created but
+    # never wired up (no model, no service references it). We replace it with
+    # the engineering-flag schema below.
+    op.drop_table("feature_flags")
+
     # 2. feature_flags
     op.create_table(
         "feature_flags",
@@ -71,3 +77,16 @@ def downgrade() -> None:
     op.drop_table("feature_flags")
     op.drop_index("ix_tenant_feature_overrides_tenant_id", table_name="tenant_feature_overrides")
     op.drop_table("tenant_feature_overrides")
+    # Re-create the legacy unused feature_flags table so the schema after
+    # downgrade matches what 20260326200000_phase4_analytics_platform.py
+    # leaves behind.
+    op.create_table(
+        "feature_flags",
+        sa.Column("id", PG_UUID(as_uuid=True), nullable=False),
+        sa.Column("name", sa.String(length=128), nullable=False),
+        sa.Column("description", sa.Text(), nullable=True),
+        sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column("tenant_scope", JSONB, nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.PrimaryKeyConstraint("id"),
+    )
