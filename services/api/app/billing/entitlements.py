@@ -10,6 +10,8 @@ the FastAPI dependency ``EntitlementsDep`` from billing.deps (Task 5).
 """
 from __future__ import annotations
 
+import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -26,6 +28,12 @@ from app.billing.features import (
 )
 from app.billing.plans import resolve_plan_value
 from app.models import TenantFeatureOverride
+from app.worker.queue import redis_conn
+
+logger = logging.getLogger(__name__)
+
+CACHE_PREFIX = "ents:v1"
+CACHE_TTL_SECONDS = 300  # 5 minutes — invalidations on write keep this tighter
 
 
 class Entitlements:
@@ -128,21 +136,62 @@ def _load_overrides(db: Session, tenant_id: UUID) -> dict[str, Any]:
     return out
 
 
+def _cache_key(tenant_id: UUID, plan_codename: str) -> str:
+    return f"{CACHE_PREFIX}:{tenant_id}:{plan_codename}"
+
+
 def resolve_for_tenant(db: Session, tenant_id: UUID, plan_codename: str) -> Entitlements:
-    """Resolve entitlements for a tenant. Returns a typed ``Entitlements`` view.
+    """Resolve entitlements for a tenant. Cache-aware.
 
-    Order: catalog default -> plan value -> override.
+    Cache hits skip DB. Misses load overrides + merge, then write through.
+    Cache invalidation is the writer's responsibility — see ``invalidate_cache``.
     """
-    values: dict[str, Any] = {}
+    cached = _read_cache(tenant_id, plan_codename)
+    if cached is not None:
+        return cached
 
-    # 1. Plan values (only for keys the plan explicitly sets; resolve_plan_value
-    #    handles fallback to default per-key on .get(), so we materialize the
-    #    full catalog here for cache stability)
+    values: dict[str, Any] = {}
     for f in FEATURE_CATALOG:
         values[f.key] = resolve_plan_value(plan_codename, f.key)
 
-    # 2. Active per-tenant overrides
     overrides = _load_overrides(db, tenant_id)
     values.update(overrides)
 
-    return Entitlements.from_values(plan_codename, values)
+    ents = Entitlements.from_values(plan_codename, values)
+    _write_cache(tenant_id, plan_codename, ents)
+    return ents
+
+
+def invalidate_cache(tenant_id: UUID) -> None:
+    """Drop all cached entitlement entries for a tenant.
+
+    Call this from any code path that writes a tenant_feature_overrides row.
+    """
+    try:
+        r = redis_conn()
+        keys = list(r.scan_iter(f"{CACHE_PREFIX}:{tenant_id}:*"))
+        if keys:
+            r.delete(*keys)
+    except Exception:
+        logger.warning("Failed to invalidate entitlement cache for %s", tenant_id, exc_info=True)
+
+
+def _read_cache(tenant_id: UUID, plan_codename: str) -> Entitlements | None:
+    try:
+        raw = redis_conn().get(_cache_key(tenant_id, plan_codename))
+        if raw is None:
+            return None
+        payload = json.loads(raw)
+        return Entitlements.from_values(payload["plan_codename"], payload["values"])
+    except Exception:
+        logger.warning("Entitlement cache read failed for %s/%s", tenant_id, plan_codename, exc_info=True)
+        return None
+
+
+def _write_cache(tenant_id: UUID, plan_codename: str, ents: Entitlements) -> None:
+    """Write cache entry. Uses to_cache_payload() to avoid private attribute access."""
+    try:
+        payload = json.dumps(ents.to_cache_payload())
+        redis_conn().setex(_cache_key(tenant_id, plan_codename), CACHE_TTL_SECONDS, payload)
+    except Exception:
+        logger.warning("Entitlement cache write failed for %s/%s", tenant_id, plan_codename, exc_info=True)
