@@ -236,7 +236,7 @@ git add services/api/alembic/versions/20260506000001_entitlement_overrides_and_f
 git commit -m "feat(billing): add tenant_feature_overrides + feature_flags tables"
 ```
 
-(The contract tests still fail because `app.routers.admin_entitlements` does not exist yet — that's Task 8. They stay red until then; this is intentional TDD.)
+(The contract tests still fail because `app.routers.admin_entitlements` does not exist yet — that's Task 7. They stay red until then; this is intentional TDD.)
 
 ---
 
