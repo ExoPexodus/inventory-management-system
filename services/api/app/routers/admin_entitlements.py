@@ -144,3 +144,101 @@ def delete_override(
     db.delete(row)
     db.commit()
     invalidate_cache(tenant_id)
+
+
+# === Engineering flags ===
+
+from app.billing.flags import invalidate_flag_cache
+from app.models import FeatureFlag
+
+
+class FeatureFlagIn(BaseModel):
+    key: str = Field(min_length=1, max_length=128)
+    default_state: bool = False
+    rollout_rules: dict | None = None
+    description: str | None = None
+
+
+class FeatureFlagPatch(BaseModel):
+    default_state: bool | None = None
+    rollout_rules: dict | None = None
+    description: str | None = None
+
+
+# NOTE: FeatureFlagOut is already defined earlier in this file from Task 7 —
+# do NOT redefine it here. Adding it would shadow the original.
+
+
+@router.get("/flags", response_model=list[FeatureFlagOut])
+def list_flags(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> list[FeatureFlag]:
+    rows = db.execute(select(FeatureFlag)).scalars().all()
+    return list(rows)
+
+
+@router.post("/flags", response_model=FeatureFlagOut, status_code=status.HTTP_201_CREATED)
+def create_flag(
+    body: FeatureFlagIn,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> FeatureFlag:
+    existing = db.execute(
+        select(FeatureFlag).where(FeatureFlag.key == body.key)
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Flag with key {body.key!r} already exists",
+        )
+    row = FeatureFlag(
+        key=body.key,
+        default_state=body.default_state,
+        rollout_rules=body.rollout_rules,
+        description=body.description,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    invalidate_flag_cache(body.key)
+    return row
+
+
+@router.patch("/flags/{flag_id}", response_model=FeatureFlagOut)
+def update_flag(
+    flag_id: UUID,
+    body: FeatureFlagPatch,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> FeatureFlag:
+    row = db.get(FeatureFlag, flag_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flag not found")
+
+    if body.default_state is not None:
+        row.default_state = body.default_state
+    if body.rollout_rules is not None:
+        row.rollout_rules = body.rollout_rules
+    if body.description is not None:
+        row.description = body.description
+
+    db.commit()
+    db.refresh(row)
+    invalidate_flag_cache(row.key)
+    return row
+
+
+@router.delete("/flags/{flag_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_flag(
+    flag_id: UUID,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> None:
+    row = db.get(FeatureFlag, flag_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Flag not found")
+    key = row.key
+    db.delete(row)
+    db.commit()
+    invalidate_flag_cache(key)
