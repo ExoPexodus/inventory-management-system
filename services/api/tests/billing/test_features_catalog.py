@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 
 def test_feature_catalog_keys_unique() -> None:
     from app.billing.features import FEATURE_CATALOG
@@ -49,3 +47,32 @@ def test_plan_map_pro_plan_includes_headless_api() -> None:
 def test_plan_map_free_plan_does_not_include_headless_api() -> None:
     from app.billing.plans import resolve_plan_value
     assert resolve_plan_value("free", "headless_api") is False
+
+
+def test_plan_numeric_values_locked() -> None:
+    """Lock in commercial-tier numeric values.
+
+    Bumping any of these is a deliberate pricing change. A test failure here
+    forces a conscious decision rather than letting drift ship silently.
+    """
+    from app.billing.plans import resolve_plan_value
+    assert resolve_plan_value("free", "max_channels") == 1
+    assert resolve_plan_value("starter", "max_channels") == 2
+    assert resolve_plan_value("pro", "max_channels") == 5
+    assert resolve_plan_value("business", "max_channels") == 20
+    assert resolve_plan_value("trial", "max_channels") == 5
+
+    assert resolve_plan_value("starter", "max_products") == 500
+    assert resolve_plan_value("pro", "max_products") == 5000
+    assert resolve_plan_value("business", "max_products") == 50000
+
+    assert resolve_plan_value("starter", "email_volume_per_month") == 1000
+    assert resolve_plan_value("pro", "email_volume_per_month") == 10000
+    assert resolve_plan_value("business", "email_volume_per_month") == 100000
+
+
+def test_starter_plan_does_not_include_headless_api() -> None:
+    """Exercises the plan-dict-hit path for a False feature gate (vs the
+    fallback path tested by test_plan_map_free_plan_does_not_include_headless_api)."""
+    from app.billing.plans import resolve_plan_value
+    assert resolve_plan_value("starter", "headless_api") is False

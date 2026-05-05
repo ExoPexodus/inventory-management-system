@@ -81,8 +81,10 @@ def resolve_plan_value(plan_codename: str, feature_key: str) -> Any:
     """Resolve a feature value for a plan codename, falling back to the catalog default.
 
     This function is the single seam to replace when platform-side plan-feature
-    management ships. The replacement reads from the synced raw_payload instead
-    of PLAN_FEATURES. Call sites do not change.
+    management ships. The replacement reads from a per-tenant synced source
+    (e.g. ``TenantLicenseCache.raw_payload``'s ``plan_features`` sub-object).
+    The function body is the swap point — call-site signatures may need to grow
+    a context parameter (e.g. ``LicenseContext`` or ``tenant_id``) at that time.
     """
     plan = PLAN_FEATURES.get(plan_codename)
     if plan is not None and feature_key in plan:

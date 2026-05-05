@@ -1,8 +1,10 @@
 """Feature catalog — config-as-code source of truth for what features exist.
 
 This file declares every feature key that any part of the IMS may gate behind a plan
-or override. Adding a new feature gate begins by adding an entry here; without an
-entry, the resolver returns the type's "off" default and may log a warning.
+or override. Adding a new feature gate begins by adding an entry here. Lookups for
+unknown keys return ``None`` from ``resolve_default``; the resolver in
+``entitlements.py`` is the right place to surface a warning if that ever
+happens at runtime.
 
 Plan-codename -> value mapping lives in plans.py. Per-tenant overrides live in
 the tenant_feature_overrides table. The resolver in entitlements.py merges the
