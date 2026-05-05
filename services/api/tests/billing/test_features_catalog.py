@@ -72,7 +72,12 @@ def test_plan_numeric_values_locked() -> None:
 
 
 def test_starter_plan_does_not_include_headless_api() -> None:
-    """Exercises the plan-dict-hit path for a False feature gate (vs the
-    fallback path tested by test_plan_map_free_plan_does_not_include_headless_api)."""
+    """Confirms the starter plan resolves headless_api to False.
+
+    headless_api is absent from the starter plan dict, so this exercises the
+    fallback path to the catalog default (currently False). It locks the
+    behavior — if either the catalog default flips or someone adds an
+    explicit headless_api entry to the starter plan, this test catches it.
+    """
     from app.billing.plans import resolve_plan_value
     assert resolve_plan_value("starter", "headless_api") is False
