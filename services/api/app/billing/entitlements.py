@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from app.billing.features import (
     FEATURE_CATALOG,
-    FeatureDefinition,
     ValueType,
     get_definition,
     resolve_default,
