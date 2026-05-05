@@ -48,7 +48,9 @@ class Entitlements:
         return resolve_default(key)
 
     def has(self, key: str) -> bool:
-        """For boolean features. Raises if the feature is not boolean."""
+        """For boolean features. Returns False for unknown feature keys (silent —
+        use ``get_definition()`` if you need to detect unknowns). Raises ValueError
+        if the feature exists but is not boolean."""
         d = get_definition(key)
         if d is None:
             return False
@@ -66,14 +68,20 @@ class Entitlements:
         return int(self.get(key))
 
     def require(self, key: str) -> None:
-        """Raise 403 if a boolean feature is off. No-op if on."""
+        """Raise 403 if a boolean feature is off. No-op if on. Raises ValueError
+        if used on a non-boolean feature (use ``limit()`` for numeric limits)."""
         d = get_definition(key)
         if d is None:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=f"unknown feature {key!r}",
             )
-        if d.value_type is ValueType.BOOL and not self.has(key):
+        if d.value_type is not ValueType.BOOL:
+            raise ValueError(
+                f"require() is for boolean features; {key!r} is {d.value_type.value}. "
+                f"Use limit() for numeric features."
+            )
+        if not self.has(key):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
@@ -84,15 +92,30 @@ class Entitlements:
             )
 
     def to_dict(self) -> dict[str, Any]:
-        # Materialize all known keys (defaults + plan + overrides)
+        """Materialize the catalog-restricted view of all known features.
+
+        Iterates ``FEATURE_CATALOG`` only — keys present in ``_values`` but not in
+        the catalog (i.e. catalog-orphan overrides) are NOT included. For a
+        lossless serialization (e.g. cache writes) use ``to_cache_payload()``.
+        """
         out: dict[str, Any] = {}
         for f in FEATURE_CATALOG:
             out[f.key] = self.get(f.key)
         return out
 
+    def to_cache_payload(self) -> dict[str, Any]:
+        """Lossless serialization helper for cache writers. Returns the full
+        `_values` dict plus `plan_codename` so ``Entitlements.from_values`` can
+        reconstruct an equivalent instance. Includes catalog-orphan overrides
+        (unlike ``to_dict()``)."""
+        return {"plan_codename": self.plan_codename, "values": dict(self._values)}
+
 
 def _load_overrides(db: Session, tenant_id: UUID) -> dict[str, Any]:
     """Load active (non-expired) per-tenant overrides keyed by feature_key."""
+    # Per-tenant overrides are expected to be sparse (O(10s) rows max), so
+    # we filter expired rows in Python rather than the WHERE clause. If the
+    # row count grows large, push the filter into SQL.
     now = datetime.now(UTC)
     rows = db.execute(
         select(TenantFeatureOverride).where(TenantFeatureOverride.tenant_id == tenant_id)

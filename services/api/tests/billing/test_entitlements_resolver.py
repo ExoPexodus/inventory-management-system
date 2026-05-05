@@ -92,3 +92,24 @@ def test_limit_raises_for_non_numeric_feature(db, pro_tenant: Tenant) -> None:
     ents = _resolve(db, pro_tenant, plan_codename="pro")
     with pytest.raises(ValueError):
         ents.limit("headless_api")  # bool, not numeric
+
+
+def test_permanent_override_no_expiry_applies(db, pro_tenant: Tenant) -> None:
+    """An override with expires_at=None (the most common shape) must apply."""
+    db.add(TenantFeatureOverride(
+        tenant_id=pro_tenant.id,
+        feature_key="headless_api",
+        value=True,
+        expires_at=None,
+    ))
+    db.flush()
+
+    ents = _resolve(db, pro_tenant, plan_codename="free")
+    assert ents.has("headless_api") is True
+
+
+def test_require_raises_for_non_boolean_feature(db, pro_tenant: Tenant) -> None:
+    """require() is for boolean gates only; numeric features must raise ValueError."""
+    ents = _resolve(db, pro_tenant, plan_codename="pro")
+    with pytest.raises(ValueError):
+        ents.require("max_channels")  # numeric, not boolean
