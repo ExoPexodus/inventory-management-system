@@ -1,0 +1,129 @@
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.main import app
+from app.models import Tenant, TenantFeatureOverride
+from app.worker.queue import redis_conn
+
+
+def _purge_cache(tenant_id):
+    r = redis_conn()
+    for k in r.scan_iter(f"ents:v1:{tenant_id}:*"):
+        r.delete(k)
+
+
+@pytest.fixture()
+def auth_headers(db, tenant: Tenant):
+    """Stub admin auth: operator with the entitlements:manage permission.
+
+    Also overrides get_db_admin to use the conftest-managed connection so the
+    route's writes are visible to the test's `db` fixture (see Task 5 notes
+    on session isolation).
+    """
+    from app.auth.admin_deps import AdminContext, require_admin_context
+    from app.db.admin_deps_db import get_db_admin
+
+    fake_ctx = AdminContext(
+        user_id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        role="staff",
+        role_id=None,
+        is_legacy_token=False,
+        permissions=frozenset({"entitlements:manage"}),
+    )
+    app.dependency_overrides[require_admin_context] = lambda: fake_ctx
+    app.dependency_overrides[get_db_admin] = lambda: db
+    yield {}
+    app.dependency_overrides.clear()
+
+
+def test_create_override(db, tenant: Tenant, auth_headers) -> None:
+    client = TestClient(app)
+    resp = client.post("/v1/admin/entitlements/overrides", json={
+        "feature_key": "headless_api",
+        "value": True,
+        "reason": "Beta access",
+    }, headers=auth_headers)
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["feature_key"] == "headless_api"
+    assert body["value"] is True
+    assert body["reason"] == "Beta access"
+
+
+def test_create_override_invalidates_cache(db, tenant: Tenant, auth_headers) -> None:
+    from app.billing.entitlements import resolve_for_tenant
+    _purge_cache(tenant.id)
+
+    # Prime cache with current state
+    resolve_for_tenant(db, tenant.id, "free")
+    assert redis_conn().keys(f"ents:v1:{tenant.id}:*")
+
+    # Create override via API
+    client = TestClient(app)
+    resp = client.post("/v1/admin/entitlements/overrides", json={
+        "feature_key": "headless_api", "value": True,
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+
+    # Cache should be cleared
+    assert not redis_conn().keys(f"ents:v1:{tenant.id}:*")
+
+
+def test_list_overrides(db, tenant: Tenant, auth_headers) -> None:
+    db.add(TenantFeatureOverride(
+        tenant_id=tenant.id, feature_key="headless_api", value=True,
+    ))
+    db.add(TenantFeatureOverride(
+        tenant_id=tenant.id, feature_key="max_channels", value=42,
+    ))
+    db.commit()
+
+    client = TestClient(app)
+    resp = client.get("/v1/admin/entitlements/overrides", headers=auth_headers)
+    assert resp.status_code == 200
+    keys = {o["feature_key"] for o in resp.json()}
+    assert keys == {"headless_api", "max_channels"}
+
+
+def test_delete_override(db, tenant: Tenant, auth_headers) -> None:
+    o = TenantFeatureOverride(
+        tenant_id=tenant.id, feature_key="headless_api", value=True,
+    )
+    db.add(o)
+    db.commit()
+
+    client = TestClient(app)
+    resp = client.delete(f"/v1/admin/entitlements/overrides/{o.id}", headers=auth_headers)
+    assert resp.status_code == 204
+
+    # Confirm gone
+    resp = client.get("/v1/admin/entitlements/overrides", headers=auth_headers)
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_unknown_feature_key_rejected(db, tenant: Tenant, auth_headers) -> None:
+    client = TestClient(app)
+    resp = client.post("/v1/admin/entitlements/overrides", json={
+        "feature_key": "made-up-feature", "value": True,
+    }, headers=auth_headers)
+    assert resp.status_code == 400
+    assert "unknown feature" in resp.json()["detail"].lower()
+
+
+def test_create_with_expiry(db, tenant: Tenant, auth_headers) -> None:
+    client = TestClient(app)
+    expires = (datetime.now(UTC) + timedelta(days=30)).isoformat()
+    resp = client.post("/v1/admin/entitlements/overrides", json={
+        "feature_key": "headless_api",
+        "value": True,
+        "expires_at": expires,
+    }, headers=auth_headers)
+    assert resp.status_code == 201
+    assert resp.json()["expires_at"] is not None
