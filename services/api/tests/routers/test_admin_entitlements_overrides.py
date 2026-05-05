@@ -127,3 +127,42 @@ def test_create_with_expiry(db, tenant: Tenant, auth_headers) -> None:
     }, headers=auth_headers)
     assert resp.status_code == 201
     assert resp.json()["expires_at"] is not None
+
+
+def test_upsert_replaces_existing(db, tenant: Tenant, auth_headers) -> None:
+    """POSTing the same feature_key twice updates the existing row, not insert duplicate.
+
+    The unique constraint on (tenant_id, feature_key) would 500 on duplicate insert;
+    this test exercises the SELECT-then-mutate branch in create_override.
+    """
+    client = TestClient(app)
+
+    # Create
+    resp1 = client.post("/v1/admin/entitlements/overrides", json={
+        "feature_key": "headless_api",
+        "value": True,
+        "reason": "first reason",
+    }, headers=auth_headers)
+    assert resp1.status_code == 201
+    first_id = resp1.json()["id"]
+
+    # Update via POST same feature_key
+    resp2 = client.post("/v1/admin/entitlements/overrides", json={
+        "feature_key": "headless_api",
+        "value": False,
+        "reason": "updated reason",
+    }, headers=auth_headers)
+    assert resp2.status_code == 201
+    second_id = resp2.json()["id"]
+
+    # Same row id; updated fields
+    assert second_id == first_id
+    assert resp2.json()["value"] is False
+    assert resp2.json()["reason"] == "updated reason"
+
+    # Confirm only one row exists
+    resp3 = client.get("/v1/admin/entitlements/overrides", headers=auth_headers)
+    assert resp3.status_code == 200
+    rows = resp3.json()
+    keys = [r["feature_key"] for r in rows if r["feature_key"] == "headless_api"]
+    assert len(keys) == 1

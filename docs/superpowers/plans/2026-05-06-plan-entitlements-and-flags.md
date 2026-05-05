@@ -1126,8 +1126,11 @@ def _build_app_with_route():
 def _stub_admin(app, tenant_id):
     """Override admin auth so the test client gets a known context.
 
-    Uses is_legacy_token=True which bypasses permission checks (the routes under
-    test here gate on entitlements, not on admin permissions).
+    Uses is_legacy_token=False because license_deps._load_license_context
+    short-circuits to plan_codename="legacy" when is_legacy_token=True, which
+    would bypass the cache lookup we need EntitlementsDep to consult. Permission
+    checks aren't a concern here because the routes under test don't use
+    require_permission().
     """
     from app.auth.admin_deps import AdminContext, require_admin_context
 
@@ -1136,7 +1139,7 @@ def _stub_admin(app, tenant_id):
         tenant_id=tenant_id,
         role="tenant_admin",
         role_id=None,
-        is_legacy_token=True,
+        is_legacy_token=False,
         permissions=frozenset(),
     )
     app.dependency_overrides[require_admin_context] = lambda: fake_ctx
@@ -2009,16 +2012,9 @@ class FeatureFlagPatch(BaseModel):
     description: str | None = None
 
 
-class FeatureFlagOut(BaseModel):
-    id: UUID
-    key: str
-    default_state: bool
-    rollout_rules: dict | None
-    description: str | None
-    created_at: datetime
-    updated_at: datetime
-
-    model_config = {"from_attributes": True}
+# NOTE: `FeatureFlagOut` is already defined in this file (added during Task 7
+# so the contract test in test_admin_console_contracts.py could turn green).
+# Do NOT redefine it here.
 
 
 @router.get("/flags", response_model=list[FeatureFlagOut])

@@ -56,7 +56,7 @@ class FeatureFlagOut(BaseModel):
     id: UUID
     key: str
     default_state: bool
-    rollout_rules: Any
+    rollout_rules: dict | None
     description: str | None
     created_at: datetime
     updated_at: datetime
