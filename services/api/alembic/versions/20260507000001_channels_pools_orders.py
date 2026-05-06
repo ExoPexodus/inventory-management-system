@@ -186,6 +186,7 @@ def upgrade() -> None:
         "created_via_channel_id", PG_UUID(as_uuid=True),
         sa.ForeignKey("channels.id", ondelete="SET NULL"), nullable=True,
     ))
+    op.create_index("ix_customers_created_via_channel_id", "customers", ["created_via_channel_id"])
 
     # 9. Auto-create per-tenant default pool + per-shop pool + per-shop POS channel.
     # For each existing tenant:
@@ -328,6 +329,7 @@ def downgrade() -> None:
     ))
 
     # Reverse column additions
+    op.drop_index("ix_customers_created_via_channel_id", table_name="customers")
     op.drop_column("customers", "created_via_channel_id")
     op.drop_index("ix_stock_movements_source_channel_id", table_name="stock_movements")
     op.drop_column("stock_movements", "source_channel_id")

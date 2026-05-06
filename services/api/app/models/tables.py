@@ -893,6 +893,9 @@ class Order(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    lines: Mapped[list["OrderLine"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+    payments: Mapped[list["OrderPayment"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+
 
 class OrderLine(Base):
     __tablename__ = "order_lines"
@@ -917,6 +920,8 @@ class OrderLine(Base):
     raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    order: Mapped["Order"] = relationship(back_populates="lines")
+
 
 class OrderPayment(Base):
     __tablename__ = "order_payments"
@@ -936,3 +941,5 @@ class OrderPayment(Base):
     paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    order: Mapped["Order"] = relationship(back_populates="payments")
