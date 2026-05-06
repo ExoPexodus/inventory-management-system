@@ -326,6 +326,8 @@ class Product(Base):
     meta_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     meta_description: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     og_image_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    tax_class: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    # null resolved as 'standard' at calculation time
 
     product_group: Mapped[Optional["ProductGroup"]] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(
@@ -878,6 +880,8 @@ class Channel(Base):
     shop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=True
     )
+    tax_included_in_price: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    # null = False (exclusive — tax added at checkout)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -1140,6 +1144,56 @@ class ShippingRate(Base):
     condition_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     condition_max: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     applies_to_classes: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class TaxRegion(Base):
+    """A geographic area with its own tax rules (country or country+state)."""
+    __tablename__ = "tax_regions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "country_code", "state_code",
+                         name="uq_tax_region_tenant_country_state"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    country_code: Mapped[str] = mapped_column(String(2), nullable=False)
+    state_code: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class TaxRule(Base):
+    """Tax rate for a specific product class within a region.
+
+    components: list of {"label": str, "rate_bps": int}
+    Examples:
+      GST 18% intra-state: [{"label": "CGST", "rate_bps": 900}, {"label": "SGST", "rate_bps": 900}]
+      exempt: []
+    """
+    __tablename__ = "tax_rules"
+    __table_args__ = (
+        UniqueConstraint("region_id", "tax_class", name="uq_tax_rule_region_class"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    region_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tax_regions.id", ondelete="CASCADE"), nullable=False
+    )
+    tax_class: Mapped[str] = mapped_column(String(32), nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False)
+    components: Mapped[list] = mapped_column(JSONB, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

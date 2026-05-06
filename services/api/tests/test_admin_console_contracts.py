@@ -432,4 +432,40 @@ def test_shipping_rate_out_schema() -> None:
     d = r.model_dump(mode="json")
     assert d["name"] == "Standard"
     assert d["base_price_cents"] == 500
+
+
+def test_tax_region_out_schema() -> None:
+    from app.routers.admin_tax import TaxRegionOut
+
+    r = TaxRegionOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        name="India GST",
+        country_code="IN",
+        state_code=None,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = r.model_dump(mode="json")
+    assert d["country_code"] == "IN"
+    assert d["state_code"] is None
+
+
+def test_tax_rule_out_schema() -> None:
+    from app.routers.admin_tax import TaxRuleOut
+
+    r = TaxRuleOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        region_id=uuid4(),
+        tax_class="standard",
+        label="GST 18%",
+        components=[{"label": "CGST", "rate_bps": 900}, {"label": "SGST", "rate_bps": 900}],
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = r.model_dump(mode="json")
+    assert d["tax_class"] == "standard"
+    assert len(d["components"]) == 2
+    assert d["components"][0]["rate_bps"] == 900
     assert d["condition_type"] == "none"
