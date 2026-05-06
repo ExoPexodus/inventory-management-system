@@ -37,6 +37,7 @@ from app.routers import (
     admin_suppliers,
     admin_tax,
     admin_web,
+    admin_woocommerce,
     audit,
     auth,
     device_shifts,
@@ -76,6 +77,7 @@ app.include_router(transactions.router)
 app.include_router(device_shifts.router)
 app.include_router(admin.router)
 app.include_router(admin_web.router)
+app.include_router(admin_woocommerce.router)
 app.include_router(admin_catalog.router)
 app.include_router(admin_channels.router)
 app.include_router(admin_inventory_pools.router)
