@@ -584,23 +584,28 @@ def upgrade() -> None:
             """), {"channel_id": channel_id, "shop_id": shop_id})
 
     # 10. Seed permissions: channels:manage and inventory_pools:manage.
-    # These are tenant-admin level (different from entitlements:manage which is staff-only).
+    # The `permissions` table requires display_name (NOT NULL) and category (NOT NULL).
     op.execute("""
-        INSERT INTO permissions (id, codename, description)
-        VALUES (gen_random_uuid(), 'channels:manage', 'Manage tenant sales channels')
+        INSERT INTO permissions (id, codename, display_name, category, description)
+        VALUES (gen_random_uuid(), 'channels:manage', 'Manage Sales Channels', 'channels',
+                'Manage tenant sales channels')
         ON CONFLICT (codename) DO UPDATE SET description = EXCLUDED.description
     """)
     op.execute("""
-        INSERT INTO permissions (id, codename, description)
-        VALUES (gen_random_uuid(), 'inventory_pools:manage', 'Manage tenant inventory pools')
+        INSERT INTO permissions (id, codename, display_name, category, description)
+        VALUES (gen_random_uuid(), 'inventory_pools:manage', 'Manage Inventory Pools', 'channels',
+                'Manage tenant inventory pools')
         ON CONFLICT (codename) DO UPDATE SET description = EXCLUDED.description
     """)
 
-    # Grant both to tenant_admin role
+    # Grant both to the system 'owner' role (the tenant-admin-equivalent in this codebase).
+    # `roles` has a `name` column (not `codename`); existing system roles are
+    # cashier / manager / owner / system. role_permissions has no default for id.
     op.execute("""
-        INSERT INTO role_permissions (role_id, permission_id)
-        SELECT r.id, p.id FROM roles r, permissions p
-        WHERE r.codename = 'tenant_admin'
+        INSERT INTO role_permissions (id, role_id, permission_id)
+        SELECT gen_random_uuid(), r.id, p.id
+        FROM roles r, permissions p
+        WHERE r.name = 'owner' AND r.is_system = true
           AND p.codename IN ('channels:manage', 'inventory_pools:manage')
         ON CONFLICT DO NOTHING
     """)
