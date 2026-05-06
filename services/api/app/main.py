@@ -8,6 +8,7 @@ from app.routers import (
     admin_audit,
     admin_billing,
     admin_catalog,
+    admin_channels,
     admin_customers,
     admin_entitlements,
     admin_inventory,
@@ -63,6 +64,7 @@ app.include_router(device_shifts.router)
 app.include_router(admin.router)
 app.include_router(admin_web.router)
 app.include_router(admin_catalog.router)
+app.include_router(admin_channels.router)
 app.include_router(admin_customers.router)
 app.include_router(admin_entitlements.router)
 app.include_router(admin_inventory.router)
