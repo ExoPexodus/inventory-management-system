@@ -217,9 +217,22 @@ def apply_sale_completed(
         if user_row is not None:
             user_id = user_row.id
 
-    # Customer resolution
+    # Resolve POS channel for the shop (auto-created by migration; lazily created
+    # for shops added post-migration on first sale).
+    from app.services.channel_service import get_pos_channel_for_shop, get_or_create_pos_channel
+
+    pos_channel = get_pos_channel_for_shop(db, shop_id)
+    if pos_channel is None:
+        # shop_row is guaranteed non-None at this point (validated above)
+        pos_channel = get_or_create_pos_channel(db, shop_row)
+    pos_channel_id = pos_channel.id if pos_channel else None
+
+    # Customer resolution via unified resolver
+    from app.services.customer_resolver import resolve_or_create_customer, _record_channel_attribution
+
     raw_customer_id = event.get("customer_id")
     raw_customer_phone = event.get("customer_phone")
+    raw_customer_email = event.get("customer_email")
     raw_customer_name = event.get("customer_name")
 
     resolved_customer_id: uuid.UUID | None = None
@@ -230,24 +243,23 @@ def apply_sale_completed(
         c = db.get(Customer, cid)
         if c and c.tenant_id == tenant_id:
             resolved_customer_id = cid
-    elif raw_customer_phone:
-        phone_str = str(raw_customer_phone).strip()
-        existing = db.execute(
-            select(Customer).where(Customer.tenant_id == tenant_id, Customer.phone == phone_str)
-        ).scalar_one_or_none()
-        if existing:
-            resolved_customer_id = existing.id
-        elif raw_customer_name:
-            new_cust = Customer(
-                tenant_id=tenant_id,
-                phone=phone_str,
-                name=str(raw_customer_name).strip(),
+            if pos_channel_id:
+                _record_channel_attribution(db, tenant_id, cid, pos_channel_id)
+    elif raw_customer_email or raw_customer_phone:
+        if pos_channel_id:
+            cust = resolve_or_create_customer(
+                db, tenant_id, pos_channel_id,
+                email=raw_customer_email,
+                phone=raw_customer_phone,
+                name=raw_customer_name,
             )
-            db.add(new_cust)
-            db.flush()
-            resolved_customer_id = new_cust.id
+            if cust is not None:
+                resolved_customer_id = cust.id
+            else:
+                unresolved_phone = raw_customer_phone
         else:
-            unresolved_phone = phone_str
+            # No POS channel — fall back to legacy phone-only behavior
+            unresolved_phone = raw_customer_phone
 
     txn = Transaction(
         tenant_id=tenant_id,
@@ -259,6 +271,7 @@ def apply_sale_completed(
         client_mutation_id=client_mutation_id,
         customer_id=resolved_customer_id,
         customer_phone=unresolved_phone,
+        source_channel_id=pos_channel_id,
     )
     db.add(txn)
     db.flush()
@@ -282,6 +295,7 @@ def apply_sale_completed(
                 movement_type="sale_out",
                 transaction_id=txn.id,
                 idempotency_key=f"{client_mutation_id}:{pid}",
+                source_channel_id=pos_channel_id,
             )
         )
 
