@@ -471,6 +471,24 @@ def test_tax_rule_out_schema() -> None:
     assert d["condition_type"] == "none"
 
 
+def test_business_type_out_schema() -> None:
+    from app.routers.admin_business_type import BusinessTypeOut
+
+    b = BusinessTypeOut(
+        business_type="online",
+        show_shops_management=False,
+        show_pos_features=False,
+        show_ecommerce_features=True,
+        can_add_physical_store=True,
+        can_add_online_channel=False,
+    )
+    d = b.model_dump(mode="json")
+    assert d["business_type"] == "online"
+    assert d["show_shops_management"] is False
+    assert d["show_ecommerce_features"] is True
+    assert d["can_add_physical_store"] is True
+
+
 def test_discount_out_schema() -> None:
     from app.routers.admin_discounts import DiscountOut
 
