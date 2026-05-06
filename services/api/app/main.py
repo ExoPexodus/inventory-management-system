@@ -28,6 +28,7 @@ from app.routers import (
     admin_reports,
     admin_reservations,
     admin_shipping,
+    admin_shopify,
     admin_roles,
     admin_shifts,
     admin_shops,
@@ -103,6 +104,7 @@ app.include_router(admin_audit.router)
 app.include_router(admin_reports.router)
 app.include_router(admin_reservations.router)
 app.include_router(admin_shipping.router)
+app.include_router(admin_shopify.router)
 app.include_router(audit.router)
 app.include_router(notifications.router)
 app.include_router(internal_sync.router)
