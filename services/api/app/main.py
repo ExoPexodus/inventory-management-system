@@ -5,6 +5,7 @@ from app.routers.storefront import catalog as storefront_catalog
 from app.routers.storefront import cart as storefront_cart
 from app.routers.storefront import checkout as storefront_checkout
 from app.routers import webhooks_shopify
+from app.routers import webhooks_woocommerce
 from app.routers import (
     app_updates,
     admin,
@@ -119,3 +120,4 @@ app.include_router(storefront_catalog.router)
 app.include_router(storefront_cart.router)
 app.include_router(storefront_checkout.router)
 app.include_router(webhooks_shopify.router)
+app.include_router(webhooks_woocommerce.router)
