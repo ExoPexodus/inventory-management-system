@@ -134,6 +134,52 @@ def test_product_list_item_includes_catalog_fields() -> None:
     assert d["mrp_cents"] == 600
 
 
+def test_product_detail_out_schema() -> None:
+    from app.routers.admin_catalog import ProductDetailOut
+
+    p = ProductDetailOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        sku="WIDGET-01",
+        name="Widget",
+        product_type="physical",
+        status="active",
+        unit_price_cents=1999,
+        discount_price_cents=None,
+        subtitle=None,
+        ribbon=None,
+        short_description=None,
+        description=None,
+        tags=[],
+        track_quantity=True,
+        weight_grams=None,
+        shipping_class=None,
+        digital_files=None,
+        gift_card_amounts_cents=None,
+        gift_card_expiry_months=None,
+        additional_info_sections=[],
+        slug=None,
+        meta_title=None,
+        meta_description=None,
+        og_image_url=None,
+        image_url=None,
+        images=[],
+        category=None,
+        product_group_id=None,
+        cost_price_cents=None,
+        mrp_cents=None,
+        barcode=None,
+        hsn_code=None,
+        negative_inventory_allowed=False,
+        reorder_point=0,
+        created_at=datetime.now(UTC),
+    )
+    d = p.model_dump(mode="json")
+    assert d["product_type"] == "physical"
+    assert d["track_quantity"] is True
+    assert d["tags"] == []
+
+
 def test_localisation_settings_schema() -> None:
     from app.routers.admin_platform import LocalisationSettingsOut
 

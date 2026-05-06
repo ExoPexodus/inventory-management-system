@@ -304,7 +304,54 @@ class Product(Base):
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # --- product type and enrichment fields ---
+    product_type: Mapped[str] = mapped_column(
+        String(32), default="physical", server_default="physical", nullable=False
+    )
+    subtitle: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    ribbon: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    discount_price_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    short_description: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    track_quantity: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    tags: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    additional_info_sections: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    weight_grams: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    shipping_class: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    digital_files: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    gift_card_amounts_cents: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    gift_card_expiry_months: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    slug: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    meta_title: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    meta_description: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    og_image_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+
     product_group: Mapped[Optional["ProductGroup"]] = relationship(back_populates="products")
+    images: Mapped[list["ProductImage"]] = relationship(
+        back_populates="product",
+        order_by="ProductImage.sort_order",
+        cascade="all, delete-orphan",
+    )
+
+
+class ProductImage(Base):
+    """Ordered gallery image for a product."""
+    __tablename__ = "product_images"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    alt_text: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    product: Mapped["Product"] = relationship(back_populates="images")
 
 
 class Transaction(Base):
