@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    Numeric,
     SmallInteger,
     String,
     Text,
@@ -988,3 +989,59 @@ class StockReservation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ProductPrice(Base):
+    """Multi-currency price for a product, optionally scoped to a channel.
+
+    Resolution order at lookup time (handled by app/billing/pricing.py):
+      1. ProductPrice with matching (product_id, channel_id, currency_code)
+      2. ProductPrice with matching (product_id, currency_code, channel_id IS NULL)
+      3. FX-derived from Product.unit_price_cents (in tenant's default currency)
+    """
+    __tablename__ = "product_prices"
+    __table_args__ = (
+        UniqueConstraint(
+            "product_id", "channel_id", "currency_code",
+            name="uq_product_price_product_channel_currency",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=True
+    )
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class FxRate(Base):
+    """Per-tenant FX rate for a currency pair, with effective-at timestamp."""
+    __tablename__ = "fx_rates"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "from_currency", "to_currency",
+            name="uq_fx_tenant_pair",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    from_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    to_currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    rate: Mapped[str] = mapped_column(Numeric(20, 10), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), default="manual", server_default="manual", nullable=False)
+    effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

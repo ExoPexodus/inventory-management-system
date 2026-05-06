@@ -307,3 +307,40 @@ def test_stock_reservation_out_schema() -> None:
     assert d["quantity"] == 3
     assert d["status"] == "active"
     assert d["purpose"] == "cart"
+
+
+def test_product_price_out_schema() -> None:
+    from app.routers.admin_product_prices import ProductPriceOut
+
+    p = ProductPriceOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        product_id=uuid4(),
+        channel_id=None,
+        currency_code="USD",
+        amount_cents=1999,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = p.model_dump(mode="json")
+    assert d["currency_code"] == "USD"
+    assert d["amount_cents"] == 1999
+
+
+def test_fx_rate_out_schema() -> None:
+    from app.routers.admin_fx_rates import FxRateOut
+
+    r = FxRateOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        from_currency="USD",
+        to_currency="INR",
+        rate="83.250000",
+        source="manual",
+        effective_at=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+    )
+    d = r.model_dump(mode="json")
+    assert d["from_currency"] == "USD"
+    assert d["to_currency"] == "INR"
+    assert d["rate"] == "83.250000"
