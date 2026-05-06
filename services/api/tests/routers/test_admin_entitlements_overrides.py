@@ -129,6 +129,41 @@ def test_create_with_expiry(db, tenant: Tenant, auth_headers) -> None:
     assert resp.json()["expires_at"] is not None
 
 
+def test_missing_permission_returns_403(db, tenant: Tenant) -> None:
+    """The router-level require_permission('entitlements:manage') gate must block
+    operators without the permission. Stubs an AdminContext with empty permissions."""
+    from app.auth.admin_deps import AdminContext, require_admin_context
+    from app.db.admin_deps_db import get_db_admin
+
+    fake_ctx = AdminContext(
+        user_id=uuid.uuid4(),
+        tenant_id=tenant.id,
+        role="tenant_admin",
+        role_id=None,
+        is_legacy_token=False,
+        permissions=frozenset(),
+    )
+    app.dependency_overrides[require_admin_context] = lambda: fake_ctx
+    app.dependency_overrides[get_db_admin] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/admin/entitlements/overrides")
+        assert resp.status_code == 403
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_value_null_rejected_with_422(db, tenant: Tenant, auth_headers) -> None:
+    """The DB column is NOT NULL JSONB; explicit null in the body must be rejected
+    at the API boundary (422), not bubble up as a DB integrity error (500)."""
+    client = TestClient(app)
+    resp = client.post("/v1/admin/entitlements/overrides", json={
+        "feature_key": "headless_api",
+        "value": None,
+    }, headers=auth_headers)
+    assert resp.status_code == 422
+
+
 def test_upsert_replaces_existing(db, tenant: Tenant, auth_headers) -> None:
     """POSTing the same feature_key twice updates the existing row, not insert duplicate.
 

@@ -13,7 +13,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -38,6 +38,15 @@ class TenantFeatureOverrideIn(BaseModel):
     value: Any
     reason: str | None = None
     expires_at: datetime | None = None
+
+    @field_validator("value")
+    @classmethod
+    def value_must_not_be_none(cls, v: Any) -> Any:
+        # The DB column is NOT NULL JSONB. Reject explicit nulls at the API
+        # boundary so callers get a 422 instead of a 500 from PG.
+        if v is None:
+            raise ValueError("value must not be null")
+        return v
 
 
 class TenantFeatureOverrideOut(BaseModel):
@@ -111,6 +120,9 @@ def create_override(
     ).scalar_one_or_none()
 
     if existing is not None:
+        # Full replace: any reason/expires_at not in the body is cleared.
+        # We don't expose a PATCH for overrides — staff repost the whole record
+        # with the new value plus an updated reason for the audit trail.
         existing.value = body.value
         existing.reason = body.reason
         existing.expires_at = body.expires_at

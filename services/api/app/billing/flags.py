@@ -54,9 +54,9 @@ def _eval_rules(tenant_id: UUID, flag: FeatureFlag) -> bool:
 
     pct = rules.get("percent")
     if isinstance(pct, int) and 0 <= pct <= 100:
-        if _bucket(tenant_id, flag.key) < pct:
-            return True
         if pct == 100:
+            return True  # short-circuit: skip the hash for full rollout
+        if _bucket(tenant_id, flag.key) < pct:
             return True
         # Below percent threshold: fall through to default_state
         # (matters when default_state=True and percent is acting as a denylist gate)
