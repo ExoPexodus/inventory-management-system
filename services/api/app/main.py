@@ -12,6 +12,7 @@ from app.routers import (
     admin_customers,
     admin_entitlements,
     admin_inventory,
+    admin_inventory_pools,
     admin_integrations,
     admin_notifications,
     admin_orders,
@@ -65,6 +66,7 @@ app.include_router(admin.router)
 app.include_router(admin_web.router)
 app.include_router(admin_catalog.router)
 app.include_router(admin_channels.router)
+app.include_router(admin_inventory_pools.router)
 app.include_router(admin_customers.router)
 app.include_router(admin_entitlements.router)
 app.include_router(admin_inventory.router)
