@@ -1177,6 +1177,24 @@ class CreateProductBody(BaseModel):
     mrp_cents: int | None = Field(default=None, ge=0)
     hsn_code: str | None = Field(default=None, max_length=32)
     negative_inventory_allowed: bool = False
+    # Enrichment fields
+    product_type: str = "physical"
+    subtitle: str | None = None
+    ribbon: str | None = None
+    discount_price_cents: int | None = Field(default=None, ge=0)
+    short_description: str | None = None
+    track_quantity: bool = True
+    tags: list[str] | None = None
+    additional_info_sections: list[dict] | None = None
+    weight_grams: int | None = Field(default=None, ge=0)
+    shipping_class: str | None = None
+    digital_files: list[dict] | None = None
+    gift_card_amounts_cents: list[int] | None = None
+    gift_card_expiry_months: int | None = Field(default=None, ge=1)
+    slug: str | None = None
+    meta_title: str | None = None
+    meta_description: str | None = None
+    og_image_url: str | None = None
 
 
 class CreateProductResponse(BaseModel):
@@ -1195,6 +1213,24 @@ class CreateProductResponse(BaseModel):
     mrp_cents: int | None = None
     hsn_code: str | None = None
     negative_inventory_allowed: bool = False
+    # Enrichment fields
+    product_type: str = "physical"
+    subtitle: str | None = None
+    ribbon: str | None = None
+    discount_price_cents: int | None = None
+    short_description: str | None = None
+    track_quantity: bool = True
+    tags: list[str] | None = None
+    additional_info_sections: list[dict] | None = None
+    weight_grams: int | None = None
+    shipping_class: str | None = None
+    digital_files: list[dict] | None = None
+    gift_card_amounts_cents: list[int] | None = None
+    gift_card_expiry_months: int | None = None
+    slug: str | None = None
+    meta_title: str | None = None
+    meta_description: str | None = None
+    og_image_url: str | None = None
 
 
 def _resolve_product_group(
@@ -1226,6 +1262,14 @@ class ProductListItem(BaseModel):
     mrp_cents: int | None = None
     hsn_code: str | None = None
     negative_inventory_allowed: bool = False
+    # Enrichment fields
+    product_type: str = "physical"
+    subtitle: str | None = None
+    ribbon: str | None = None
+    discount_price_cents: int | None = None
+    track_quantity: bool = True
+    tags: list[str] | None = None
+    slug: str | None = None
 
 
 @router.get("/products", response_model=list[ProductListItem], dependencies=[require_permission("catalog:read")])
@@ -1263,6 +1307,13 @@ def admin_list_products(
             mrp_cents=r.mrp_cents,
             hsn_code=r.hsn_code,
             negative_inventory_allowed=r.negative_inventory_allowed,
+            product_type=r.product_type,
+            subtitle=r.subtitle,
+            ribbon=r.ribbon,
+            discount_price_cents=r.discount_price_cents,
+            track_quantity=r.track_quantity,
+            tags=r.tags,
+            slug=r.slug,
         )
         for r in rows
     ]
@@ -1289,6 +1340,23 @@ def admin_create_product(
         mrp_cents=body.mrp_cents,
         hsn_code=body.hsn_code.strip() if body.hsn_code else None,
         negative_inventory_allowed=body.negative_inventory_allowed,
+        product_type=body.product_type,
+        subtitle=body.subtitle,
+        ribbon=body.ribbon,
+        discount_price_cents=body.discount_price_cents,
+        short_description=body.short_description,
+        track_quantity=body.track_quantity,
+        tags=body.tags,
+        additional_info_sections=body.additional_info_sections,
+        weight_grams=body.weight_grams,
+        shipping_class=body.shipping_class,
+        digital_files=body.digital_files,
+        gift_card_amounts_cents=body.gift_card_amounts_cents,
+        gift_card_expiry_months=body.gift_card_expiry_months,
+        slug=body.slug,
+        meta_title=body.meta_title,
+        meta_description=body.meta_description,
+        og_image_url=body.og_image_url,
     )
     db.add(prod)
     try:
@@ -1323,6 +1391,23 @@ def admin_create_product(
         mrp_cents=prod.mrp_cents,
         hsn_code=prod.hsn_code,
         negative_inventory_allowed=prod.negative_inventory_allowed,
+        product_type=prod.product_type,
+        subtitle=prod.subtitle,
+        ribbon=prod.ribbon,
+        discount_price_cents=prod.discount_price_cents,
+        short_description=prod.short_description,
+        track_quantity=prod.track_quantity,
+        tags=prod.tags,
+        additional_info_sections=prod.additional_info_sections,
+        weight_grams=prod.weight_grams,
+        shipping_class=prod.shipping_class,
+        digital_files=prod.digital_files,
+        gift_card_amounts_cents=prod.gift_card_amounts_cents,
+        gift_card_expiry_months=prod.gift_card_expiry_months,
+        slug=prod.slug,
+        meta_title=prod.meta_title,
+        meta_description=prod.meta_description,
+        og_image_url=prod.og_image_url,
     )
 
 
@@ -1403,6 +1488,24 @@ class PatchProductBody(BaseModel):
     mrp_cents: int | None = Field(default=None, ge=0)
     hsn_code: str | None = Field(default=None, max_length=32)
     negative_inventory_allowed: bool | None = None
+    # Enrichment fields
+    product_type: str | None = None
+    subtitle: str | None = None
+    ribbon: str | None = None
+    discount_price_cents: int | None = Field(default=None, ge=0)
+    short_description: str | None = None
+    track_quantity: bool | None = None
+    tags: list[str] | None = None
+    additional_info_sections: list[dict] | None = None
+    weight_grams: int | None = Field(default=None, ge=0)
+    shipping_class: str | None = None
+    digital_files: list[dict] | None = None
+    gift_card_amounts_cents: list[int] | None = None
+    gift_card_expiry_months: int | None = Field(default=None, ge=1)
+    slug: str | None = None
+    meta_title: str | None = None
+    meta_description: str | None = None
+    og_image_url: str | None = None
 
 
 @router.patch("/products/{product_id}", response_model=CreateProductResponse, dependencies=[require_permission("catalog:write")])
@@ -1463,6 +1566,17 @@ def admin_patch_product(
     if "negative_inventory_allowed" in patch and patch["negative_inventory_allowed"] is not None:
         prod.negative_inventory_allowed = patch["negative_inventory_allowed"]
 
+    # Enrichment fields — simple nullable passthrough
+    for _field in (
+        "product_type", "subtitle", "ribbon", "discount_price_cents",
+        "short_description", "track_quantity", "tags", "additional_info_sections",
+        "weight_grams", "shipping_class", "digital_files",
+        "gift_card_amounts_cents", "gift_card_expiry_months",
+        "slug", "meta_title", "meta_description", "og_image_url",
+    ):
+        if _field in patch:
+            setattr(prod, _field, patch[_field])
+
     group_title: str | None = None
     if "product_group_id" in patch:
         gid = patch["product_group_id"]
@@ -1505,6 +1619,23 @@ def admin_patch_product(
         mrp_cents=prod.mrp_cents,
         hsn_code=prod.hsn_code,
         negative_inventory_allowed=prod.negative_inventory_allowed,
+        product_type=prod.product_type,
+        subtitle=prod.subtitle,
+        ribbon=prod.ribbon,
+        discount_price_cents=prod.discount_price_cents,
+        short_description=prod.short_description,
+        track_quantity=prod.track_quantity,
+        tags=prod.tags,
+        additional_info_sections=prod.additional_info_sections,
+        weight_grams=prod.weight_grams,
+        shipping_class=prod.shipping_class,
+        digital_files=prod.digital_files,
+        gift_card_amounts_cents=prod.gift_card_amounts_cents,
+        gift_card_expiry_months=prod.gift_card_expiry_months,
+        slug=prod.slug,
+        meta_title=prod.meta_title,
+        meta_description=prod.meta_description,
+        og_image_url=prod.og_image_url,
     )
 
 
