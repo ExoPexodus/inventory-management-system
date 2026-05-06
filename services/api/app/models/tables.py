@@ -1288,3 +1288,34 @@ class CartItem(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ChannelProductMapping(Base):
+    """Maps an IMS product to its ID on an external channel (Shopify, WooCommerce, etc.)
+
+    One row per (channel, product) pair. The external_product_id is the
+    channel's native ID string (e.g. Shopify product ID "987654321").
+    synced_at tracks the last successful push so incremental sync can be efficient.
+    """
+    __tablename__ = "channel_product_mappings"
+    __table_args__ = (
+        UniqueConstraint("channel_id", "product_id", name="uq_channel_product_mapping"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    external_product_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    external_variant_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
