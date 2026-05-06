@@ -37,6 +37,37 @@ def sync_all_tenant_licenses() -> str:
         db.close()
 
 
+def sweep_expired_reservations() -> str:
+    """Scheduled job: mark all past-expiry active reservations as 'expired'.
+
+    Safe to call on any cadence. Recommended schedule: every 1-5 minutes via cron
+    or rq-scheduler. Operators can also enqueue it on demand via the admin
+    endpoint POST /v1/admin/reservations/sweep-expired (Task 5).
+
+    Sets is_admin=True in the RLS context so the sweep can see rows across all
+    tenants without requiring a per-tenant session variable.
+    """
+    import logging
+
+    from app.db.rls import set_rls_context
+    from app.db.session import SessionLocal
+    from app.services.reservation_service import sweep_expired
+
+    logger = logging.getLogger(__name__)
+    db = SessionLocal()
+    try:
+        set_rls_context(db, is_admin=True, tenant_id=None)
+        count = sweep_expired(db)
+        db.commit()
+        logger.info("Reservation sweep complete: %d expired", count)
+        return f"swept {count} reservations"
+    except Exception:
+        logger.exception("Reservation sweep failed")
+        return "error"
+    finally:
+        db.close()
+
+
 def poll_all_tenant_configs() -> dict:
     """Scheduled job: poll platform for every tenant's config. Gated by IMS_PLATFORM_SYNC_MODE."""
     import logging
