@@ -7,6 +7,7 @@ from app.routers import (
     admin_analytics,
     admin_audit,
     admin_billing,
+    admin_business_type,
     admin_catalog,
     admin_channels,
     admin_customers,
@@ -89,6 +90,7 @@ app.include_router(admin_reconciliation.router)
 app.include_router(admin_shifts.router)
 app.include_router(admin_platform.router)
 app.include_router(admin_billing.router)
+app.include_router(admin_business_type.router)
 app.include_router(tenants.router)
 app.include_router(shops.router)
 app.include_router(admin_shops.router)
