@@ -11,12 +11,14 @@ from app.routers import (
     admin_channels,
     admin_customers,
     admin_entitlements,
+    admin_fx_rates,
     admin_inventory,
     admin_inventory_pools,
     admin_integrations,
     admin_notifications,
     admin_orders,
     admin_platform,
+    admin_product_prices,
     admin_reconciliation,
     admin_reports,
     admin_reservations,
@@ -94,4 +96,6 @@ app.include_router(audit.router)
 app.include_router(notifications.router)
 app.include_router(internal_sync.router)
 app.include_router(platform_provision.router)
+app.include_router(admin_fx_rates.router)
+app.include_router(admin_product_prices.router)
 app.include_router(app_updates.router)
