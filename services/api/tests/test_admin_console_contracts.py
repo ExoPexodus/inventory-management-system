@@ -390,3 +390,46 @@ def test_fx_rate_out_schema() -> None:
     assert d["from_currency"] == "USD"
     assert d["to_currency"] == "INR"
     assert d["rate"] == "83.250000"
+
+
+def test_shipping_zone_out_schema() -> None:
+    from app.routers.admin_shipping import ShippingZoneOut
+
+    z = ShippingZoneOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        channel_id=uuid4(),
+        name="Domestic",
+        countries=["IN"],
+        is_catch_all=False,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = z.model_dump(mode="json")
+    assert d["name"] == "Domestic"
+    assert d["countries"] == ["IN"]
+    assert d["is_catch_all"] is False
+
+
+def test_shipping_rate_out_schema() -> None:
+    from app.routers.admin_shipping import ShippingRateOut
+
+    r = ShippingRateOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        zone_id=uuid4(),
+        name="Standard",
+        base_price_cents=500,
+        currency_code="INR",
+        free_above_cents=None,
+        condition_type="none",
+        condition_min=None,
+        condition_max=None,
+        applies_to_classes=None,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = r.model_dump(mode="json")
+    assert d["name"] == "Standard"
+    assert d["base_price_cents"] == 500
+    assert d["condition_type"] == "none"

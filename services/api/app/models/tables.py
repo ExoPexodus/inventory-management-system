@@ -1092,3 +1092,55 @@ class FxRate(Base):
     source: Mapped[str] = mapped_column(String(32), default="manual", server_default="manual", nullable=False)
     effective_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ShippingZone(Base):
+    """A named geographic area (set of countries) for a channel, with shipping rates."""
+    __tablename__ = "shipping_zones"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "channel_id", "name", name="uq_shipping_zone_channel_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    countries: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    is_catch_all: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ShippingRate(Base):
+    """One named rate option inside a shipping zone."""
+    __tablename__ = "shipping_rates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    zone_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shipping_zones.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    base_price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    free_above_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    condition_type: Mapped[str] = mapped_column(
+        String(32), default="none", server_default="none", nullable=False
+    )
+    condition_min: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    condition_max: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    applies_to_classes: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
