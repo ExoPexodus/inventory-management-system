@@ -189,6 +189,9 @@ class Customer(Base):
     address_line1: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     city: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    created_via_channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -329,6 +332,9 @@ class Transaction(Base):
         UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
     )
     customer_phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    source_channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     lines: Mapped[list[TransactionLine]] = relationship(back_populates="transaction", cascade="all, delete-orphan")
@@ -389,6 +395,9 @@ class StockMovement(Base):
         UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True
     )
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    source_channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
@@ -751,3 +760,179 @@ class FeatureFlag(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# ---------------------------------------------------------------------------
+# Channels + Inventory Pools + Orders + Customer Attribution
+# ---------------------------------------------------------------------------
+
+
+class InventoryPool(Base):
+    """A configurable set of shops whose stock is sellable to channels that point at this pool."""
+    __tablename__ = "inventory_pools"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_pool_tenant_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    fulfillment_policy: Mapped[str] = mapped_column(
+        String(32), default="fulfill_from_primary", server_default="fulfill_from_primary", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class InventoryPoolShop(Base):
+    """Many-to-many: pool ↔ shop."""
+    __tablename__ = "inventory_pool_shops"
+    __table_args__ = (
+        UniqueConstraint("pool_id", "shop_id", name="uq_pool_shop"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    pool_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("inventory_pools.id", ondelete="CASCADE"), nullable=False
+    )
+    shop_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Channel(Base):
+    """A sales surface — POS at a shop, manual order entry, or a future Shopify/Woo/headless connection."""
+    __tablename__ = "channels"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_channel_tenant_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    type: Mapped[str] = mapped_column(String(32), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", server_default="active", nullable=False)
+    config: Mapped[dict] = mapped_column(JSONB, default=dict, server_default="'{}'::jsonb", nullable=False)
+    inventory_pool_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("inventory_pools.id", ondelete="RESTRICT"), nullable=False
+    )
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    shop_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class CustomerChannel(Base):
+    """Tracks which channels a customer has bought from (cross-channel attribution)."""
+    __tablename__ = "customer_channels"
+    __table_args__ = (
+        UniqueConstraint("customer_id", "channel_id", name="uq_customer_channel"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    customer_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+    )
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Order(Base):
+    """The unified order shape designed for channel-incoming orders."""
+    __tablename__ = "orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "channel_id", "external_id", name="uq_order_channel_external"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="RESTRICT"), nullable=False
+    )
+    external_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending", nullable=False)
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
+    )
+    customer_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    customer_phone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    subtotal_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    tax_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    shipping_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    discount_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    total_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    shipping_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    billing_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    placed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class OrderLine(Base):
+    __tablename__ = "order_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+    )
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    sku: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_price_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    line_total_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    tax_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    discount_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class OrderPayment(Base):
+    __tablename__ = "order_payments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
+    )
+    provider: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    provider_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    method: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="paid", server_default="paid", nullable=False)
+    paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

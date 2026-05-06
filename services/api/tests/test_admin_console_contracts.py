@@ -244,3 +244,43 @@ def test_feature_flag_out_schema() -> None:
     assert d["key"] == "stock_reservations_enabled"
     assert d["default_state"] is False
     assert d["rollout_rules"]["percent"] == 25
+
+
+def test_channel_out_schema() -> None:
+    from app.routers.admin_channels import ChannelOut
+
+    c = ChannelOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        type="pos",
+        name="POS at Main Street",
+        status="active",
+        config={},
+        inventory_pool_id=uuid4(),
+        currency_code="INR",
+        shop_id=uuid4(),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = c.model_dump(mode="json")
+    assert d["type"] == "pos"
+    assert d["status"] == "active"
+    assert d["currency_code"] == "INR"
+
+
+def test_inventory_pool_out_schema() -> None:
+    from app.routers.admin_inventory_pools import InventoryPoolOut
+
+    p = InventoryPoolOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        name="All Shops",
+        fulfillment_policy="fulfill_from_primary",
+        shop_ids=[uuid4(), uuid4()],
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = p.model_dump(mode="json")
+    assert d["name"] == "All Shops"
+    assert len(d["shop_ids"]) == 2
+    assert d["fulfillment_policy"] == "fulfill_from_primary"
