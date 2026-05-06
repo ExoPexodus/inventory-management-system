@@ -2,17 +2,18 @@
 
 `available_stock_for_channel` is the central function that channel-aware code
 will consume. It SUMs `stock_movements.quantity_delta` across all shops in the
-channel's pool, for the given product. (Soft reservations are NOT subtracted
-yet; that hooks in when the stock-reservation engine sub-project ships.)
+channel's pool, for the given product, minus the sum of active (non-expired)
+StockReservation rows.
 """
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Channel, InventoryPool, InventoryPoolShop, StockMovement
+from app.models import Channel, InventoryPool, InventoryPoolShop, StockMovement, StockReservation
 
 
 def default_pool_for_tenant(db: Session, tenant_id: UUID) -> InventoryPool | None:
@@ -40,11 +41,9 @@ def available_stock_for_channel(
 ) -> int:
     """Return the available stock for a product on a channel.
 
-    Sums stock_movements.quantity_delta across all shops in the channel's pool.
+    Sums stock_movements.quantity_delta across all shops in the channel's pool,
+    minus the sum of active (non-expired) StockReservation.quantity rows.
     Returns 0 if the channel doesn't exist or has no pool members.
-
-    Soft reservations are NOT subtracted yet. When the stock reservation engine
-    sub-project ships, this function gains a `- sum(active_reservations)` term.
     """
     channel = db.get(Channel, channel_id)
     if channel is None:
@@ -54,11 +53,23 @@ def available_stock_for_channel(
     if not shop_ids:
         return 0
 
-    total = db.execute(
+    on_hand = db.execute(
         select(func.coalesce(func.sum(StockMovement.quantity_delta), 0))
         .where(
             StockMovement.product_id == product_id,
             StockMovement.shop_id.in_(shop_ids),
         )
     ).scalar_one()
-    return int(total or 0)
+
+    now = datetime.now(UTC)
+    held = db.execute(
+        select(func.coalesce(func.sum(StockReservation.quantity), 0))
+        .where(
+            StockReservation.product_id == product_id,
+            StockReservation.shop_id.in_(shop_ids),
+            StockReservation.status == "active",
+            StockReservation.expires_at > now,
+        )
+    ).scalar_one()
+
+    return int((on_hand or 0) - (held or 0))
