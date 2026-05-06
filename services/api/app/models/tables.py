@@ -943,3 +943,48 @@ class OrderPayment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     order: Mapped["Order"] = relationship(back_populates="payments")
+
+
+class StockReservation(Base):
+    """A soft-TTL hold on stock for a channel cart / pending payment.
+
+    States:
+      active     — currently holds stock; subtracted from available
+      committed  — converted to a real stock_movements row (sale completed)
+      released   — explicitly cancelled (cart abandoned / order voided)
+      expired    — TTL passed without commit; swept by background task
+
+    The unique constraint on (channel_id, cart_token, product_id, shop_id) prevents
+    accidental duplicate holds for the same cart line. Re-reserving the same line
+    should update the existing row's quantity / expiry, not create a new one.
+    """
+    __tablename__ = "stock_reservations"
+    __table_args__ = (
+        UniqueConstraint(
+            "channel_id", "cart_token", "product_id", "shop_id",
+            name="uq_reservation_channel_cart_product_shop",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    shop_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("shops.id", ondelete="CASCADE"), nullable=False
+    )
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    cart_token: Mapped[str] = mapped_column(String(128), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(32), default="cart", server_default="cart", nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="active", server_default="active", nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )

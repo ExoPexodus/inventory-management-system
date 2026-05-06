@@ -284,3 +284,26 @@ def test_inventory_pool_out_schema() -> None:
     assert d["name"] == "All Shops"
     assert len(d["shop_ids"]) == 2
     assert d["fulfillment_policy"] == "fulfill_from_primary"
+
+
+def test_stock_reservation_out_schema() -> None:
+    from app.routers.admin_reservations import StockReservationOut
+
+    r = StockReservationOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        channel_id=uuid4(),
+        product_id=uuid4(),
+        shop_id=uuid4(),
+        quantity=3,
+        cart_token="cart_abc123",
+        purpose="cart",
+        status="active",
+        expires_at=datetime.now(UTC),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    d = r.model_dump(mode="json")
+    assert d["quantity"] == 3
+    assert d["status"] == "active"
+    assert d["purpose"] == "cart"
