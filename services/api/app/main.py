@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.routers.storefront import catalog as storefront_catalog
 from app.routers import (
     app_updates,
     admin,
@@ -107,3 +108,4 @@ app.include_router(platform_provision.router)
 app.include_router(admin_fx_rates.router)
 app.include_router(admin_product_prices.router)
 app.include_router(app_updates.router)
+app.include_router(storefront_catalog.router)
