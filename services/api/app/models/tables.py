@@ -1198,3 +1198,55 @@ class TaxRule(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class Discount(Base):
+    """A promotion definition: code-based coupon or automatic discount."""
+    __tablename__ = "discounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    discount_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    value_bps: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    value_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="active", server_default="active", nullable=False)
+    stackable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    min_subtotal_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_uses_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    max_uses_per_customer: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    starts_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DiscountUse(Base):
+    """Ledger entry recording each application of a discount."""
+    __tablename__ = "discount_uses"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    discount_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("discounts.id", ondelete="CASCADE"), nullable=False
+    )
+    cart_token: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
+    )
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    discount_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+    used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

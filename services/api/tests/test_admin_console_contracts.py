@@ -469,3 +469,34 @@ def test_tax_rule_out_schema() -> None:
     assert len(d["components"]) == 2
     assert d["components"][0]["rate_bps"] == 900
     assert d["condition_type"] == "none"
+
+
+def test_discount_out_schema() -> None:
+    from app.routers.admin_discounts import DiscountOut
+
+    d = DiscountOut(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        channel_id=None,
+        name="Summer Sale",
+        code="SUMMER20",
+        discount_type="percentage",
+        value_bps=2000,
+        value_cents=None,
+        status="active",
+        stackable=False,
+        priority=0,
+        min_subtotal_cents=None,
+        max_uses_total=None,
+        max_uses_per_customer=None,
+        starts_at=None,
+        expires_at=None,
+        times_used=0,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    dumped = d.model_dump(mode="json")
+    assert dumped["code"] == "SUMMER20"
+    assert dumped["discount_type"] == "percentage"
+    assert dumped["value_bps"] == 2000
+    assert dumped["times_used"] == 0
