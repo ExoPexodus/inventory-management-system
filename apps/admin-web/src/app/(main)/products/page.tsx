@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Avatar,
   Badge,
@@ -17,6 +17,13 @@ import {
 } from "@/components/ui/primitives";
 import { formatMoney } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
+
+type ProductPrice = {
+  id: string;
+  currency_code: string;
+  amount_cents: number;
+  channel_id: string | null;
+};
 
 type Product = {
   id: string;
@@ -51,6 +58,7 @@ export default function ProductsPage() {
   const [status, setStatus] = useState("");
   const [category, setCategory] = useState("");
   const [editProduct, setEditProduct] = useState<Product | null>(null);
+  const [pricesProduct, setPricesProduct] = useState<{ id: string; name: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkReorderPt, setBulkReorderPt] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -232,14 +240,25 @@ export default function ProductsPage() {
                     )}
                   </td>
                   <td className="px-6 py-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => setEditProduct(row)}
-                      className="inline-flex rounded-lg p-2 text-on-surface-variant opacity-0 transition group-hover:opacity-100 hover:bg-surface-container"
-                      aria-label="Edit"
-                    >
-                      <span className="material-symbols-outlined text-xl">edit</span>
-                    </button>
+                    <div className="flex items-center justify-center gap-1 opacity-0 transition group-hover:opacity-100">
+                      <button
+                        type="button"
+                        onClick={() => setPricesProduct({ id: row.id, name: row.name })}
+                        className="inline-flex rounded-lg p-2 text-on-surface-variant hover:bg-surface-container"
+                        aria-label="Manage prices"
+                        title="Multi-currency prices"
+                      >
+                        <span className="material-symbols-outlined text-xl">currency_exchange</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditProduct(row)}
+                        className="inline-flex rounded-lg p-2 text-on-surface-variant hover:bg-surface-container"
+                        aria-label="Edit"
+                      >
+                        <span className="material-symbols-outlined text-xl">edit</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
                 ))
@@ -292,6 +311,13 @@ export default function ProductsPage() {
           onSaved={() => { setEditProduct(null); void fetchProducts(); }}
         />
       ) : null}
+      {pricesProduct && (
+        <PricesModal
+          productId={pricesProduct.id}
+          productName={pricesProduct.name}
+          onClose={() => setPricesProduct(null)}
+        />
+      )}
     </div>
   );
 }
@@ -500,6 +526,164 @@ function EditProductDialog({
             <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function PricesModal({
+  productId,
+  productName,
+  onClose,
+}: {
+  productId: string;
+  productName: string;
+  onClose: () => void;
+}) {
+  const [prices, setPrices] = useState<ProductPrice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currency, setCurrency] = useState("");
+  const [amount, setAmount] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/products/${productId}/prices`);
+      if (r.ok) setPrices((await r.json()) as ProductPrice[]);
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currency.trim() || !amount.trim()) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/products/${productId}/prices`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currency_code: currency.trim().toUpperCase(),
+          amount_cents: Math.round(parseFloat(amount) * 100),
+          channel_id: null,
+        }),
+      });
+      if (r.ok) {
+        setCurrency(""); setAmount("");
+        void load();
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch {
+      setErr("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(priceId: string) {
+    try {
+      const r = await fetch(`/api/ims/v1/admin/products/${productId}/prices/${priceId}`, {
+        method: "DELETE",
+      });
+      if (r.ok) void load();
+    } catch {
+      // silently ignore delete errors — user can retry
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-surface-container-lowest shadow-2xl">
+        <div className="flex items-center justify-between rounded-t-2xl bg-gradient-to-r from-primary to-secondary px-6 py-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-on-primary/70">
+              Multi-currency prices
+            </p>
+            <p className="mt-0.5 font-headline text-lg font-bold text-on-primary">{productName}</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-on-primary/70 hover:text-on-primary">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="p-6 space-y-4">
+          <form onSubmit={(e) => void handleAdd(e)} className="flex gap-2">
+            <TextInput
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              placeholder="USD"
+              maxLength={3}
+              className="w-24"
+              required
+            />
+            <TextInput
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              placeholder="9.99"
+              step="0.01"
+              min="0"
+              className="flex-1"
+              required
+            />
+            <PrimaryButton type="submit" disabled={saving}>
+              {saving ? "…" : "Add"}
+            </PrimaryButton>
+          </form>
+          <p className="text-[11px] text-on-surface-variant">
+            Enter the amount in the currency&apos;s major unit (e.g. 9.99 for $9.99 → 999 cents stored).
+          </p>
+          {err && <p className="text-sm text-error">{err}</p>}
+
+          {loading ? (
+            <p className="text-sm text-on-surface-variant">Loading…</p>
+          ) : prices.length === 0 ? (
+            <p className="text-sm text-on-surface-variant">No override prices set. Add one above.</p>
+          ) : (
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant/10">
+                  <th className="py-2 pr-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Currency
+                  </th>
+                  <th className="py-2 pr-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Amount
+                  </th>
+                  <th className="py-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {prices.map((p) => (
+                  <tr key={p.id}>
+                    <td className="py-2 pr-4 font-mono text-on-surface">{p.currency_code}</td>
+                    <td className="py-2 pr-4 text-on-surface tabular-nums">
+                      {(p.amount_cents / 100).toFixed(2)}
+                    </td>
+                    <td className="py-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(p.id)}
+                        className="text-xs text-error hover:underline"
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
     </div>
   );
