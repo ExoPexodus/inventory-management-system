@@ -13,9 +13,11 @@ def stripe_channel(db, tenant: Tenant, shop: Shop) -> Channel:
     db.flush()
     db.add(InventoryPoolShop(tenant_id=tenant.id, pool_id=pool.id, shop_id=shop.id))
     db.flush()
+    from app.services.email_service import encrypt_secret
     return Channel(
         tenant_id=tenant.id, type="headless", name="Stripe",
-        config={"payment_provider": "stripe", "stripe_secret_key": "sk_test_xxx",
+        config={"payment_provider": "stripe",
+                "stripe_secret_key": encrypt_secret("sk_test_xxx"),
                 "stripe_publishable_key": "pk_test_xxx",
                 "checkout_success_url": "https://shop.com/success"},
         inventory_pool_id=pool.id, currency_code="INR",
@@ -29,10 +31,11 @@ def razorpay_channel(db, tenant: Tenant, shop: Shop) -> Channel:
     db.flush()
     db.add(InventoryPoolShop(tenant_id=tenant.id, pool_id=pool.id, shop_id=shop.id))
     db.flush()
+    from app.services.email_service import encrypt_secret
     return Channel(
         tenant_id=tenant.id, type="headless", name="Razorpay",
         config={"payment_provider": "razorpay", "razorpay_key_id": "rzp_test_xxx",
-                "razorpay_key_secret": "test_secret",
+                "razorpay_key_secret": encrypt_secret("test_secret"),
                 "checkout_success_url": "https://shop.com/success"},
         inventory_pool_id=pool.id, currency_code="INR",
     )

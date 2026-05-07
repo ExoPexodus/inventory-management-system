@@ -8,6 +8,8 @@ from typing import Any
 
 import httpx
 
+from app.services.email_service import decrypt_secret
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +47,7 @@ def verify_payment(channel, payment_id: str) -> bool:
 
 def verify_razorpay_signature(channel, razorpay_order_id: str,
                                razorpay_payment_id: str, razorpay_signature: str) -> bool:
-    key_secret = channel.config.get("razorpay_key_secret", "")
+    key_secret = decrypt_secret(channel.config.get("razorpay_key_secret", "")) or ""
     expected = hmac.new(
         key_secret.encode(),
         f"{razorpay_order_id}|{razorpay_payment_id}".encode(),
@@ -56,7 +58,7 @@ def verify_razorpay_signature(channel, razorpay_order_id: str,
 
 def _create_stripe_intent(channel, amount_cents: int, currency: str, description: str) -> dict:
     import stripe
-    stripe.api_key = channel.config["stripe_secret_key"]
+    stripe.api_key = decrypt_secret(channel.config.get("stripe_secret_key", "")) or ""
     intent = stripe.PaymentIntent.create(
         amount=amount_cents, currency=currency.lower(),
         description=description,
@@ -67,7 +69,7 @@ def _create_stripe_intent(channel, amount_cents: int, currency: str, description
 
 def _verify_stripe(channel, payment_intent_id: str) -> bool:
     import stripe
-    stripe.api_key = channel.config["stripe_secret_key"]
+    stripe.api_key = decrypt_secret(channel.config.get("stripe_secret_key", "")) or ""
     try:
         intent = stripe.PaymentIntent.retrieve(payment_intent_id)
         return intent.status == "succeeded"
@@ -77,8 +79,8 @@ def _verify_stripe(channel, payment_intent_id: str) -> bool:
 
 
 def _create_razorpay_order(channel, amount_cents: int, currency: str) -> dict:
-    key_id = channel.config["razorpay_key_id"]
-    key_secret = channel.config["razorpay_key_secret"]
+    key_id = channel.config.get("razorpay_key_id", "")
+    key_secret = decrypt_secret(channel.config.get("razorpay_key_secret", "")) or ""
     resp = httpx.post(
         "https://api.razorpay.com/v1/orders",
         auth=(key_id, key_secret),

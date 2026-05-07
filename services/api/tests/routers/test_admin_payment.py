@@ -40,6 +40,7 @@ def auth_headers(db, tenant: Tenant):
 
 
 def test_setup_stripe(db, tenant: Tenant, channel: Channel, auth_headers) -> None:
+    from app.services.email_service import decrypt_secret
     resp = TestClient(app).post(f"/v1/admin/channels/{channel.id}/payment/setup-stripe", json={
         "stripe_secret_key": "sk_test_xxx", "stripe_publishable_key": "pk_test_xxx",
         "checkout_success_url": "https://shop.com/success",
@@ -47,16 +48,26 @@ def test_setup_stripe(db, tenant: Tenant, channel: Channel, auth_headers) -> Non
     assert resp.status_code == 200
     assert resp.json()["payment_provider"] == "stripe"
     db.refresh(channel)
-    assert channel.config["stripe_secret_key"] == "sk_test_xxx"
+    # Secret must be stored encrypted, not plaintext
+    assert channel.config["stripe_secret_key"] != "sk_test_xxx"
+    assert decrypt_secret(channel.config["stripe_secret_key"]) == "sk_test_xxx"
+    # Publishable key is non-sensitive, stored plaintext
+    assert channel.config["stripe_publishable_key"] == "pk_test_xxx"
 
 
 def test_setup_razorpay(db, tenant: Tenant, channel: Channel, auth_headers) -> None:
+    from app.services.email_service import decrypt_secret
     resp = TestClient(app).post(f"/v1/admin/channels/{channel.id}/payment/setup-razorpay", json={
         "razorpay_key_id": "rzp_test_xxx", "razorpay_key_secret": "secret",
         "checkout_success_url": "https://shop.com/success",
     }, headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["payment_provider"] == "razorpay"
+    db.refresh(channel)
+    # Secret encrypted, key_id plaintext (sent to browser)
+    assert channel.config["razorpay_key_secret"] != "secret"
+    assert decrypt_secret(channel.config["razorpay_key_secret"]) == "secret"
+    assert channel.config["razorpay_key_id"] == "rzp_test_xxx"
 
 
 def test_get_payment_config_unconfigured(db, tenant: Tenant, channel: Channel, auth_headers) -> None:
