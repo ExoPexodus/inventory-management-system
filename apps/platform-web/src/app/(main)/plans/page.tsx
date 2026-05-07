@@ -2,6 +2,14 @@
 
 import { useEffect, useState, FormEvent } from "react";
 
+type FeatureValue = {
+  key: string;
+  value_type: string;
+  description: string;
+  default: unknown;
+  values: Record<string, unknown>;
+};
+
 type Plan = {
   id: string;
   codename: string;
@@ -34,6 +42,112 @@ function fmt(cents: number, code: string) {
 
 function storageLabel(mb: number) {
   return mb >= 1024 ? `${mb / 1024} GB` : `${mb} MB`;
+}
+
+// ---------------------------------------------------------------------------
+// Feature matrix section
+// ---------------------------------------------------------------------------
+
+function PlanFeaturesSection() {
+  const [features, setFeatures] = useState<FeatureValue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [planNames, setPlanNames] = useState<string[]>([]);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const r = await fetch("/api/ims/v1/internal/platform/plan-features");
+        if (!r.ok) throw new Error(`Failed (${r.status})`);
+        const data = (await r.json()) as FeatureValue[];
+        setFeatures(data);
+        if (data.length > 0 && data[0]) {
+          setPlanNames(Object.keys(data[0].values));
+        }
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Failed to load feature matrix");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  function formatValue(v: unknown, valueType: string): string {
+    if (v === null || v === undefined) return "—";
+    if (valueType === "bool") return v ? "✓" : "✗";
+    return String(v);
+  }
+
+  if (loading) {
+    return <p className="text-sm text-on-surface-variant">Loading feature matrix…</p>;
+  }
+  if (err) {
+    return <p className="text-sm text-error">{err}</p>;
+  }
+
+  return (
+    <div className="mt-8 space-y-3">
+      <div>
+        <h2 className="text-base font-bold text-on-surface">Feature matrix</h2>
+        <p className="text-sm text-on-surface-variant">
+          Read-only view of current plan-feature values (sourced from{" "}
+          <code className="rounded bg-surface-container px-1 py-0.5 text-xs">
+            services/api/app/billing/plans.py
+          </code>
+          ). Per-tenant overrides are managed via tenant detail pages.
+        </p>
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-outline-variant/10">
+        <table className="min-w-full text-left text-xs">
+          <thead>
+            <tr className="border-b border-outline-variant/10 bg-surface-container-low">
+              <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                Feature
+              </th>
+              {planNames.map((p) => (
+                <th
+                  key={p}
+                  className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant"
+                >
+                  {p}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-outline-variant/10">
+            {features.map((f) => (
+              <tr key={f.key} className="hover:bg-surface-container-low/50">
+                <td className="px-4 py-3">
+                  <p className="font-mono font-semibold text-on-surface">{f.key}</p>
+                  <p className="mt-0.5 text-[11px] text-on-surface-variant">{f.description}</p>
+                </td>
+                {planNames.map((p) => {
+                  const val = f.values[p];
+                  const isDefault = val === f.default;
+                  return (
+                    <td
+                      key={p}
+                      className={`px-4 py-3 tabular-nums ${
+                        f.value_type === "bool"
+                          ? val
+                            ? "font-bold text-green-600"
+                            : "text-on-surface-variant/50"
+                          : isDefault
+                          ? "text-on-surface-variant"
+                          : "font-semibold text-primary"
+                      }`}
+                    >
+                      {formatValue(val, f.value_type)}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -251,6 +365,8 @@ export default function PlansPage() {
           onSaved={() => { setCreateAddon(false); setEditAddon(null); void load(); }}
         />
       )}
+
+      <PlanFeaturesSection />
     </div>
   );
 }

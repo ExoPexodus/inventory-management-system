@@ -140,11 +140,15 @@ services:
       dockerfile: Dockerfile
     environment:
       API_INTERNAL_URL: http://platform:8000
+      IMS_API_URL: http://api:8000
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:-dev-api-token}
       COOKIE_SECURE: "${COOKIE_SECURE:-false}"
     ports:
       - "${PLATFORM_WEB_PUBLISH_PORT:-3200}:3000"
     depends_on:
       platform:
+        condition: service_started
+      api:
         condition: service_started
 
 volumes:

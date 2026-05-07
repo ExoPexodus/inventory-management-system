@@ -11,6 +11,7 @@ from app.routers.storefront import customer_portal as storefront_customer_portal
 from app.routers import checkout
 from app.routers import webhooks_shopify
 from app.routers import webhooks_woocommerce
+from app.routers import internal_platform_plan_features
 from app.routers import (
     app_updates,
     admin,
@@ -140,3 +141,4 @@ app.include_router(storefront_customer_portal.router)
 app.include_router(checkout.router)
 app.include_router(webhooks_shopify.router)
 app.include_router(webhooks_woocommerce.router)
+app.include_router(internal_platform_plan_features.router)
