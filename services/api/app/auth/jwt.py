@@ -50,5 +50,29 @@ def create_access_token(
     return token, ttl_sec
 
 
+def create_customer_token(
+    *,
+    customer_id: UUID,
+    tenant_id: UUID,
+    channel_id: UUID,
+    email: str,
+    ttl_minutes: int = 60 * 24 * 7,
+) -> tuple[str, int]:
+    now = int(time.time())
+    ttl_sec = ttl_minutes * 60
+    exp = now + ttl_sec
+    payload: dict[str, Any] = {
+        "sub": str(customer_id),
+        "tenant_id": str(tenant_id),
+        "channel_id": str(channel_id),
+        "email": email,
+        "typ": "customer",
+        "iat": now,
+        "exp": exp,
+    }
+    token = jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
+    return token, ttl_sec
+
+
 def decode_token(token: str) -> dict[str, Any]:
     return jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
