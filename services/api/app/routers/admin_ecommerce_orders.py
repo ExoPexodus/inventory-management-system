@@ -170,7 +170,7 @@ def issue_refund(
 
     if already_refunded + body.amount_cents >= order.total_cents:
         order.status = "refunded"
-    elif order.status == "confirmed":
+    else:
         order.status = "partially_refunded"
 
     db.commit()
