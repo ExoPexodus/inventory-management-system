@@ -1,207 +1,347 @@
-# Inventory Platform Architecture
+# IMS Platform Architecture
 
-This document summarizes the current, implemented high-level architecture for the inventory platform across backend, cashier, admin web, and admin mobile.
+Full architecture reference for the Inventory Management System — a multi-tenant, offline-first POS and e-commerce backend.
 
-## Related architecture docs
+**Related docs:**
+- `docs/ecommerce-architecture.md` — Deep dive on channels, storefront, checkout, webhooks
+- `docs/storefront-api.md` — Guide for headless storefront developers
+- `docs/sync-architecture.md` — Cashier offline sync and conflict semantics
+- `docs/client-architecture.md` — Flutter (cashier/mobile) and admin web internals
+- `docs/adr-index.md` — Architecture decisions and rationale
 
-- Overview: `docs/architecture-overview.md`
-- Sync model and conflict handling: `docs/sync-architecture.md`
-- Client apps architecture (cashier/admin web/admin mobile): `docs/client-architecture.md`
-- ADR index and status: `docs/adr-index.md`
+---
 
-## 1) System overview
+## 1. System overview
 
-The platform is an offline-first, multi-tenant inventory and transaction system:
+The platform serves two distinct roles simultaneously:
 
-- **Cashier app** (`apps/cashier`) is the primary write client.
-- **Admin web** (`apps/admin-web`) is the primary operational dashboard.
-- **Admin mobile** (`apps/admin_mobile`) is a lightweight operational companion.
-- **Backend API** (`services/api`) is a modular FastAPI monolith over PostgreSQL.
-- **Redis + RQ worker** supports async/background tasks.
-- **Sync contract** lives in `packages/sync-protocol/openapi.yaml`.
+1. **POS backend** — Offline-first cashier sync, immutable stock ledger, multi-shop inventory
+2. **E-commerce backend** — Multi-channel storefronts, hosted checkout, webhooks, customer portal
 
-## 2) Topology
-
-```mermaid
-flowchart LR
-  subgraph clients [Client apps]
-    Cashier[Cashier_Flutter]
-    AdminWeb[AdminWeb_Nextjs]
-    AdminMobile[AdminMobile_Flutter]
-  end
-
-  subgraph backend [Backend]
-    API[FastAPI_ModularMonolith]
-    Worker[RQ_Worker]
-    Redis[(Redis)]
-    DB[(PostgreSQL)]
-  end
-
-  Cashier -->|sync_pull sync_push| API
-  AdminWeb -->|admin_ops| API
-  AdminMobile -->|admin_ops_read| API
-  API --> DB
-  API --> Redis
-  Worker --> Redis
-  Worker --> DB
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Clients                             │
+│                                                             │
+│  Cashier (Flutter)   Admin Web (Next.js)   Storefronts      │
+│  Admin Mobile (Flutter)  Platform Web      (custom / SDK)   │
+└───────────┬──────────────────┬─────────────────┬───────────┘
+            │ device JWT        │ operator JWT     │ channel ID
+            ▼                  ▼                  ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      FastAPI Monolith                        │
+│                   services/api/app/main.py                  │
+│                                                             │
+│  /v1/sync/*        /v1/admin/*        /v1/storefront/*      │
+│  /v1/devices/*     /v1/checkout/*     /v1/internal/*        │
+└──────────┬───────────────────┬────────────────────┬─────────┘
+           │                   │                    │
+     ┌─────▼──────┐    ┌───────▼──────┐    ┌───────▼──────┐
+     │ PostgreSQL  │    │    Redis     │    │  RQ Worker   │
+     │ + RLS       │    │  (cache +    │    │ (email, wh,  │
+     │             │    │   queue)     │    │  reservations)│
+     └─────────────┘    └──────────────┘    └──────────────┘
 ```
 
-## 3) Backend architecture
+---
 
-### 3.1 Composition
+## 2. Repository layout
 
-The API is assembled in `services/api/app/main.py` and exposes routers by bounded capability:
+```
+inventory-management-system/
+├── services/
+│   └── api/                    # FastAPI backend
+│       ├── app/
+│       │   ├── main.py         # Router composition
+│       │   ├── models/         # SQLAlchemy models
+│       │   ├── routers/        # HTTP handlers by domain
+│       │   ├── services/       # Business logic
+│       │   ├── billing/        # Entitlements, feature flags
+│       │   ├── auth/           # JWT + deps
+│       │   ├── db/             # Session, RLS
+│       │   └── worker/         # RQ tasks
+│       ├── alembic/            # Database migrations
+│       ├── email_templates/    # Jinja2 HTML email templates
+│       └── templates/          # Jinja2 HTML (checkout page)
+├── apps/
+│   ├── admin-web/              # Next.js 15 merchant dashboard
+│   ├── cashier/                # Flutter POS app
+│   ├── admin_mobile/           # Flutter admin companion
+│   └── platform-web/           # Next.js 15 platform operator dashboard
+└── packages/
+    ├── sync-protocol/          # OpenAPI contract (backend ↔ cashier)
+    └── storefront-sdk/         # TypeScript SDK for headless storefronts
+```
 
-- `health` (`/health`)
-- `devices` (`/v1/devices/*`) onboarding + refresh
-- `sync` (`/v1/sync/*`) pull/push event reconciliation
-- `transactions` (`/v1/transactions`) device history view
-- `admin` (`/v1/admin/*`) operator and operational controls
-- `tenants`, `shops`, `inventory`, `reporting`, `audit`, `notifications`
+---
 
-### 3.2 Domain model
+## 3. Backend — domain boundaries
 
-Core tables are defined in `services/api/app/models/tables.py`:
+The API is one FastAPI application assembled in `main.py`. Domains are separated by router + service modules, not by deployment boundary.
 
-- Identity/tenancy: `tenants`, `shops`, `devices`, `admin_users`, `enrollment_tokens`
-- Catalog: `products`
-- Commercial ledger: `transactions`, `transaction_lines`, `payment_allocations`
-- Inventory ledger: `stock_movements` (immutable deltas)
+### 3.1 Router groups
 
-Design principle:
+| Prefix | File(s) | Auth | Purpose |
+|--------|---------|------|---------|
+| `/health` | `health.py` | None | Liveness probe |
+| `/v1/devices/*` | `devices.py` | — | Device enrolment and token refresh |
+| `/v1/sync/*` | `sync.py` | Device JWT | Pull/push sync for cashier |
+| `/v1/transactions` | `transactions.py` | Device JWT | Transaction history (device view) |
+| `/v1/admin/*` | `admin_*.py` (30+ files) | Operator JWT / X-Admin-Token | All merchant admin operations |
+| `/v1/storefront/*` | `routers/storefront/` | Channel ID header | Public storefront API |
+| `/checkout/*` | `checkout.py` | None | Hosted checkout pages + completion |
+| `/v1/internal/*` | `internal_*.py` | X-Admin-Token | Platform service integration |
+| `/v1/webhooks/*` | `webhooks_shopify.py`, `webhooks_woocommerce.py` | HMAC | Inbound platform webhooks |
 
-- **Stock is derived from immutable movements**, not overwritten as mutable state.
+### 3.2 Core domain models
 
-### 3.3 Sync and conflict model
+```
+tenants ─────┬─── shops ──────── stock_movements (immutable ledger)
+             │                         │
+             ├─── channels ────── inventory_pools ─── inventory_pool_shops
+             │       │
+             │       ├── channel_product_mappings (Shopify/WooCommerce IDs)
+             │       └── checkout_sessions
+             │
+             ├─── products ───────── product_variants
+             │       │               product_prices (multi-currency)
+             │       └── product_images
+             │
+             ├─── orders ─────────── order_lines
+             │       │               order_payments
+             │       └── order_refunds
+             │
+             ├─── customers ──────── storefront_otps
+             │
+             ├─── discounts ──────── discount_uses
+             ├─── shipping_zones ─── shipping_rates
+             ├─── tax_regions ────── tax_rules
+             ├─── fx_rates
+             ├─── cart_items
+             ├─── stock_reservations
+             ├─── webhook_endpoints ─ webhook_delivery_logs
+             └─── tenant_email_configs
+```
 
-Push processing (`services/api/app/services/sync_push.py`) validates and applies:
+### 3.3 Immutable stock ledger
 
-- `sale_completed` events
-- `ledger_adjustment` events
+**Stock is never stored as a mutable number.** Available stock is computed from the sum of `stock_movements.quantity_delta` rows. This makes every inventory change fully auditable.
 
-Returns structured per-event results:
+```python
+# Wrong — never do this:
+product.stock_quantity -= sold_qty
 
-- `accepted`, `duplicate`, `rejected`
-- machine-readable `conflict` payload for rejected items
+# Right — always create a movement:
+db.add(StockMovement(
+    tenant_id=..., shop_id=..., product_id=...,
+    quantity_delta=-sold_qty,
+    movement_type="sale",
+    idempotency_key=...,
+))
+```
 
-### 3.4 Auth and security
+Movement types: `purchase_receipt`, `sale`, `adjustment`, `transfer_in`, `transfer_out`, `return`.
 
-- Device auth via JWT (`typ=device`) for sync/transaction flows.
-- Admin access supports:
-  - Legacy `X-Admin-Token`
-  - Operator JWT (`typ=operator`) from `/v1/admin/auth/login`
+### 3.4 Multi-tenancy and RLS
 
-### 3.5 Tenant isolation (RLS)
+Every tenant-scoped table has a `tenant_id` column and a PostgreSQL row-level security policy. Before any DB operation, the request sets:
 
-RLS is enabled for tenant-scoped tables. Request/session context sets:
+```python
+# services/api/app/db/rls.py
+set_rls_context(db, tenant_id=tenant_id, is_admin=False)
+```
 
-- `ims.tenant_id`
-- `ims.is_admin`
+This prevents cross-tenant data access even if queries forget the `WHERE tenant_id = ?` clause. Never bypass with raw SQL that skips this context.
 
-This is applied in DB dependency flows so read/write paths are tenant-safe by default.
+---
 
-## 4) Money and currency model
+## 4. Authentication
 
-Amounts are stored as integer minor units (`*_cents` field names retained for compatibility).
+### 4.1 Three token types
 
-Tenant-level display/semantic currency settings:
+All JWTs are signed with `settings.jwt_secret` (HS256) and decoded in `services/api/app/auth/jwt.py`.
 
-- `default_currency_code` (ISO-4217)
-- `currency_exponent` (minor unit exponent)
-- `currency_symbol_override` (optional)
+**Device token** (`typ=device`):
+```json
+{ "sub": "<device_id>", "tenant_id": "...", "shop_ids": ["..."], "typ": "device" }
+```
 
-Currency metadata is delivered to cashier via `/v1/sync/pull` and used for UI formatting.
+**Operator token** (`typ=operator`):
+```json
+{ "sub": "<user_id>", "tenant_id": "...", "role": "owner", "typ": "operator" }
+```
 
-Out of scope in current architecture:
+**Customer token** (`typ=customer`):
+```json
+{ "sub": "<customer_id>", "tenant_id": "...", "channel_id": "...", "email": "...", "typ": "customer" }
+```
 
-- multi-currency transactions
-- FX conversion
-- per-shop/per-product currency overrides
+### 4.2 Permissions
 
-## 5) Cashier app architecture
+Operator permissions are stored in `roles` → `role_permissions` → `permissions`. The system role `owner` receives all permissions. Check a permission:
 
-### 5.1 App structure
+```python
+from app.auth.admin_deps import require_permission
+router = APIRouter(dependencies=[require_permission("channels:manage")])
+```
 
-Key screens:
+### 4.3 Storefront auth (customer OTP)
 
-- `onboarding_screen.dart`
-- `cashier_home_screen.dart`
-- `cart_screen.dart`
-- `history_screen.dart`
-- `sync_status_screen.dart`
+Customers authenticate via a 6-digit email OTP:
+1. `POST /v1/storefront/auth/otp/request` — generates OTP, stores SHA-256 hash, emails it
+2. `POST /v1/storefront/auth/otp/verify` — validates hash, issues customer JWT (7-day TTL)
 
-Shell navigation is handled by `cashier_shell.dart`.
+OTP is generated with `secrets.randbelow(1_000_000)` (cryptographically secure). Row is locked with `SELECT FOR UPDATE` during verification to prevent race conditions.
 
-### 5.2 Offline-first strategy
+---
 
-- Local session + local outbox persisted on device.
-- Outbox events are encrypted at rest before DB write.
-- Sync flush occurs on connectivity changes and manual sync.
-- Card tender is blocked without connectivity; cash can queue offline by policy.
+## 5. Money and currency
 
-### 5.3 UX and theming
+### 5.1 Storage rules
 
-- Theme tokens are centralized in `apps/cashier/lib/theme.dart`.
-- Current UI uses Material components with product-specific offline/sync banners and error handling.
-- Stitch parity is partial (tokens + core flow), with further visual refinement still possible.
+- All monetary amounts stored as **integer minor units** (e.g. `unit_price_cents = 999` = ₹9.99)
+- Column names end in `_cents`
+- Never store floats for money
 
-## 6) Admin surfaces
+### 5.2 Multi-currency
 
-### 6.1 Admin web (`apps/admin-web`)
+Tenants have a `default_currency_code`. Per-product prices in additional currencies are in `product_prices`. FX conversion:
 
-Current dashboard is a server-rendered operations view that reads API endpoints for:
+```python
+# Single conversion seam — always use this:
+from app.billing.fx import convert
+converted = convert(db, tenant_id, money, target_currency)
 
-- tenant overview
-- shops
-- sales summary
-- stock alerts
-- audit events
+# Auto-sync rates from ECB via frankfurter.app:
+POST /v1/admin/fx-rates/sync  { "base": "INR", "targets": [] }
+```
 
-### 6.2 Admin mobile (`apps/admin_mobile`)
+### 5.3 Display
 
-Current app is a lightweight multi-tab operational shell for:
+Admin web uses `formatMoney(cents, { code, exponent })` from `@/lib/format.ts`. Storefront uses `Intl.NumberFormat` with the currency's native exponent.
 
-- tenant summary
-- shops
-- sales snapshot
-- stock alerts
-- device/audit status
-- approvals placeholder
+---
 
-## 7) Worker and async
+## 6. E-commerce layer
 
-Worker entrypoint (`services/api/app/worker/__main__.py`) runs an RQ worker on the configured queue.
+See `docs/ecommerce-architecture.md` for the full e-commerce deep dive. Summary:
 
-Current pattern:
+### 6.1 Channels
 
-- API enqueues tasks (e.g., admin-triggered aggregate/report placeholders).
-- Worker processes tasks via Redis queue backend.
+A channel is a named sales surface for a tenant. Every channel has a `type`, a `currency_code`, and an `inventory_pool_id`. Payment credentials (Stripe/Razorpay) are stored encrypted in `channel.config`.
 
-## 8) Deployment model
+Types: `pos` | `headless` | `shopify` | `woocommerce` | `manual`
 
-`docker-compose.yml` includes:
+### 6.2 Order lifecycle
 
-- `postgres`
-- `redis`
-- `api`
-- `worker`
+```
+cart_items → checkout_session → order (confirmed)
+                                      ↓
+                               order_refund (partial/full)
+```
 
-API is published on configurable host port (default `8001`) and runs migrations on start.
+Orders are created by four paths: hosted checkout, headless storefront `/orders`, Shopify webhook, WooCommerce webhook. All paths fire `order.confirmed` webhooks and send confirmation emails.
 
-## 9) Testing and quality gates
+### 6.3 Storefront rate limiting
 
-Implemented checks currently include:
+`/v1/storefront/*` is rate-limited at **120 requests/minute per IP** using an async Redis counter. Fails open if Redis is unavailable. Admin routes are never rate-limited.
 
-- Python tests in `services/api/tests` (contract + optional integration smoke)
-- Flutter analyze/test for cashier and admin mobile
-- Next.js lint for admin web
+---
 
-## 10) Current maturity snapshot
+## 7. Background jobs
 
-- **Backend core sync + ledger:** implemented
-- **Tenancy + RLS baseline:** implemented
-- **Currency metadata at tenant level:** implemented
-- **Cashier offline queue + sync UX:** implemented
-- **Admin web/mobile operational views:** implemented as baseline
-- **Advanced RBAC, returns workflow depth, full Stitch visual parity:** pending/iterative
+The RQ worker (`python -m app.worker`) processes tasks from the `ims-default` Redis queue.
 
+| Task function | Trigger | What it does |
+|--------------|---------|-------------|
+| `deliver_webhook` | Order creation | HTTP POST to merchant webhook endpoint (3 attempts, exp. backoff) |
+| `sweep_expired_reservations` | Cron / manual | Marks stale stock reservations as expired |
+| `sweep_abandoned_carts` | Cron (every 2h) | Emails customers who started checkout but didn't complete |
+| `sync_all_tenant_licenses` | Cron | Pulls plan/license state from platform service |
+| `aggregate_report_placeholder` | Admin-triggered | Analytics placeholder |
+
+Enqueue: `task_queue().enqueue("app.worker.tasks.TASK_NAME", *args)`.
+
+---
+
+## 8. Email infrastructure
+
+Every tenant configures their own sending credentials in `TenantEmailConfig`. IMS never sends from a shared platform address.
+
+Supported providers: **SMTP** (Hostinger: `smtp.hostinger.com`, port 587/465), **Resend**.
+
+```python
+# Transactional emails sent by these service functions:
+send_order_confirmation(db, order)          # on every order creation
+send_abandoned_cart_email(db, ...)          # by sweep_abandoned_carts task
+send_test_email(config, to_email)           # admin test-send
+```
+
+Email delivery never raises — a failed send logs a warning but never blocks the calling operation.
+
+---
+
+## 9. Outbound webhooks
+
+Merchants register HTTPS endpoints for IMS to POST to when events occur.
+
+```
+POST /v1/admin/webhooks/endpoints   → register endpoint (gets a signing secret)
+GET  /v1/admin/webhooks/deliveries  → delivery log
+```
+
+Each delivery is HMAC-SHA256 signed. Headers: `X-IMS-Signature: sha256=<hex>`, `X-IMS-Event`, `X-IMS-Delivery`. Delivery is async via RQ; failures retry at 5 min and 30 min.
+
+Currently supported events: `order.confirmed`.
+
+---
+
+## 10. Entitlements and feature flags
+
+Plan-level feature values are defined in `services/api/app/billing/plans.py` (config-as-code). Per-tenant overrides are stored in `tenant_feature_overrides`. Resolution order:
+
+```
+tenant override > plan value > catalog default
+```
+
+Feature catalog is defined in `services/api/app/billing/features.py`. View the current matrix at `GET /v1/internal/platform/plan-features` (requires `X-Admin-Token`).
+
+---
+
+## 11. Testing
+
+```bash
+# Run full API test suite:
+CONTAINER=$(docker compose ps -q api)
+docker cp services/api/tests $CONTAINER:/app/tests
+docker compose exec api python -m pytest /app/tests/ -q
+docker compose exec api rm -rf /app/tests
+```
+
+Current: **489 passing, 1 pre-existing failure** (`test_admin_app_download_redirects` — makes a real HTTP call in CI without network).
+
+Test patterns:
+- Fixtures: `db` (transactional rollback), `tenant`, `shop` — defined in `tests/conftest.py`
+- Admin auth stub: override `require_admin_context` and `get_db_admin` dependencies
+- Storefront auth stub: override `get_db` and `get_current_customer`
+- Never use `from __future__ import annotations` in test files — breaks FastAPI dependency resolution
+
+---
+
+## 12. Deployment
+
+```yaml
+# docker-compose.yml services:
+postgres         # Main PostgreSQL (port 5432)
+redis            # Redis (port 6379)
+api              # FastAPI (port 8000, exposed as 8001)
+worker           # RQ worker (no port)
+admin-web        # Next.js (port 3100)
+platform-web     # Next.js platform UI (port 3200)
+platform         # Platform service
+platform-postgres
+platform-worker
+```
+
+The API container runs `alembic upgrade head` automatically on start. The admin-web container builds at image time.
+
+Required environment variables for API: `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `ADMIN_API_TOKEN`.

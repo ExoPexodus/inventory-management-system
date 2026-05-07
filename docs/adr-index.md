@@ -1,79 +1,188 @@
 # ADR Index
 
-This file tracks architecture decisions and their implementation status.
+Architecture Decision Records — why things are built the way they are.
 
-## How to use
+**Status values:** `accepted` | `superseded` | `deprecated`
 
-- Add one ADR entry per major decision.
-- Keep status explicit: `proposed`, `accepted`, `superseded`, `deprecated`.
-- Link to implementation files and migration references when available.
+---
 
-## ADR list
+## ADR-001: Offline-first immutable stock ledger
 
-### ADR-001: Offline-first ledger as source of truth
+**Status:** accepted
 
-- Status: accepted
-- Decision:
-  - Use immutable stock movement and transaction ledger records.
-  - Treat derived stock as computed view, not source of truth.
-- Implemented in:
-  - `services/api/app/models/tables.py`
-  - `services/api/app/services/sync_push.py`
+**Decision:** Stock is never stored as a mutable quantity. All inventory changes create immutable `StockMovement` rows. Available stock is derived by summing `quantity_delta` values.
 
-### ADR-002: Modular monolith backend boundaries
+**Why:** Provides full audit trail for every inventory change. Eliminates update conflicts when multiple cashiers work simultaneously offline. Reconciliation is always possible.
 
-- Status: accepted
-- Decision:
-  - Keep one FastAPI deployment unit while organizing by bounded capability routers/services.
-- Implemented in:
-  - `services/api/app/main.py`
-  - `services/api/app/routers/*`
+**Where:**
+- `services/api/app/models/tables.py` — `StockMovement` model
+- `services/api/app/services/sync_push.py` — applies sale movements
+- `services/api/app/routers/admin_inventory.py` — adjustment workflow
 
-### ADR-003: Tenant isolation via RLS + context
+---
 
-- Status: accepted
-- Decision:
-  - Enforce tenant isolation at DB policy layer and request context.
-- Implemented in:
-  - Alembic RLS migrations
-  - `services/api/app/db/rls.py`
+## ADR-002: Modular monolith backend
 
-### ADR-004: Tenant-level currency metadata
+**Status:** accepted
 
-- Status: accepted
-- Decision:
-  - Keep integer minor units in ledger; add tenant currency semantics for display/meaning.
-  - No FX/multi-currency in v1.
-- Implemented in:
-  - `services/api/app/models/tables.py`
-  - tenant currency migration
-  - `services/api/app/routers/sync.py`
-  - `apps/cashier` money formatter usage
+**Decision:** One FastAPI deployment unit, organized by bounded-context router and service modules. No microservices split.
 
-### ADR-005: Card tender requires connectivity (v1)
+**Why:** Avoids distributed systems complexity while maintaining clear domain boundaries. Easier to deploy, test, and debug. Can be split later if a specific domain requires independent scaling.
 
-- Status: accepted
-- Decision:
-  - Allow offline queue for cash; require online submission for card by default.
-- Implemented in:
-  - `apps/cashier/lib/screens/cart_screen.dart`
-  - `services/api/app/services/sync_push.py`
+**Where:**
+- `services/api/app/main.py` — router composition
+- `services/api/app/routers/` — one file per domain
 
-### ADR-006: Optional product groups for variant UX
+---
 
-- Status: accepted
-- Decision:
-  - Keep the sellable unit as `products.id` (ledger lines and stock movements unchanged).
-  - Add optional `product_groups` and nullable `product_group_id` + `variant_label` on `products` for merchandising and cashier grouping only.
-- Implemented in:
-  - `services/api/app/models/tables.py`
-  - `services/api/alembic/versions/20260326120000_product_groups.py`
-  - `services/api/app/routers/sync.py`, `services/api/app/routers/admin_web.py`
+## ADR-003: Tenant isolation via PostgreSQL RLS
+
+**Status:** accepted
+
+**Decision:** Every tenant-scoped table has a PostgreSQL row-level security policy. Application code sets `ims.tenant_id` as a session variable before every query. Defense-in-depth: even if application code forgets to filter by tenant, the DB policy prevents cross-tenant leaks.
+
+**Where:**
+- Alembic migrations (RLS policy creation)
+- `services/api/app/db/rls.py` — `set_rls_context()`
+
+---
+
+## ADR-004: Integer minor units for all money
+
+**Status:** accepted
+
+**Decision:** All monetary amounts are stored as integers in the currency's minor unit (cents, paise, etc.). Column names end with `_cents`. No floats ever.
+
+**Why:** Eliminates floating-point rounding errors. Arithmetic is exact. Display formatting is deferred to the presentation layer using the currency's exponent.
+
+**Where:** All `*_cents` columns across models.
+
+---
+
+## ADR-005: Card tender requires connectivity (POS)
+
+**Status:** accepted
+
+**Decision:** Card payments in the cashier app require an active connection to the API. Cash sales can queue offline.
+
+**Why:** Card transactions require real-time authorization and cannot be safely queued offline without risk of decline on sync.
+
+**Where:**
+- `apps/cashier/lib/screens/cart_screen.dart`
+- `services/api/app/services/sync_push.py`
+
+---
+
+## ADR-006: Product groups for variant merchandising (POS)
+
+**Status:** accepted
+
+**Decision:** The sellable unit remains `products.id`. Optional `product_groups` and `product_group_id` + `variant_label` on products allow cashier grouping without changing the ledger model.
+
+**Why:** Variants in POS (e.g. size S/M/L) are primarily a UI concern. Keeping the ledger at the individual SKU level ensures stock accuracy and avoids complex variant-roll-up logic.
+
+**Where:**
+- `services/api/app/models/tables.py` — `ProductGroup`, `Product.variant_label`
+- `services/api/app/routers/sync.py`
+
+---
+
+## ADR-007: Channel-based multi-surface e-commerce
+
+**Status:** accepted
+
+**Decision:** All e-commerce surfaces (headless storefront, Shopify, WooCommerce, POS) are represented as `Channel` records. Channels carry payment config, currency, and a reference to an inventory pool. The storefront API uses `X-Channel-Id` for routing and scoping.
+
+**Why:** A single merchant may sell through multiple surfaces simultaneously. Channels provide isolation (separate payment configs, currencies) while sharing the same inventory. Adding a new sales surface means adding a new channel type, not refactoring the core.
+
+**Where:**
+- `services/api/app/models/tables.py` — `Channel`, `InventoryPool`
+- `services/api/app/routers/storefront/auth.py` — `StorefrontChannelDep`
+- `services/api/app/routers/admin_channels.py`
+
+---
+
+## ADR-008: Soft-TTL stock reservations for cart
+
+**Status:** accepted
+
+**Decision:** When a product is added to a headless storefront cart, stock is reserved with a 15-minute TTL. Reservations are committed on order completion and released on expiry by a background sweep job.
+
+**Why:** Prevents overselling on concurrent carts without requiring a synchronous lock per add-to-cart call. TTL ensures dead carts don't hold stock indefinitely.
+
+**Where:**
+- `services/api/app/models/tables.py` — `StockReservation`
+- `services/api/app/services/reservation_service.py`
+- `services/api/app/worker/tasks.py` — `sweep_expired_reservations`
+
+---
+
+## ADR-009: Hosted checkout with BYO payment providers
+
+**Status:** accepted
+
+**Decision:** IMS hosts a checkout HTML page (`/checkout/{session_token}`) rendered server-side with Jinja2. Merchants bring their own Stripe or Razorpay accounts — credentials are stored encrypted per channel. IMS never holds payment credentials centrally.
+
+**Why:** Reduces PCI scope for IMS. Merchants keep full control of their payment accounts and revenue. The hosted page eliminates the need for headless merchants to build their own payment UI.
+
+**Where:**
+- `services/api/app/routers/checkout.py`
+- `services/api/templates/checkout.html`
+- `services/api/app/services/payment_service.py`
+- `services/api/app/services/email_service.py` — `encrypt_secret()`/`decrypt_secret()`
+
+---
+
+## ADR-010: Customer OTP auth with short-lived customer JWT
+
+**Status:** accepted
+
+**Decision:** Storefront customers authenticate via a 6-digit email OTP (10-minute TTL). Successful verification issues a `typ=customer` JWT (7-day TTL). Customer token is separate from operator and device tokens.
+
+**Why:** Passwordless auth lowers friction for one-time shoppers while still enabling persistent sessions for returning customers. The separate token type ensures storefront auth cannot accidentally grant admin access.
+
+**Security details:** OTP generated with `secrets.randbelow()` (CSPRNG). Stored as SHA-256 hash. Verified with `SELECT FOR UPDATE` to prevent concurrent double-use.
+
+**Where:**
+- `services/api/app/models/tables.py` — `StorefrontOTP`
+- `services/api/app/routers/storefront/customer_auth.py`
+- `services/api/app/auth/jwt.py` — `create_customer_token()`
+
+---
+
+## ADR-011: Async webhook delivery with RQ + exponential backoff
+
+**Status:** accepted
+
+**Decision:** Outbound webhooks to merchant endpoints are delivered asynchronously via RQ. Each delivery is retried up to 3 times with 5-minute and 30-minute delays. Order creation is never blocked by webhook delivery.
+
+**Why:** Merchant endpoints are external and unreliable. Synchronous delivery would make order creation fragile. Async delivery with retry provides eventual consistency guarantees without coupling order creation latency to webhook delivery latency.
+
+**Where:**
+- `services/api/app/services/webhook_service.py`
+- `services/api/app/worker/tasks.py` — `deliver_webhook()`
+- `services/api/app/models/tables.py` — `WebhookEndpoint`, `WebhookDeliveryLog`
+
+---
+
+## ADR-012: BYO email — merchants own their sending infrastructure
+
+**Status:** accepted
+
+**Decision:** Every merchant configures their own SMTP or Resend credentials. IMS never sends email from a shared platform address. Credentials are stored in `TenantEmailConfig`.
+
+**Why:** Shared sending infrastructure creates deliverability coupling — one merchant's spam behaviour can damage all merchants' domain reputation. BYO means each merchant controls their own SPF/DKIM/DMARC and sender reputation.
+
+**Where:**
+- `services/api/app/models/tables.py` — `TenantEmailConfig`
+- `services/api/app/services/email_service.py`
+- `services/api/app/routers/admin_email.py`
+
+---
 
 ## Next ADR candidates
 
-- Advanced RBAC model (role matrix and claims)
-- Returns/refunds workflow shape and invariants
-- Transfer workflows across shops/warehouse
-- Gateway abstraction and PCI-safe card integration strategy
-
+- **ADR-013:** Returns/inbound inventory workflow (currently manual stock adjustments)
+- **ADR-014:** Multi-shop transfer orders (stock movement across shops)
+- **ADR-015:** Customer account linking across channels (unified identity)
+- **ADR-016:** Advanced RBAC — custom role creation for per-operator permission sets
