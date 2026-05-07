@@ -35,6 +35,7 @@ export default function InventoryPoolsPage() {
   const [pools, setPools] = useState<InventoryPool[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
 
   // Create form
   const [showForm, setShowForm] = useState(false);
@@ -54,19 +55,46 @@ export default function InventoryPoolsPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setLoadErr(null);
     try {
       const [poolsRes, shopsRes] = await Promise.all([
         fetch("/api/ims/v1/admin/inventory-pools"),
         fetch("/api/ims/v1/admin/shops"),
       ]);
-      if (poolsRes.ok) setPools((await poolsRes.json()) as InventoryPool[]);
-      if (shopsRes.ok) setShops((await shopsRes.json()) as Shop[]);
+      if (!poolsRes.ok) throw new Error(`Failed to load pools (${poolsRes.status})`);
+      if (!shopsRes.ok) throw new Error(`Failed to load shops (${shopsRes.status})`);
+      setPools((await poolsRes.json()) as InventoryPool[]);
+      setShops((await shopsRes.json()) as Shop[]);
+    } catch (e) {
+      setLoadErr(e instanceof Error ? e.message : "Failed to load data.");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setLoadErr(null);
+    Promise.all([
+      fetch("/api/ims/v1/admin/inventory-pools"),
+      fetch("/api/ims/v1/admin/shops"),
+    ])
+      .then(async ([poolsRes, shopsRes]) => {
+        if (cancelled) return;
+        if (!poolsRes.ok) throw new Error(`Failed to load pools (${poolsRes.status})`);
+        if (!shopsRes.ok) throw new Error(`Failed to load shops (${shopsRes.status})`);
+        setPools((await poolsRes.json()) as InventoryPool[]);
+        setShops((await shopsRes.json()) as Shop[]);
+      })
+      .catch((e: unknown) => {
+        if (!cancelled) setLoadErr(e instanceof Error ? e.message : "Failed to load data.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, []); // load on mount only
 
   function toggleShop(shopId: string, list: string[], setList: (v: string[]) => void) {
     setList(list.includes(shopId) ? list.filter((id) => id !== shopId) : [...list, shopId]);
@@ -202,6 +230,8 @@ export default function InventoryPoolsPage() {
       <Panel title="Inventory pools" subtitle={`${pools.length} pool${pools.length === 1 ? "" : "s"}`} noPad>
         {loading ? (
           <p className="px-6 py-8 text-sm text-on-surface-variant">Loading…</p>
+        ) : loadErr ? (
+          <p className="px-6 py-8 text-center text-sm text-error">{loadErr}</p>
         ) : pools.length === 0 ? (
           <p className="px-6 py-8 text-center text-sm text-on-surface-variant">
             No pools yet. Create one above — channels require a pool before they can be created.
