@@ -7,6 +7,7 @@ from uuid import UUID
 
 import httpx
 
+from app.db.rls import set_rls_context
 from app.services.shipping.base import ShipmentEvent, ShipmentResult, ShippingProviderError, TrackingInfo
 from app.services.shipping.shiprocket import client as sr_client
 from app.services.shipping.shiprocket.mapping import map_status, order_to_shiprocket
@@ -24,6 +25,7 @@ class ShiprocketProvider:
         channel_id = UUID(str(order.channel_id))
         db = SessionLocal()
         try:
+            set_rls_context(db, is_admin=True, tenant_id=None)
             lines = db.execute(
                 select(OrderLine).where(OrderLine.order_id == order.id)
             ).scalars().all()
@@ -76,6 +78,7 @@ class ShiprocketProvider:
             from sqlalchemy import select
             db = SessionLocal()
             try:
+                set_rls_context(db, is_admin=True, tenant_id=None)
                 order = db.execute(
                     select(Order).where(Order.awb_code == awb_code)
                 ).scalar_one_or_none()
@@ -99,6 +102,7 @@ class ShiprocketProvider:
         from sqlalchemy import select
         db = SessionLocal()
         try:
+            set_rls_context(db, is_admin=True, tenant_id=None)
             order = db.execute(
                 select(Order).where(Order.awb_code == awb_code)
             ).scalar_one_or_none()
