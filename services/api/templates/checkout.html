@@ -5,70 +5,291 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Checkout</title>
   <style>
-    body{font-family:-apple-system,sans-serif;max-width:480px;margin:40px auto;padding:0 20px;color:#333}
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:480px;margin:40px auto;padding:0 20px;color:#333;background:#f9fafb}
     h2{font-size:1.4rem;margin-bottom:1rem}
-    .cart-items{border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:1.5rem}
+    .card{background:#fff;border-radius:10px;padding:16px;margin-bottom:1rem;box-shadow:0 1px 3px rgba(0,0,0,.08)}
     .cart-item{display:flex;justify-content:space-between;padding:4px 0;font-size:.9rem}
-    .totals{border-top:2px solid #e5e7eb;margin-top:8px;padding-top:8px;font-weight:600}
-    .row{display:flex;justify-content:space-between;font-size:.9rem;padding:2px 0}
-    .form-group{margin-bottom:1rem}
-    label{display:block;font-size:.85rem;font-weight:500;margin-bottom:4px;color:#555}
-    input{width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px;box-sizing:border-box;font-size:.95rem}
-    .btn{width:100%;padding:12px;background:#4f46e5;color:white;border:none;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer;margin-top:1rem}
+    .row{display:flex;justify-content:space-between;font-size:.9rem;padding:3px 0}
+    .row.total{font-weight:700;font-size:1rem;border-top:1px solid #e5e7eb;margin-top:6px;padding-top:8px}
+    .row.discount{color:#059669}
+    .form-group{margin-bottom:.9rem}
+    label{display:block;font-size:.82rem;font-weight:600;margin-bottom:4px;color:#555;text-transform:uppercase;letter-spacing:.03em}
+    input[type=email],input[type=text]{width:100%;padding:9px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:.95rem;outline:none;transition:border .15s}
+    input:focus{border-color:#4f46e5}
+    .coupon-row{display:flex;gap:8px}
+    .coupon-row input{flex:1}
+    .btn-sm{padding:9px 16px;background:#f3f4f6;color:#374151;border:1px solid #d1d5db;border-radius:6px;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap}
+    .btn-sm:hover{background:#e5e7eb}
+    .btn{width:100%;padding:13px;background:#4f46e5;color:#fff;border:none;border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;margin-top:.5rem;transition:background .15s;position:relative}
+    .btn:hover:not(:disabled){background:#4338ca}
     .btn:disabled{background:#9ca3af;cursor:not-allowed}
+    .btn[data-loading]::after{content:"";display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.5);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;position:absolute;right:16px;top:50%;margin-top:-7px}
+    @keyframes spin{to{transform:rotate(360deg)}}
     #payment-element{margin:1rem 0;min-height:44px}
-    #error-message{color:#dc2626;font-size:.85rem;margin-top:8px}
+    .msg{font-size:.82rem;margin-top:5px}
+    .msg-ok{color:#059669}
+    .msg-err{color:#dc2626}
+    #global-error{color:#dc2626;font-size:.85rem;margin-top:8px}
+    #payment-section{display:none}
   </style>
   {% if provider == "stripe" %}<script src="https://js.stripe.com/v3/"></script>{% endif %}
   {% if provider == "razorpay" %}<script src="https://checkout.razorpay.com/v1/checkout.js"></script>{% endif %}
 </head>
 <body>
-  <h2>Checkout</h2>
-  <div class="cart-items">
-    {% for item in cart_items %}
-    <div class="cart-item"><span>{{ item.product_name }} × {{ item.quantity }}</span><span>{{ item.currency_code }} {{ "%.2f"|format(item.line_total_cents/100) }}</span></div>
-    {% endfor %}
-    <div class="totals row"><span>Total</span><span>{{ currency_code }} {{ "%.2f"|format(total_cents/100) }}</span></div>
+<h2>Checkout</h2>
+
+<!-- Order summary -->
+<div class="card">
+  {% for item in cart_items %}
+  <div class="cart-item">
+    <span>{{ item.product_name }} &times; {{ item.quantity }}</span>
+    <span>{{ currency_code }} {{ "%.2f"|format(item.line_total_cents/100) }}</span>
   </div>
-  <form id="checkout-form">
-    <div class="form-group"><label>Email</label><input type="email" id="email" required placeholder="you@example.com"/></div>
-    <div class="form-group"><label>City</label><input type="text" id="city" required placeholder="Mumbai"/></div>
-    <div class="form-group"><label>Country</label><input type="text" id="country" required placeholder="IN" maxlength="2"/></div>
-    <div id="payment-element"></div>
-    <div id="error-message"></div>
-    <button type="submit" class="btn" id="submit-btn">Pay {{ currency_code }} {{ "%.2f"|format(total_cents/100) }}</button>
-  </form>
+  {% endfor %}
+  {% if shipping_cents > 0 %}
+  <div class="row"><span>Shipping</span><span>{{ currency_code }} {{ "%.2f"|format(shipping_cents/100) }}</span></div>
+  {% endif %}
+  {% if tax_cents > 0 %}
+  <div class="row"><span>Tax</span><span>{{ currency_code }} {{ "%.2f"|format(tax_cents/100) }}</span></div>
+  {% endif %}
+  <div class="row discount" id="discount-row" {% if not discount_cents %}style="display:none"{% endif %}>
+    <span id="discount-label">Discount{% if discount_code %} ({{ discount_code }}){% endif %}</span>
+    <span id="discount-amount">-{{ currency_code }} {{ "%.2f"|format(discount_cents/100) }}</span>
+  </div>
+  <div class="row total"><span>Total</span><span id="total-display">{{ currency_code }} {{ "%.2f"|format(total_cents/100) }}</span></div>
+</div>
+
+<!-- Customer info + coupon -->
+<div class="card">
+  <div class="form-group">
+    <label>Discount Code (optional)</label>
+    <div class="coupon-row">
+      <input type="text" id="coupon-input" placeholder="Enter code" value="{{ discount_code }}" autocomplete="off"/>
+      <button type="button" class="btn-sm" id="apply-btn">Apply</button>
+      <button type="button" class="btn-sm" id="remove-btn" style="color:#dc2626;border-color:#fca5a5;{% if not discount_code %}display:none{% endif %}">Remove</button>
+    </div>
+    <div class="msg" id="coupon-msg"></div>
+  </div>
+  <div class="form-group">
+    <label>Email</label>
+    <input type="email" id="email" required placeholder="you@example.com"/>
+  </div>
+  <div class="form-group">
+    <label>City</label>
+    <input type="text" id="city" placeholder="Mumbai"/>
+  </div>
+  <div class="form-group">
+    <label>Country (2-letter code)</label>
+    <input type="text" id="country" placeholder="IN" maxlength="2"/>
+  </div>
+  <button type="button" class="btn" id="proceed-btn">
+    Pay {{ currency_code }} <span id="btn-amount">{{ "%.2f"|format(total_cents/100) }}</span>
+  </button>
+</div>
+
+<!-- Payment (shown after proceed) -->
+<div id="payment-section" class="card">
+  <div id="payment-element"></div>
+  <div id="global-error"></div>
+  <button type="button" class="btn" id="confirm-btn">Confirm Payment</button>
+</div>
+
 <script>
 const TOKEN = "{{ session_token }}";
 const BASE = window.location.origin;
-{% if provider == "stripe" %}
-const stripe = Stripe("{{ publishable_key }}");
-let elements;
-(async()=>{
-  const r = await fetch(`${BASE}/v1/checkout/${TOKEN}/payment-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customer_email:"",shipping_address:{}})});
-  const d = await r.json();
-  if(!r.ok){document.getElementById("error-message").textContent=d.detail||"Failed to load payment.";return;}
-  elements=stripe.elements({clientSecret:d.client_secret});
-  elements.create("payment").mount("#payment-element");
-})();
-document.getElementById("checkout-form").addEventListener("submit",async e=>{
-  e.preventDefault();
-  const btn=document.getElementById("submit-btn");
-  btn.disabled=true;btn.textContent="Processing...";
-  const{error}=await stripe.confirmPayment({elements,confirmParams:{return_url:`${BASE}/checkout/${TOKEN}/stripe-return`,payment_method_data:{billing_details:{email:document.getElementById("email").value}}}});
-  if(error){document.getElementById("error-message").textContent=error.message;btn.disabled=false;btn.textContent="Pay {{ currency_code }} {{ '%.2f'|format(total_cents/100) }}";}
+const CURRENCY = "{{ currency_code }}";
+let currentTotal = {{ total_cents }};
+
+function fmt(cents){ return (cents / 100).toFixed(2); }
+
+function setGlobalError(msg){
+  document.getElementById("global-error").textContent = msg || "";
+}
+
+function setCouponMsg(msg, isOk){
+  const el = document.getElementById("coupon-msg");
+  el.textContent = msg;
+  el.className = "msg " + (isOk ? "msg-ok" : "msg-err");
+}
+
+function updateTotals(discountCents, discountCode, discountName, totalCents){
+  currentTotal = totalCents;
+  document.getElementById("total-display").textContent = CURRENCY + " " + fmt(totalCents);
+  document.getElementById("btn-amount").textContent = fmt(totalCents);
+  if(discountCents > 0){
+    document.getElementById("discount-row").style.display = "";
+    document.getElementById("discount-label").textContent = "Discount (" + discountCode + ")";
+    document.getElementById("discount-amount").textContent = "-" + CURRENCY + " " + fmt(discountCents);
+  }
+}
+
+// ----- Coupon: apply -----
+document.getElementById("apply-btn").addEventListener("click", async function(){
+  const code = document.getElementById("coupon-input").value.trim();
+  if(!code){ setCouponMsg("Enter a discount code first.", false); return; }
+  setCouponMsg("Checking…", true);
+  try{
+    const r = await fetch(BASE + "/v1/checkout/" + TOKEN + "/apply-discount", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({code: code}),
+    });
+    const d = await r.json();
+    if(!r.ok){ setCouponMsg(d.detail || "Code not valid.", false); return; }
+    setCouponMsg("✓ " + d.discount_name + " — saving " + CURRENCY + " " + fmt(d.discount_cents), true);
+    updateTotals(d.discount_cents, d.code, d.discount_name, d.total_cents);
+    document.getElementById("remove-btn").style.display = "";
+    document.getElementById("coupon-input").value = d.code;
+  } catch(e){
+    setCouponMsg("Could not apply code. Try again.", false);
+  }
 });
+
+// ----- Coupon: remove -----
+document.getElementById("remove-btn").addEventListener("click", async function(){
+  await fetch(BASE + "/v1/checkout/" + TOKEN + "/discount", {method: "DELETE"});
+  document.getElementById("coupon-input").value = "";
+  document.getElementById("coupon-msg").textContent = "";
+  document.getElementById("discount-row").style.display = "none";
+  document.getElementById("remove-btn").style.display = "none";
+  window.location.reload();
+});
+
+// Enter key in coupon field
+document.getElementById("coupon-input").addEventListener("keydown", function(e){
+  if(e.key === "Enter"){ e.preventDefault(); document.getElementById("apply-btn").click(); }
+});
+
+{% if provider == "stripe" %}
+// ----- Stripe: lazy payment intent -----
+var stripe = Stripe("{{ publishable_key }}");
+var stripeElements;
+
+document.getElementById("proceed-btn").addEventListener("click", async function(){
+  const email = document.getElementById("email").value.trim();
+  if(!email){ setGlobalError("Please enter your email address."); return; }
+  const btn = document.getElementById("proceed-btn");
+  btn.disabled = true;
+  btn.setAttribute("data-loading", "1");
+  btn.textContent = "Loading payment…";
+  setGlobalError("");
+  try{
+    const r = await fetch(BASE + "/v1/checkout/" + TOKEN + "/payment-intent", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        customer_email: email,
+        shipping_address: {
+          city: document.getElementById("city").value,
+          country: (document.getElementById("country").value || "").toUpperCase(),
+        },
+      }),
+    });
+    const d = await r.json();
+    if(!r.ok){
+      setGlobalError(d.detail || "Failed to initialise payment.");
+      btn.disabled = false;
+      btn.removeAttribute("data-loading");
+      btn.textContent = "Pay " + CURRENCY + " " + fmt(currentTotal);
+      return;
+    }
+    stripeElements = stripe.elements({clientSecret: d.client_secret});
+    stripeElements.create("payment").mount("#payment-element");
+    document.getElementById("payment-section").style.display = "";
+    btn.style.display = "none";
+    document.getElementById("payment-section").scrollIntoView({behavior: "smooth"});
+  } catch(e){
+    setGlobalError("Something went wrong. Please try again.");
+    btn.disabled = false;
+    btn.removeAttribute("data-loading");
+    btn.textContent = "Pay " + CURRENCY + " " + fmt(currentTotal);
+  }
+});
+
+document.getElementById("confirm-btn").addEventListener("click", async function(){
+  const btn = document.getElementById("confirm-btn");
+  btn.disabled = true;
+  btn.setAttribute("data-loading", "1");
+  btn.textContent = "Processing…";
+  setGlobalError("");
+  const result = await stripe.confirmPayment({
+    elements: stripeElements,
+    confirmParams: {
+      return_url: BASE + "/checkout/" + TOKEN + "/stripe-return",
+      payment_method_data: {
+        billing_details: {email: document.getElementById("email").value},
+      },
+    },
+  });
+  if(result.error){
+    setGlobalError(result.error.message);
+    btn.disabled = false;
+    btn.removeAttribute("data-loading");
+    btn.textContent = "Confirm Payment";
+  }
+});
+
 {% elif provider == "razorpay" %}
-document.getElementById("checkout-form").addEventListener("submit",async e=>{
-  e.preventDefault();
-  const email=document.getElementById("email").value;
-  const r=await fetch(`${BASE}/v1/checkout/${TOKEN}/payment-intent`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({customer_email:email,shipping_address:{city:document.getElementById("city").value,country:document.getElementById("country").value.toUpperCase()}})});
-  const d=await r.json();
-  if(!r.ok){document.getElementById("error-message").textContent=d.detail;return;}
-  new Razorpay({key:d.key_id,order_id:d.order_id,amount:d.amount,currency:d.currency,prefill:{email},handler:async resp=>{
-    const c=await fetch(`${BASE}/v1/checkout/${TOKEN}/complete`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({razorpay_order_id:resp.razorpay_order_id,razorpay_payment_id:resp.razorpay_payment_id,razorpay_signature:resp.razorpay_signature,customer_email:email})});
-    const res=await c.json();if(res.redirect_url)window.location.href=res.redirect_url;
-  }}).open();
+// ----- Razorpay -----
+document.getElementById("proceed-btn").addEventListener("click", async function(){
+  const email = document.getElementById("email").value.trim();
+  if(!email){ setGlobalError("Please enter your email address."); return; }
+  const btn = document.getElementById("proceed-btn");
+  btn.disabled = true;
+  btn.setAttribute("data-loading", "1");
+  btn.textContent = "Loading payment…";
+  setGlobalError("");
+
+  const r = await fetch(BASE + "/v1/checkout/" + TOKEN + "/payment-intent", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      customer_email: email,
+      shipping_address: {
+        city: document.getElementById("city").value,
+        country: (document.getElementById("country").value || "").toUpperCase(),
+      },
+    }),
+  });
+  const d = await r.json();
+  if(!r.ok){
+    setGlobalError(d.detail || "Failed to initialise payment.");
+    btn.disabled = false;
+    btn.removeAttribute("data-loading");
+    btn.textContent = "Pay " + CURRENCY + " " + fmt(currentTotal);
+    return;
+  }
+
+  const rzp = new Razorpay({
+    key: d.key_id,
+    order_id: d.order_id,
+    amount: d.amount,
+    currency: d.currency,
+    prefill: {email: email},
+    handler: async function(resp){
+      const c = await fetch(BASE + "/v1/checkout/" + TOKEN + "/complete", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({
+          razorpay_order_id: resp.razorpay_order_id,
+          razorpay_payment_id: resp.razorpay_payment_id,
+          razorpay_signature: resp.razorpay_signature,
+          customer_email: email,
+        }),
+      });
+      const res = await c.json();
+      if(res.redirect_url) window.location.href = res.redirect_url;
+    },
+    modal: {
+      ondismiss: function(){
+        btn.disabled = false;
+        btn.removeAttribute("data-loading");
+        btn.textContent = "Pay " + CURRENCY + " " + fmt(currentTotal);
+      },
+    },
+  });
+  rzp.open();
 });
 {% endif %}
 </script>

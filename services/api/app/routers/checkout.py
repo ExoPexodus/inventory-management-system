@@ -19,6 +19,10 @@ from app.db.session import get_db
 from app.models import CartItem, Channel, CheckoutSession, Order, OrderLine, OrderPayment, Product
 from app.routers.storefront.auth import StorefrontChannelDep
 from app.services.customer_resolver import resolve_or_create_customer
+from app.services.discount_service import (
+    DiscountNotEligibleError, DiscountNotFoundError,
+    apply_discount, record_discount_use,
+)
 from app.services.payment_service import (
     PaymentNotConfiguredError, PaymentProviderError,
     create_payment_intent, verify_payment, verify_razorpay_signature,
@@ -60,6 +64,20 @@ class CompleteCheckoutOut(BaseModel):
     status: str
     order_id: str
     redirect_url: str
+
+
+class ApplyDiscountIn(BaseModel):
+    code: str
+
+
+class ApplyDiscountOut(BaseModel):
+    code: str
+    discount_name: str
+    discount_cents: int
+    subtotal_cents: int
+    shipping_cents: int
+    tax_cents: int
+    total_cents: int
 
 
 def _load_cart(db: Session, channel_id: UUID, cart_token: str) -> list[tuple]:
@@ -126,6 +144,26 @@ def _create_order_from_session(db: Session, channel: Channel, session: CheckoutS
         status="paid",
     ))
 
+    if session.discount_code and session.discount_cents > 0:
+        from app.models import Discount
+        from sqlalchemy import func as sqlfunc
+        discount_row = db.execute(
+            select(Discount).where(
+                Discount.tenant_id == channel.tenant_id,
+                sqlfunc.upper(Discount.code) == session.discount_code.upper(),
+            )
+        ).scalar_one_or_none()
+        if discount_row:
+            record_discount_use(
+                db,
+                tenant_id=channel.tenant_id,
+                discount_id=discount_row.id,
+                discount_amount_cents=session.discount_cents,
+                cart_token=session.cart_token,
+                customer_id=customer_id,
+                order_id=order.id,
+            )
+
     session.status = "completed"
     session.order_id = order.id
     session.external_payment_id = payment_id
@@ -136,6 +174,59 @@ def _create_order_from_session(db: Session, channel: Channel, session: CheckoutS
     send_order_confirmation(db, order)
 
     return order
+
+
+@router.post("/v1/checkout/{session_token}/apply-discount", response_model=ApplyDiscountOut)
+def apply_discount_to_session(
+    session_token: str,
+    body: ApplyDiscountIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> ApplyDiscountOut:
+    session = _get_session_or_404(db, session_token)
+    channel = db.get(Channel, session.channel_id)
+
+    try:
+        result = apply_discount(
+            db,
+            tenant_id=channel.tenant_id,
+            channel_id=channel.id,
+            cart_subtotal_cents=session.subtotal_cents,
+            code=body.code.strip(),
+        )
+    except DiscountNotFoundError:
+        raise HTTPException(status_code=404, detail="Discount code not found or inactive")
+    except DiscountNotEligibleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    session.discount_cents = result["discount_amount_cents"]
+    session.discount_code = body.code.strip().upper()
+    session.total_cents = max(
+        0,
+        session.subtotal_cents + session.shipping_cents + session.tax_cents - session.discount_cents,
+    )
+    db.commit()
+
+    return ApplyDiscountOut(
+        code=session.discount_code,
+        discount_name=result["name"],
+        discount_cents=session.discount_cents,
+        subtotal_cents=session.subtotal_cents,
+        shipping_cents=session.shipping_cents,
+        tax_cents=session.tax_cents,
+        total_cents=session.total_cents,
+    )
+
+
+@router.delete("/v1/checkout/{session_token}/discount", status_code=status.HTTP_204_NO_CONTENT)
+def remove_discount_from_session(
+    session_token: str,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    session = _get_session_or_404(db, session_token)
+    session.discount_cents = 0
+    session.discount_code = None
+    session.total_cents = session.subtotal_cents + session.shipping_cents + session.tax_cents
+    db.commit()
 
 
 @router.post("/v1/storefront/checkout/session",
@@ -198,6 +289,8 @@ def checkout_page(
         "subtotal_cents": session.subtotal_cents,
         "shipping_cents": session.shipping_cents,
         "tax_cents": session.tax_cents,
+        "discount_cents": session.discount_cents,
+        "discount_code": session.discount_code or "",
         "total_cents": session.total_cents,
         "currency_code": session.currency_code,
         "provider": provider,
