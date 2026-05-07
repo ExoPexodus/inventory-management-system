@@ -1,4 +1,4 @@
-"""Admin endpoints for managing FX rates (manual upload).
+"""Admin endpoints for managing FX rates (manual + auto-sync from frankfurter.app).
 
 Auth: requires `currency:manage` permission.
 """
@@ -14,10 +14,13 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import httpx
+
 from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.billing.fx import set_rate
 from app.db.admin_deps_db import get_db_admin
-from app.models import FxRate
+from app.models import FxRate, Tenant
+from app.services.fx_sync_service import SUPPORTED_CURRENCIES, sync_rates
 
 router = APIRouter(
     prefix="/v1/admin/fx-rates",
@@ -113,3 +116,69 @@ def delete_rate(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rate not found")
     db.delete(row)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Auto-sync from frankfurter.app
+# ---------------------------------------------------------------------------
+
+class FxSyncIn(BaseModel):
+    base: str = Field(min_length=3, max_length=3, description="Base currency (e.g. USD)")
+    targets: list[str] = Field(
+        default=[],
+        description="Target currencies to fetch. Empty = all supported currencies.",
+    )
+
+
+class FxSyncOut(BaseModel):
+    base: str
+    rates_synced: int
+    rates: dict[str, str]
+    unsupported_skipped: list[str]
+    source: str = "frankfurter.app"
+
+
+@router.post("/sync", response_model=FxSyncOut)
+def sync_live_rates(
+    body: FxSyncIn,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> FxSyncOut:
+    """Fetch live exchange rates from frankfurter.app (ECB data) and store them.
+
+    If `targets` is empty, syncs the base currency against all ~30 supported
+    currencies. Rates are stored with source='frankfurter' and can be
+    overridden manually at any time.
+    """
+    tenant_id = _require_tenant(ctx)
+    base = body.base.upper()
+
+    targets = [t.upper() for t in body.targets] if body.targets else list(SUPPORTED_CURRENCIES)
+    targets = [t for t in targets if t != base]
+
+    unsupported = [t for t in targets if t not in SUPPORTED_CURRENCIES]
+
+    try:
+        fetched = sync_rates(db, tenant_id, base, targets)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Currency '{base}' is not supported by frankfurter.app",
+            )
+        raise HTTPException(status_code=502, detail="FX rate provider returned an error")
+    except httpx.RequestError:
+        raise HTTPException(status_code=502, detail="Could not reach FX rate provider")
+
+    return FxSyncOut(
+        base=base,
+        rates_synced=len(fetched),
+        rates=fetched,
+        unsupported_skipped=unsupported,
+    )
+
+
+@router.get("/supported-currencies", response_model=list[str])
+def list_supported_currencies() -> list[str]:
+    """Return the list of currencies available for auto-sync from frankfurter.app."""
+    return sorted(SUPPORTED_CURRENCIES)
