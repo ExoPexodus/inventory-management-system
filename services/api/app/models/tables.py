@@ -1041,8 +1041,25 @@ class Order(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
+    # Fulfillment / carrier fields
+    fulfillment_status: Mapped[str] = mapped_column(
+        String(32), default="pending", server_default="pending", nullable=False
+    )
+    shipping_provider: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    provider_order_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    awb_code: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    tracking_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    carrier_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    label_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     lines: Mapped[list["OrderLine"]] = relationship(back_populates="order", cascade="all, delete-orphan")
     payments: Mapped[list["OrderPayment"]] = relationship(back_populates="order", cascade="all, delete-orphan")
+    shipment_events: Mapped[list["ShipmentEvent"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan",
+        order_by="ShipmentEvent.occurred_at"
+    )
 
 
 class OrderLine(Base):
@@ -1114,6 +1131,34 @@ class OrderRefund(Base):
         UUID(as_uuid=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ShipmentEvent(Base):
+    """Append-only log of carrier status events for an order.
+
+    Idempotent on (order_id, provider_event_id) — duplicate webhook deliveries are safe.
+    """
+    __tablename__ = "shipment_events"
+    __table_args__ = (
+        UniqueConstraint("order_id", "provider_event_id", name="uq_shipment_event_order_provider"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    location: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    provider_event_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    order: Mapped["Order"] = relationship(back_populates="shipment_events")
 
 
 class StockReservation(Base):
