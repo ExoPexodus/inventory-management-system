@@ -75,7 +75,10 @@ export default function TaxPage() {
     setRulesLoading(true);
     try {
       const r = await fetch(`/api/ims/v1/admin/tax/regions/${regionId}/rules`);
-      if (r.ok) setRulesCache((prev) => ({ ...prev, [regionId]: (await r.json()) as TaxRule[] }));
+      if (r.ok) {
+        const rules = (await r.json()) as TaxRule[];
+        setRulesCache((prev) => ({ ...prev, [regionId]: rules }));
+      }
     } finally {
       setRulesLoading(false);
     }
@@ -178,7 +181,8 @@ export default function TaxPage() {
         try {
           const rulesRes = await fetch(`/api/ims/v1/admin/tax/regions/${savedRegionId}/rules`);
           if (rulesRes.ok) {
-            setRulesCache((prev) => ({ ...prev, [savedRegionId]: (await rulesRes.json()) as TaxRule[] }));
+            const freshRules = (await rulesRes.json()) as TaxRule[];
+            setRulesCache((prev) => ({ ...prev, [savedRegionId]: freshRules }));
           }
         } catch {
           // non-critical — rules will reload on next expand

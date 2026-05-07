@@ -565,7 +565,7 @@ function EditProductDialog({
 function currencyExponent(code: string): number {
   try {
     return new Intl.NumberFormat(undefined, { style: "currency", currency: code })
-      .resolvedOptions().minimumFractionDigits;
+      .resolvedOptions().minimumFractionDigits ?? 2;
   } catch {
     return 2; // safe default for unknown codes
   }
