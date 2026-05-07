@@ -837,7 +837,7 @@ export default function SettingsPage() {
       </div>
 
       <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
-          <h2 className="font-headline text-base font-bold text-on-surface">Business type</h2>
+          <h3 className="font-headline text-base font-bold text-on-surface">Business type</h3>
           <p className="mt-1 text-sm text-on-surface-variant">
             Controls which features are available. &ldquo;Online&rdquo; enables e-commerce channels and hosted checkout.
             &ldquo;Retail&rdquo; focuses on POS. &ldquo;Hybrid&rdquo; enables both.
@@ -865,7 +865,7 @@ export default function SettingsPage() {
                   </button>
                 ))}
               </div>
-              {btMsg && <p className="text-sm text-tertiary">{btMsg}</p>}
+              {btMsg && <p className="text-sm font-semibold text-primary">{btMsg}</p>}
               {btErr && <p className="text-sm text-error">{btErr}</p>}
               <PrimaryButton type="button" onClick={() => void handleSaveBusinessType()} disabled={btSaving}>
                 {btSaving ? "Saving…" : "Save business type"}
