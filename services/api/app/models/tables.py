@@ -16,7 +16,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -704,6 +704,58 @@ class WebhookDelivery(Base):
     response_status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# Webhooks-out (merchant event bus)
+# ---------------------------------------------------------------------------
+
+
+class WebhookEndpoint(Base):
+    """A merchant-registered HTTPS endpoint that receives IMS event notifications."""
+    __tablename__ = "webhook_endpoints"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    url: Mapped[str] = mapped_column(String(512), nullable=False)
+    secret: Mapped[str] = mapped_column(String(255), nullable=False)
+    events: Mapped[list] = mapped_column(ARRAY(String(64)), nullable=False, server_default="{}")
+    status: Mapped[str] = mapped_column(String(16), default="active", server_default="active", nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    delivery_logs: Mapped[list["WebhookDeliveryLog"]] = relationship(
+        back_populates="endpoint", cascade="all, delete-orphan"
+    )
+
+
+class WebhookDeliveryLog(Base):
+    """One HTTP delivery attempt for one event to one endpoint."""
+    __tablename__ = "webhook_delivery_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    endpoint_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), default="pending", server_default="pending", nullable=False)
+    response_status: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    response_body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    next_retry_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    endpoint: Mapped["WebhookEndpoint"] = relationship(back_populates="delivery_logs")
 
 
 # ---------------------------------------------------------------------------

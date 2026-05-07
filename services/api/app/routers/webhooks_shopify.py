@@ -156,6 +156,10 @@ def _handle_order_create(db: Session, channel: Channel, payload: dict) -> None:
     from app.services.email_service import send_order_confirmation
     send_order_confirmation(db, order)
 
+    from app.services.webhook_service import build_order_confirmed_payload, fire_event
+    fire_event(db, channel.tenant_id, "order.confirmed",
+               build_order_confirmed_payload(db, order))
+
 
 def _handle_order_updated(db: Session, channel: Channel, payload: dict) -> None:
     external_id = str(payload["id"])

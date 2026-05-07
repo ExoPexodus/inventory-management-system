@@ -100,3 +100,9 @@ def poll_all_tenant_configs() -> dict:
         db.close()
 
     return {"applied": applied_count, "failed": failed_count, "total": total}
+
+
+def deliver_webhook(delivery_log_id: str) -> str:
+    """RQ task: attempt delivery of one webhook event. Called by the worker process."""
+    from app.services.webhook_service import deliver_webhook_sync
+    return deliver_webhook_sync(delivery_log_id)

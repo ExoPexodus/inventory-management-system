@@ -54,6 +54,8 @@ from app.models.tables import (
     TransactionLine,
     User,
     WebhookDelivery,
+    WebhookDeliveryLog,
+    WebhookEndpoint,
 )
 
 __all__ = [
@@ -112,4 +114,6 @@ __all__ = [
     "TransactionLine",
     "User",
     "WebhookDelivery",
+    "WebhookDeliveryLog",
+    "WebhookEndpoint",
 ]

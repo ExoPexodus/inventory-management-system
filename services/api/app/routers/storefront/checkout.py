@@ -247,6 +247,10 @@ def submit_order(
     from app.services.email_service import send_order_confirmation
     send_order_confirmation(db, order)
 
+    from app.services.webhook_service import build_order_confirmed_payload, fire_event
+    fire_event(db, channel.tenant_id, "order.confirmed",
+               build_order_confirmed_payload(db, order))
+
     return OrderOut(
         id=str(order.id),
         channel_id=str(order.channel_id),
