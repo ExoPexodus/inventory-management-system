@@ -28,6 +28,7 @@ from app.routers import (
     admin_inventory_pools,
     admin_integrations,
     admin_notifications,
+    admin_ecommerce_orders,
     admin_orders,
     admin_payment,
     admin_platform,
@@ -93,6 +94,7 @@ app.include_router(admin_customers.router)
 app.include_router(admin_discounts.router)
 app.include_router(admin_entitlements.router)
 app.include_router(admin_inventory.router)
+app.include_router(admin_ecommerce_orders.router)
 app.include_router(admin_orders.router)
 app.include_router(admin_email.router)
 app.include_router(admin_webhooks.router)
