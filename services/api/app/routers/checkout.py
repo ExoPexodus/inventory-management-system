@@ -177,6 +177,25 @@ def _create_order_from_session(db: Session, channel: Channel, session: CheckoutS
     fire_event(db, channel.tenant_id, "order.confirmed",
                build_order_confirmed_payload(db, order))
 
+    # Enqueue shipping dispatch if channel has a provider configured
+    try:
+        from app.services.shipping.registry import get_channel_provider
+        from app.services.shipping.base import ShippingNotConfiguredError
+        get_channel_provider(channel)
+        from app.worker.queue import task_queue
+        task_queue().enqueue(
+            "app.worker.tasks.dispatch_shipment",
+            str(order.id),
+            job_timeout=120,
+        )
+    except ShippingNotConfiguredError:
+        pass  # No shipping provider configured — skip silently
+    except Exception:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "Failed to enqueue dispatch for order %s", order.id, exc_info=True
+        )
+
     return order
 
 

@@ -31,7 +31,7 @@ from app.models import Order, OrderLine, WebhookDeliveryLog, WebhookEndpoint
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_EVENTS = frozenset(["order.confirmed", "order.updated"])
+SUPPORTED_EVENTS = frozenset(["order.confirmed", "order.updated", "order.shipped"])
 MAX_ATTEMPTS = 3
 RETRY_DELAYS = [timedelta(minutes=5), timedelta(minutes=30)]  # delay before attempt 2, 3
 

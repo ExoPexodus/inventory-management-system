@@ -108,6 +108,36 @@ def deliver_webhook(delivery_log_id: str) -> str:
     return deliver_webhook_sync(delivery_log_id)
 
 
+def dispatch_shipment(order_id: str) -> str:
+    """RQ task: dispatch one order to its configured shipping provider.
+
+    Called automatically on order.confirmed if the channel has a
+    shipping_provider in config. Also callable manually via admin API.
+    """
+    import logging
+    from app.db.rls import set_rls_context
+    from app.db.session import SessionLocal
+    from app.models import Order
+
+    logger = logging.getLogger(__name__)
+    db = SessionLocal()
+    try:
+        set_rls_context(db, is_admin=True, tenant_id=None)
+        order = db.get(Order, order_id)
+        if order is None:
+            return f"order {order_id} not found"
+        if order.fulfillment_status not in ("pending", "failed"):
+            return f"order already in status {order.fulfillment_status!r}, skipping"
+        from app.services.shipping.dispatcher import dispatch_order
+        success = dispatch_order(db, order)
+        return "dispatched" if success else "skipped_or_failed"
+    except Exception:
+        logger.exception("dispatch_shipment failed for order %s", order_id)
+        return "error"
+    finally:
+        db.close()
+
+
 def sweep_abandoned_carts(idle_hours: int = 2) -> str:
     """RQ task: find carts idle for idle_hours and send recovery emails.
 
