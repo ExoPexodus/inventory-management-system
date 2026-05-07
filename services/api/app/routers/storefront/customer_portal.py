@@ -39,6 +39,7 @@ class CustomerOrderOut(BaseModel):
     currency_code: str
     placed_at: datetime
     lines: list[OrderLineOut]
+    model_config = {"from_attributes": True}
 
 
 @router.get("/me", response_model=CustomerProfileOut)
