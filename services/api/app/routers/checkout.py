@@ -1,0 +1,284 @@
+"""Hosted checkout: session management, payment intent, order completion, HTML page."""
+from __future__ import annotations
+
+import secrets
+import uuid
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Annotated, Any
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.models import CartItem, Channel, CheckoutSession, Order, OrderLine, Product
+from app.routers.storefront.auth import StorefrontChannelDep
+from app.services.customer_resolver import resolve_or_create_customer
+from app.services.payment_service import (
+    PaymentNotConfiguredError, PaymentProviderError,
+    create_payment_intent, verify_payment, verify_razorpay_signature,
+)
+from app.services.reservation_service import commit_reservation
+
+router = APIRouter(tags=["Hosted Checkout"])
+
+_TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates"
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+CHECKOUT_SESSION_TTL_MINUTES = 30
+
+
+class CreateSessionIn(BaseModel):
+    cart_token: str
+
+
+class CreateSessionOut(BaseModel):
+    session_token: str
+    checkout_url: str
+    expires_at: datetime
+
+
+class PaymentIntentIn(BaseModel):
+    customer_email: str = ""
+    shipping_address: dict | None = None
+
+
+class CompleteCheckoutIn(BaseModel):
+    payment_intent_id: str | None = None
+    razorpay_order_id: str | None = None
+    razorpay_payment_id: str | None = None
+    razorpay_signature: str | None = None
+    customer_email: str = ""
+
+
+class CompleteCheckoutOut(BaseModel):
+    status: str
+    order_id: str
+    redirect_url: str
+
+
+def _load_cart(db: Session, channel_id: UUID, cart_token: str) -> list[tuple]:
+    return list(db.execute(
+        select(CartItem, Product)
+        .join(Product, CartItem.product_id == Product.id)
+        .where(CartItem.cart_token == cart_token, CartItem.channel_id == channel_id)
+    ).all())
+
+
+def _get_session_or_404(db: Session, session_token: str) -> CheckoutSession:
+    session = db.execute(
+        select(CheckoutSession).where(CheckoutSession.session_token == session_token)
+    ).scalar_one_or_none()
+    if session is None:
+        raise HTTPException(status_code=404, detail="Checkout session not found")
+    if session.status in ("completed", "cancelled"):
+        raise HTTPException(status_code=410, detail=f"Checkout session is {session.status}")
+    if datetime.now(UTC) > session.expires_at:
+        raise HTTPException(status_code=410, detail="Checkout session has expired")
+    return session
+
+
+def _create_order_from_session(db: Session, channel: Channel, session: CheckoutSession,
+                                customer_email: str, payment_id: str, payment_provider: str) -> Order:
+    customer_id = None
+    if customer_email:
+        cust = resolve_or_create_customer(db, channel.tenant_id, channel.id, email=customer_email)
+        if cust:
+            customer_id = cust.id
+
+    rows = _load_cart(db, channel.id, session.cart_token)
+    order = Order(
+        tenant_id=channel.tenant_id, channel_id=channel.id, status="confirmed",
+        customer_id=customer_id, customer_email=customer_email,
+        subtotal_cents=session.subtotal_cents, discount_cents=session.discount_cents,
+        tax_cents=session.tax_cents, shipping_cents=session.shipping_cents,
+        total_cents=session.total_cents, currency_code=session.currency_code,
+        shipping_address=session.shipping_address,
+    )
+    db.add(order)
+    db.flush()
+
+    for ci, prod in rows:
+        db.add(OrderLine(
+            tenant_id=channel.tenant_id, order_id=order.id,
+            product_id=prod.id, title=prod.name, sku=prod.sku,
+            quantity=ci.quantity,
+            unit_price_cents=ci.unit_price_cents,
+            line_total_cents=ci.unit_price_cents * ci.quantity,
+        ))
+        if ci.reservation_id:
+            commit_reservation(db, ci.reservation_id)
+        db.delete(ci)
+
+    session.status = "completed"
+    session.order_id = order.id
+    session.external_payment_id = payment_id
+    session.payment_provider = payment_provider
+    db.commit()
+    return order
+
+
+@router.post("/v1/storefront/checkout/session",
+             response_model=CreateSessionOut, status_code=status.HTTP_201_CREATED)
+def create_checkout_session(
+    body: CreateSessionIn,
+    channel: StorefrontChannelDep,
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+) -> CreateSessionOut:
+    rows = _load_cart(db, channel.id, body.cart_token)
+    if not rows:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+
+    subtotal = sum(ci.unit_price_cents * ci.quantity for ci, _ in rows)
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.now(UTC) + timedelta(minutes=CHECKOUT_SESSION_TTL_MINUTES)
+
+    session = CheckoutSession(
+        tenant_id=channel.tenant_id, channel_id=channel.id,
+        cart_token=body.cart_token, session_token=token,
+        status="pending", currency_code=channel.currency_code,
+        subtotal_cents=subtotal, total_cents=subtotal, expires_at=expires_at,
+    )
+    db.add(session)
+    db.commit()
+
+    base_url = str(request.base_url).rstrip("/")
+    return CreateSessionOut(
+        session_token=token,
+        checkout_url=f"{base_url}/checkout/{token}",
+        expires_at=expires_at,
+    )
+
+
+@router.get("/checkout/{session_token}", response_class=HTMLResponse)
+def checkout_page(
+    session_token: str,
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+) -> HTMLResponse:
+    session = _get_session_or_404(db, session_token)
+    channel = db.get(Channel, session.channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404)
+
+    rows = _load_cart(db, channel.id, session.cart_token)
+    cart_items = [
+        {"product_name": prod.name, "quantity": ci.quantity,
+         "line_total_cents": ci.unit_price_cents * ci.quantity,
+         "currency_code": ci.currency_code}
+        for ci, prod in rows
+    ]
+    provider = channel.config.get("payment_provider", "none")
+    pub_key = channel.config.get("stripe_publishable_key", "") or channel.config.get("razorpay_key_id", "")
+
+    return templates.TemplateResponse(request, "checkout.html", {
+        "session_token": session_token,
+        "cart_items": cart_items,
+        "subtotal_cents": session.subtotal_cents,
+        "shipping_cents": session.shipping_cents,
+        "tax_cents": session.tax_cents,
+        "total_cents": session.total_cents,
+        "currency_code": session.currency_code,
+        "provider": provider,
+        "publishable_key": pub_key,
+    })
+
+
+@router.post("/v1/checkout/{session_token}/payment-intent")
+def create_session_payment_intent(
+    session_token: str,
+    body: PaymentIntentIn,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    session = _get_session_or_404(db, session_token)
+    channel = db.get(Channel, session.channel_id)
+
+    if body.customer_email:
+        session.customer_email = body.customer_email
+    if body.shipping_address:
+        session.shipping_address = body.shipping_address
+
+    try:
+        result = create_payment_intent(channel, session.total_cents, session.currency_code)
+    except PaymentNotConfiguredError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except PaymentProviderError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    session.external_payment_id = result.get("payment_intent_id") or result.get("order_id")
+    session.status = "payment_initiated"
+    session.payment_provider = result["provider"]
+    db.commit()
+    return result
+
+
+@router.post("/v1/checkout/{session_token}/complete", response_model=CompleteCheckoutOut)
+def complete_checkout(
+    session_token: str,
+    body: CompleteCheckoutIn,
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+) -> CompleteCheckoutOut:
+    session = _get_session_or_404(db, session_token)
+    channel = db.get(Channel, session.channel_id)
+    provider = session.payment_provider or channel.config.get("payment_provider", "none")
+
+    verified = False
+    payment_id = ""
+    if provider == "stripe" and body.payment_intent_id:
+        verified = verify_payment(channel, body.payment_intent_id)
+        payment_id = body.payment_intent_id
+    elif provider == "razorpay" and body.razorpay_order_id:
+        verified = verify_razorpay_signature(
+            channel, body.razorpay_order_id,
+            body.razorpay_payment_id or "", body.razorpay_signature or "",
+        )
+        payment_id = body.razorpay_payment_id or ""
+
+    if not verified:
+        raise HTTPException(status_code=400, detail="Payment verification failed")
+
+    order = _create_order_from_session(
+        db, channel, session,
+        customer_email=body.customer_email or session.customer_email or "",
+        payment_id=payment_id, payment_provider=provider,
+    )
+
+    success_url = channel.config.get("checkout_success_url", "")
+    redirect_url = f"{success_url}?order_id={order.id}" if success_url else str(request.base_url)
+    return CompleteCheckoutOut(status="completed", order_id=str(order.id), redirect_url=redirect_url)
+
+
+@router.get("/checkout/{session_token}/stripe-return")
+def stripe_return(
+    session_token: str,
+    db: Annotated[Session, Depends(get_db)],
+    request: Request,
+    payment_intent: str | None = None,
+    redirect_status: str | None = None,
+) -> RedirectResponse:
+    if redirect_status != "succeeded" or not payment_intent:
+        return RedirectResponse(url=f"/checkout/{session_token}?error=payment_failed")
+
+    try:
+        session = _get_session_or_404(db, session_token)
+    except HTTPException:
+        return RedirectResponse(url="/")
+
+    channel = db.get(Channel, session.channel_id)
+    if not verify_payment(channel, payment_intent):
+        return RedirectResponse(url=f"/checkout/{session_token}?error=payment_failed")
+
+    order = _create_order_from_session(
+        db, channel, session,
+        customer_email=session.customer_email or "",
+        payment_id=payment_intent, payment_provider="stripe",
+    )
+    success_url = channel.config.get("checkout_success_url", "")
+    return RedirectResponse(url=f"{success_url}?order_id={order.id}" if success_url else "/")
