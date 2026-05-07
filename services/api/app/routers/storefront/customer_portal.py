@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -35,9 +35,15 @@ class OrderLineOut(BaseModel):
 class CustomerOrderOut(BaseModel):
     id: UUID
     status: str
+    fulfillment_status: str
     total_cents: int
     currency_code: str
     placed_at: datetime
+    shipped_at: datetime | None
+    delivered_at: datetime | None
+    awb_code: str | None
+    tracking_url: str | None
+    carrier_name: str | None
     lines: list[OrderLineOut]
     model_config = {"from_attributes": True}
 
@@ -88,9 +94,51 @@ def get_order_history(
         result.append(CustomerOrderOut(
             id=order.id,
             status=order.status,
+            fulfillment_status=order.fulfillment_status,
             total_cents=order.total_cents,
             currency_code=order.currency_code,
             placed_at=order.placed_at,
+            shipped_at=order.shipped_at,
+            delivered_at=order.delivered_at,
+            awb_code=order.awb_code,
+            tracking_url=order.tracking_url,
+            carrier_name=order.carrier_name,
             lines=list(lines),
         ))
     return result
+
+
+@router.get("/me/orders/{order_id}/tracking", response_model=list[dict])
+def get_order_tracking(
+    order_id: UUID,
+    customer: CustomerAuthDep,
+    channel: StorefrontChannelDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[dict]:
+    """Return the tracking event timeline for one of the customer's orders."""
+    order = db.execute(
+        select(Order).where(
+            Order.id == order_id,
+            Order.tenant_id == customer.tenant_id,
+            Order.customer_email == customer.email,
+        )
+    ).scalar_one_or_none()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    from app.models import ShipmentEvent as ShipmentEventModel
+    events = db.execute(
+        select(ShipmentEventModel)
+        .where(ShipmentEventModel.order_id == order_id)
+        .order_by(ShipmentEventModel.occurred_at.asc())
+    ).scalars().all()
+
+    return [
+        {
+            "status": ev.status,
+            "occurred_at": ev.occurred_at.isoformat(),
+            "location": ev.location or "",
+            "description": ev.description or "",
+        }
+        for ev in events
+    ]
