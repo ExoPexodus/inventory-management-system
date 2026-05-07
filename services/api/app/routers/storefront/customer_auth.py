@@ -2,8 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-import random
-import string
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
@@ -28,7 +27,7 @@ def _hash_code(code: str) -> str:
 
 
 def _generate_otp() -> str:
-    return "".join(random.choices(string.digits, k=6))
+    return f"{secrets.randbelow(1_000_000):06d}"
 
 
 class OTPRequestIn(BaseModel):
@@ -122,13 +121,15 @@ def verify_otp(
     now = datetime.now(UTC)
 
     otp = db.execute(
-        select(StorefrontOTP).where(
+        select(StorefrontOTP)
+        .where(
             StorefrontOTP.channel_id == channel.id,
             StorefrontOTP.email == email,
             StorefrontOTP.code_hash == _hash_code(body.code.strip()),
             StorefrontOTP.used_at.is_(None),
             StorefrontOTP.expires_at > now,
         )
+        .with_for_update()
     ).scalar_one_or_none()
 
     if otp is None:
