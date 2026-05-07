@@ -25,6 +25,19 @@ type ProductPrice = {
   channel_id: string | null;
 };
 
+type Variant = {
+  id: string;
+  product_id: string;
+  sku: string;
+  name: string;
+  options: Record<string, string>;
+  unit_price_cents: number;
+  status: string;
+  barcode: string | null;
+  sort_order: number;
+  created_at: string;
+};
+
 type Product = {
   id: string;
   sku: string;
@@ -59,6 +72,7 @@ export default function ProductsPage() {
   const [category, setCategory] = useState("");
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [pricesProduct, setPricesProduct] = useState<{ id: string; name: string } | null>(null);
+  const [variantsProduct, setVariantsProduct] = useState<{ id: string; name: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkReorderPt, setBulkReorderPt] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -252,6 +266,15 @@ export default function ProductsPage() {
                       </button>
                       <button
                         type="button"
+                        onClick={() => setVariantsProduct({ id: row.id, name: row.name })}
+                        className="inline-flex rounded-lg p-2 text-on-surface-variant hover:bg-surface-container"
+                        aria-label="Manage variants"
+                        title="Variants"
+                      >
+                        <span className="material-symbols-outlined text-xl">tune</span>
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setEditProduct(row)}
                         className="inline-flex rounded-lg p-2 text-on-surface-variant hover:bg-surface-container"
                         aria-label="Edit"
@@ -316,6 +339,13 @@ export default function ProductsPage() {
           productId={pricesProduct.id}
           productName={pricesProduct.name}
           onClose={() => setPricesProduct(null)}
+        />
+      )}
+      {variantsProduct && (
+        <VariantsModal
+          productId={variantsProduct.id}
+          productName={variantsProduct.name}
+          onClose={() => setVariantsProduct(null)}
         />
       )}
     </div>
@@ -709,6 +739,281 @@ function PricesModal({
                         className="text-xs text-error hover:underline"
                       >
                         Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VariantsModal({
+  productId,
+  productName,
+  onClose,
+}: {
+  productId: string;
+  productName: string;
+  onClose: () => void;
+}) {
+  const [variants, setVariants] = useState<Variant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Create form state
+  const [sku, setSku] = useState("");
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [optionPairs, setOptionPairs] = useState<{ key: string; value: string }[]>([
+    { key: "", value: "" },
+  ]);
+  const [saving, setSaving] = useState(false);
+  const [saveErr, setSaveErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/products/${productId}/variants`);
+      if (!r.ok) throw new Error(`Failed (${r.status})`);
+      setVariants((await r.json()) as Variant[]);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to load variants.");
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  function addOptionRow() {
+    setOptionPairs((prev) => [...prev, { key: "", value: "" }]);
+  }
+
+  function updateOption(index: number, field: "key" | "value", val: string) {
+    setOptionPairs((prev) =>
+      prev.map((p, i) => (i === index ? { ...p, [field]: val } : p))
+    );
+  }
+
+  function removeOption(index: number) {
+    setOptionPairs((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleCreate(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setSaveErr(null);
+    const options: Record<string, string> = {};
+    optionPairs
+      .filter((p) => p.key.trim())
+      .forEach((p) => { options[p.key.trim()] = p.value.trim(); });
+    try {
+      const r = await fetch(`/api/ims/v1/admin/products/${productId}/variants`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku: sku.trim(),
+          name: name.trim(),
+          options,
+          unit_price_cents: Math.round(parseFloat(price) * 100),
+        }),
+      });
+      if (r.ok) {
+        setSku(""); setName(""); setPrice("");
+        setOptionPairs([{ key: "", value: "" }]);
+        void load();
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setSaveErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch {
+      setSaveErr("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(variantId: string) {
+    if (!confirm("Delete this variant?")) return;
+    try {
+      const r = await fetch(
+        `/api/ims/v1/admin/products/${productId}/variants/${variantId}`,
+        { method: "DELETE" }
+      );
+      if (r.ok) void load();
+    } catch { /* silently ignore */ }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-2xl bg-surface-container-lowest shadow-2xl">
+        <div className="flex items-center justify-between rounded-t-2xl bg-gradient-to-r from-primary to-secondary px-6 py-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-on-primary/70">
+              Variants
+            </p>
+            <p className="mt-0.5 font-headline text-lg font-bold text-on-primary">
+              {productName}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-on-primary/70 hover:text-on-primary"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+          {/* Create form */}
+          <form
+            onSubmit={(e) => void handleCreate(e)}
+            className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-4 space-y-3"
+          >
+            <p className="text-sm font-semibold text-on-surface">Add variant</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div>
+                <label className="block text-xs font-medium text-on-surface mb-1">SKU</label>
+                <TextInput
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                  placeholder="SHIRT-M-BLK"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-on-surface mb-1">Name</label>
+                <TextInput
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="T-Shirt M Black"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-on-surface mb-1">
+                  Price (major unit)
+                </label>
+                <TextInput
+                  type="number"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="19.99"
+                  step="0.01"
+                  min="0"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-medium text-on-surface mb-2">
+                Options (e.g. size, colour)
+              </p>
+              {optionPairs.map((pair, idx) => (
+                <div key={idx} className="mb-2 flex gap-2">
+                  <TextInput
+                    value={pair.key}
+                    onChange={(e) => updateOption(idx, "key", e.target.value)}
+                    placeholder="size"
+                    className="flex-1"
+                  />
+                  <TextInput
+                    value={pair.value}
+                    onChange={(e) => updateOption(idx, "value", e.target.value)}
+                    placeholder="M"
+                    className="flex-1"
+                  />
+                  {optionPairs.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeOption(idx)}
+                      className="px-1 text-xs text-error hover:underline"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={addOptionRow}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                + Add option
+              </button>
+            </div>
+
+            {saveErr && <p className="text-sm text-error">{saveErr}</p>}
+            <PrimaryButton type="submit" disabled={saving}>
+              {saving ? "Creating…" : "Add variant"}
+            </PrimaryButton>
+          </form>
+
+          {/* Variants list */}
+          {loading ? (
+            <p className="text-sm text-on-surface-variant">Loading…</p>
+          ) : err ? (
+            <p className="text-sm text-error">{err}</p>
+          ) : variants.length === 0 ? (
+            <p className="text-sm text-on-surface-variant">
+              No variants yet. Add one above.
+            </p>
+          ) : (
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-outline-variant/10">
+                  <th className="py-2 pr-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    SKU
+                  </th>
+                  <th className="py-2 pr-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Name
+                  </th>
+                  <th className="py-2 pr-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Options
+                  </th>
+                  <th className="py-2 pr-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Price
+                  </th>
+                  <th className="py-2 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/10">
+                {variants.map((v) => (
+                  <tr key={v.id}>
+                    <td className="py-2 pr-3 font-mono text-xs text-on-surface">{v.sku}</td>
+                    <td className="py-2 pr-3 text-on-surface">{v.name}</td>
+                    <td className="py-2 pr-3">
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(v.options).map(([k, val]) => (
+                          <span
+                            key={k}
+                            className="rounded-full bg-surface-container px-2 py-0.5 text-[10px] text-on-surface-variant"
+                          >
+                            {k}: {val}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 tabular-nums text-on-surface">
+                      {(v.unit_price_cents / 100).toFixed(2)}
+                    </td>
+                    <td className="py-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(v.id)}
+                        className="text-xs text-error hover:underline"
+                      >
+                        Delete
                       </button>
                     </td>
                   </tr>
