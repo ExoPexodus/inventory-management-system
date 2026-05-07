@@ -1,12 +1,11 @@
-"""Admin endpoints for configuring transactional email via Resend.
+"""Admin endpoints for configuring transactional email.
 
-Merchants supply their own Resend API key and verified sender domain.
-Once configured, all order confirmations are sent from their own domain
-via their own Resend account — IMS never shares email infrastructure.
+Supports SMTP (e.g. Hostinger, Gmail, any mail host) and Resend.
+Configure once; all order confirmations send automatically from there.
 """
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,7 +25,18 @@ router = APIRouter(
 )
 
 
-class EmailConfigureIn(BaseModel):
+class SmtpConfigureIn(BaseModel):
+    provider: Literal["smtp"]
+    smtp_host: str = Field(min_length=1, max_length=255)
+    smtp_port: int = Field(ge=1, le=65535)
+    smtp_username: str = Field(min_length=1, max_length=255)
+    smtp_password: str = Field(min_length=1)
+    from_email: str = Field(min_length=3, max_length=255)
+    from_name: str = Field(default="", max_length=255)
+
+
+class ResendConfigureIn(BaseModel):
+    provider: Literal["resend"]
     resend_api_key: str = Field(min_length=1)
     from_email: str = Field(min_length=3, max_length=255)
     from_name: str = Field(default="", max_length=255)
@@ -34,6 +44,7 @@ class EmailConfigureIn(BaseModel):
 
 class EmailConfigureOut(BaseModel):
     configured: bool
+    provider: str | None
     from_email: str | None
     from_name: str | None
 
@@ -59,6 +70,17 @@ def _get_config(db: Session, tenant_id: UUID) -> TenantEmailConfig | None:
     ).scalar_one_or_none()
 
 
+def _is_configured(config: TenantEmailConfig) -> bool:
+    if not config.from_email:
+        return False
+    provider = (config.provider or "").strip().lower()
+    if provider == "smtp":
+        return bool(config.smtp_host and config.smtp_port)
+    if provider in ("resend", "sendgrid"):
+        return bool(decrypt_secret(config.api_key_encrypted))
+    return False
+
+
 @router.get("/config", response_model=EmailConfigureOut)
 def get_config(
     ctx: AdminAuthDep,
@@ -67,39 +89,87 @@ def get_config(
     tenant_id = _require_tenant(ctx)
     config = _get_config(db, tenant_id)
     if config is None:
-        return EmailConfigureOut(configured=False, from_email=None, from_name=None)
-    api_key = decrypt_secret(config.api_key_encrypted)
+        return EmailConfigureOut(configured=False, provider=None, from_email=None, from_name=None)
     return EmailConfigureOut(
-        configured=bool(api_key and config.from_email),
+        configured=_is_configured(config),
+        provider=config.provider,
         from_email=config.from_email,
         from_name=config.from_name,
     )
 
 
-@router.post("/configure", response_model=EmailConfigureOut)
-def configure_email(
-    body: EmailConfigureIn,
+@router.post("/configure/smtp", response_model=EmailConfigureOut)
+def configure_smtp(
+    body: SmtpConfigureIn,
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> EmailConfigureOut:
+    """Configure Hostinger, Gmail, or any SMTP mail server."""
+    tenant_id = _require_tenant(ctx)
+    config = _get_config(db, tenant_id)
+    if config is None:
+        config = TenantEmailConfig(tenant_id=tenant_id, provider="smtp", from_email=body.from_email)
+        db.add(config)
+
+    config.provider = "smtp"
+    config.smtp_host = body.smtp_host.strip()
+    config.smtp_port = body.smtp_port
+    config.smtp_username = body.smtp_username.strip()
+    config.smtp_password_encrypted = encrypt_secret(body.smtp_password)
+    config.from_email = body.from_email.strip()
+    config.from_name = body.from_name.strip() or None
+    # Clear Resend key if switching from Resend
+    config.api_key_encrypted = None
+    db.commit()
+
+    return EmailConfigureOut(
+        configured=True,
+        provider="smtp",
+        from_email=config.from_email,
+        from_name=config.from_name,
+    )
+
+
+@router.post("/configure/resend", response_model=EmailConfigureOut)
+def configure_resend(
+    body: ResendConfigureIn,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> EmailConfigureOut:
+    """Configure Resend as the email provider."""
     tenant_id = _require_tenant(ctx)
     config = _get_config(db, tenant_id)
     if config is None:
         config = TenantEmailConfig(tenant_id=tenant_id, provider="resend", from_email=body.from_email)
         db.add(config)
-    else:
-        config.provider = "resend"
-        config.from_email = body.from_email.strip()
 
+    config.provider = "resend"
     config.api_key_encrypted = encrypt_secret(body.resend_api_key.strip())
+    config.from_email = body.from_email.strip()
     config.from_name = body.from_name.strip() or None
+    # Clear SMTP fields if switching from SMTP
+    config.smtp_host = None
+    config.smtp_port = None
+    config.smtp_username = None
+    config.smtp_password_encrypted = None
     db.commit()
 
     return EmailConfigureOut(
         configured=True,
+        provider="resend",
         from_email=config.from_email,
         from_name=config.from_name,
     )
+
+
+# Keep the old /configure endpoint working (defaults to resend) for backwards compat
+@router.post("/configure", response_model=EmailConfigureOut, include_in_schema=False)
+def configure_email_legacy(
+    body: ResendConfigureIn,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> EmailConfigureOut:
+    return configure_resend(body, ctx, db)
 
 
 @router.post("/test-send", response_model=TestSendOut)
@@ -110,22 +180,13 @@ def test_send(
 ) -> TestSendOut:
     tenant_id = _require_tenant(ctx)
     config = _get_config(db, tenant_id)
-    if config is None:
+    if config is None or not _is_configured(config):
         raise HTTPException(status_code=400, detail="Email not configured for this tenant")
 
-    api_key = decrypt_secret(config.api_key_encrypted)
-    if not api_key or not config.from_email:
-        raise HTTPException(status_code=400, detail="Email not configured for this tenant")
-
-    sent = send_test_email(
-        api_key=api_key,
-        from_email=config.from_email,
-        from_name=config.from_name or "",
-        to_email=body.to_email,
-    )
+    sent = send_test_email(config, to_email=body.to_email)
     return TestSendOut(
         sent=sent,
         message="Test email sent successfully" if sent else (
-            "Failed to send — check your Resend API key and from_email domain"
+            "Failed to send — check your SMTP credentials or API key"
         ),
     )

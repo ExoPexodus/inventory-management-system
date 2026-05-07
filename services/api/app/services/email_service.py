@@ -107,11 +107,8 @@ def _render_template(template_name: str, ctx: dict[str, Any]) -> str:
 def send_order_confirmation(db: Session, order: Order) -> bool:
     """Send order confirmation email to the customer.
 
-    Silently skips when:
-    - The order has no customer_email
-    - No TenantEmailConfig exists for the tenant
-    - The config has no api_key_encrypted or from_email set
-
+    Works with any configured provider (smtp, resend, sendgrid).
+    Silently skips when no config exists or config is incomplete.
     Never raises — a failed send must not break order creation.
     """
     if not order.customer_email:
@@ -120,18 +117,26 @@ def send_order_confirmation(db: Session, order: Order) -> bool:
     config = db.execute(
         select(TenantEmailConfig).where(TenantEmailConfig.tenant_id == order.tenant_id)
     ).scalar_one_or_none()
-    if config is None:
+    if config is None or not config.from_email:
         logger.debug("No email config for tenant %s, skipping order confirmation", order.tenant_id)
         return False
 
-    api_key = decrypt_secret(config.api_key_encrypted)
-    if not api_key or not config.from_email:
-        logger.debug("Email config incomplete for tenant %s, skipping", order.tenant_id)
+    provider = (config.provider or "").strip().lower()
+
+    # Validate provider has credentials
+    if provider == "smtp":
+        if not config.smtp_host or not config.smtp_port:
+            logger.debug("SMTP config incomplete for tenant %s", order.tenant_id)
+            return False
+    elif provider in ("resend", "sendgrid"):
+        if not decrypt_secret(config.api_key_encrypted):
+            logger.debug("%s api key missing for tenant %s", provider, order.tenant_id)
+            return False
+    else:
+        logger.debug("Unknown email provider %r for tenant %s", provider, order.tenant_id)
         return False
 
     from_name = config.from_name or ""
-    from_address = f"{from_name} <{config.from_email}>" if from_name else config.from_email
-
     lines = db.execute(select(OrderLine).where(OrderLine.order_id == order.id)).scalars().all()
 
     try:
@@ -152,29 +157,65 @@ def send_order_confirmation(db: Session, order: Order) -> bool:
         logger.warning("Failed to render order confirmation template", exc_info=True)
         return False
 
-    return _resend_send(
-        api_key=api_key,
-        from_address=from_address,
-        to_email=order.customer_email,
-        subject=f"Order Confirmed — #{str(order.id)[:8].upper()}",
-        html=html,
-    )
+    subject = f"Order Confirmed — #{str(order.id)[:8].upper()}"
+    text_fallback = f"Your order has been confirmed. Order ID: {str(order.id)[:8].upper()}"
+
+    try:
+        if provider == "smtp":
+            _send_via_smtp(config, to_email=order.customer_email, subject=subject,
+                           text_body=text_fallback, html_body=html)
+            return True
+        if provider == "resend":
+            api_key = decrypt_secret(config.api_key_encrypted)
+            return _resend_send(
+                api_key=api_key,
+                from_address=_from_header(config),
+                to_email=order.customer_email,
+                subject=subject,
+                html=html,
+            )
+        if provider == "sendgrid":
+            send_tenant_email(config, to_email=order.customer_email,
+                              subject=subject, text_body=text_fallback)
+            return True
+    except Exception:
+        logger.warning("Failed to send order confirmation to %s", order.customer_email, exc_info=True)
+        return False
+
+    return False
 
 
-def send_test_email(api_key: str, from_email: str, from_name: str, to_email: str) -> bool:
-    """Send a test email to verify merchant Resend configuration."""
-    from_address = f"{from_name} <{from_email}>" if from_name else from_email
-    html = (
-        "<p>This is a test email from your IMS store. "
-        "If you can read this, your email configuration is working correctly.</p>"
-    )
-    return _resend_send(
-        api_key=api_key,
-        from_address=from_address,
-        to_email=to_email,
-        subject="IMS Email Configuration Test",
-        html=html,
-    )
+def send_test_email(config: TenantEmailConfig, to_email: str) -> bool:
+    """Send a test email using the tenant's configured provider."""
+    subject = "IMS Email Configuration Test"
+    text = "This is a test email from your IMS store. Your email configuration is working."
+    html = f"<p>{text}</p>"
+    provider = (config.provider or "").strip().lower()
+
+    try:
+        if provider == "smtp":
+            _send_via_smtp(config, to_email=to_email, subject=subject,
+                           text_body=text, html_body=html)
+            return True
+        if provider == "resend":
+            api_key = decrypt_secret(config.api_key_encrypted)
+            if not api_key:
+                return False
+            return _resend_send(
+                api_key=api_key,
+                from_address=_from_header(config),
+                to_email=to_email,
+                subject=subject,
+                html=html,
+            )
+        if provider == "sendgrid":
+            send_tenant_email(config, to_email=to_email, subject=subject, text_body=text)
+            return True
+    except Exception:
+        logger.warning("Test email to %s failed", to_email, exc_info=True)
+        return False
+
+    return False
 
 
 def _send_via_smtp(
@@ -183,6 +224,7 @@ def _send_via_smtp(
     to_email: str,
     subject: str,
     text_body: str,
+    html_body: str | None = None,
 ) -> None:
     if not config.smtp_host or not config.smtp_port:
         raise ValueError("smtp_config_incomplete")
@@ -191,13 +233,22 @@ def _send_via_smtp(
     msg["To"] = to_email
     msg["Subject"] = subject
     msg.set_content(text_body)
+    if html_body:
+        msg.add_alternative(html_body, subtype="html")
 
     password = decrypt_secret(config.smtp_password_encrypted)
-    with smtplib.SMTP(config.smtp_host, int(config.smtp_port), timeout=15) as server:
-        server.starttls()
-        if config.smtp_username and password:
-            server.login(config.smtp_username, password)
-        server.send_message(msg)
+    port = int(config.smtp_port)
+    if port == 465:
+        with smtplib.SMTP_SSL(config.smtp_host, port, timeout=15) as server:
+            if config.smtp_username and password:
+                server.login(config.smtp_username, password)
+            server.send_message(msg)
+    else:
+        with smtplib.SMTP(config.smtp_host, port, timeout=15) as server:
+            server.starttls()
+            if config.smtp_username and password:
+                server.login(config.smtp_username, password)
+            server.send_message(msg)
 
 
 def _send_via_sendgrid(

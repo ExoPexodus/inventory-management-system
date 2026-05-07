@@ -136,16 +136,35 @@ def test_send_order_confirmation_api_failure_does_not_raise(db, order_with_lines
     assert result is False
 
 
-def test_send_test_email_success() -> None:
+def test_send_test_email_resend(tenant: Tenant, email_config: TenantEmailConfig) -> None:
     mock_resp = MagicMock(status_code=200)
     mock_resp.json.return_value = {"id": "test_email_123"}
 
     with patch("httpx.post", return_value=mock_resp):
         from app.services.email_service import send_test_email
-        result = send_test_email(
-            api_key="re_test_xxx",
-            from_email="store@example.com",
-            from_name="My Store",
-            to_email="merchant@example.com",
-        )
+        result = send_test_email(email_config, to_email="merchant@example.com")
+    assert result is True
+
+
+def test_send_test_email_smtp(db, tenant: Tenant) -> None:
+    from app.services.email_service import encrypt_secret, send_test_email
+
+    smtp_config = TenantEmailConfig(
+        tenant_id=tenant.id,
+        provider="smtp",
+        from_email="orders@mystore.com",
+        from_name="My Store",
+        smtp_host="smtp.hostinger.com",
+        smtp_port=587,
+        smtp_username="orders@mystore.com",
+        smtp_password_encrypted=encrypt_secret("secret"),
+    )
+    db.add(smtp_config)
+    db.flush()
+
+    with patch("smtplib.SMTP") as mock_smtp_cls:
+        mock_server = MagicMock()
+        mock_smtp_cls.return_value.__enter__ = lambda s: mock_server
+        mock_smtp_cls.return_value.__exit__ = MagicMock(return_value=False)
+        result = send_test_email(smtp_config, to_email="merchant@example.com")
     assert result is True
