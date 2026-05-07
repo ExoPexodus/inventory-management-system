@@ -10,6 +10,7 @@ import {
   Tabs,
   TextInput,
 } from "@/components/ui/primitives";
+import { SelectInput } from "@/components/ui/SelectInput";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +42,10 @@ type ImportResult = {
   updated: number;
   errors: string[];
 };
+
+type ChannelBasic = { id: string; name: string; type: string };
+type ShopifyConnectOut = { shop_name: string; currency: string | null; location_id: string; location_name: string };
+type WooCommerceConnectOut = { store_name: string; store_url: string; currency: string | null };
 
 const WEBHOOK_EVENTS = [
   "transaction.completed",
@@ -202,6 +207,288 @@ function WebhookTab() {
           </table>
         )}
       </Panel>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Shopify tab
+// ---------------------------------------------------------------------------
+
+function ShopifyTab() {
+  const [channels, setChannels] = useState<ChannelBasic[]>([]);
+  const [channelId, setChannelId] = useState("");
+  const [domain, setDomain] = useState("");
+  const [token, setToken] = useState("");
+  const [secret, setSecret] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [connectResult, setConnectResult] = useState<ShopifyConnectOut | null>(null);
+  const [connectErr, setConnectErr] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const loadChannels = useCallback(async () => {
+    const r = await fetch("/api/ims/v1/admin/channels");
+    if (r.ok) setChannels((await r.json()) as ChannelBasic[]);
+  }, []);
+
+  useEffect(() => { void loadChannels(); }, [loadChannels]);
+
+  const channelOptions = channels.map((c) => ({ value: c.id, label: `${c.name} (${c.type})` }));
+
+  async function handleConnect(e: React.FormEvent) {
+    e.preventDefault();
+    if (!channelId) { setConnectErr("Select a channel first"); return; }
+    setConnecting(true);
+    setConnectErr(null);
+    setConnectResult(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/channels/${channelId}/shopify/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shopify_shop_domain: domain.trim(),
+          shopify_access_token: token.trim(),
+          shopify_api_secret: secret.trim(),
+        }),
+      });
+      if (r.ok) {
+        setConnectResult((await r.json()) as ShopifyConnectOut);
+        setToken(""); setSecret("");
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setConnectErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch {
+      setConnectErr("Network error. Please try again.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function runAction(action: "sync-catalog" | "sync-inventory" | "import-catalog") {
+    if (!channelId) return;
+    setActionLoading(action);
+    setSyncResult(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/channels/${channelId}/shopify/${action}`, { method: "POST" });
+      const d = await r.json() as Record<string, unknown>;
+      setSyncResult(JSON.stringify(d, null, 2));
+    } catch {
+      setSyncResult("Network error. Could not complete action.");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Panel title="Connect Shopify store" subtitle="Link a Shopify store to an IMS channel.">
+        <form onSubmit={(e) => void handleConnect(e)} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-on-surface mb-1">Channel</label>
+            <SelectInput options={channelOptions} value={channelId} onChange={setChannelId} placeholder="Select channel" />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-on-surface">
+                Shop domain
+                <TextInput className="mt-1" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="mystore.myshopify.com" required />
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-on-surface">
+                Access token
+                <TextInput type="password" className="mt-1" value={token} onChange={(e) => setToken(e.target.value)} placeholder="shpat_…" required />
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-on-surface">
+                API secret (webhook signing)
+                <TextInput type="password" className="mt-1" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="shpss_…" required />
+              </label>
+            </div>
+          </div>
+          {connectErr && <p className="text-sm text-error">{connectErr}</p>}
+          {connectResult && (
+            <div className="rounded-xl border border-tertiary/20 bg-tertiary-fixed/20 p-4 text-sm">
+              <p className="font-semibold text-on-surface">Connected: {connectResult.shop_name}</p>
+              <p className="text-on-surface-variant">Location: {connectResult.location_name} · Currency: {connectResult.currency ?? "—"}</p>
+            </div>
+          )}
+          <PrimaryButton type="submit" disabled={connecting || !channelId}>
+            {connecting ? "Connecting…" : "Connect store"}
+          </PrimaryButton>
+        </form>
+      </Panel>
+
+      {channelId && (
+        <Panel title="Sync actions" subtitle="Run sync operations against the selected channel.">
+          <div className="flex flex-wrap gap-3">
+            {(["sync-catalog", "sync-inventory", "import-catalog"] as const).map((action) => (
+              <PrimaryButton
+                key={action}
+                type="button"
+                disabled={actionLoading !== null}
+                onClick={() => void runAction(action)}
+              >
+                <span className="material-symbols-outlined text-lg">sync</span>
+                {actionLoading === action ? "Running…" : action.replace(/-/g, " ")}
+              </PrimaryButton>
+            ))}
+          </div>
+          {syncResult && (
+            <pre className="mt-4 overflow-x-auto rounded-lg bg-surface-container p-3 font-mono text-xs text-on-surface-variant">
+              {syncResult}
+            </pre>
+          )}
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WooCommerce tab
+// ---------------------------------------------------------------------------
+
+function WooCommerceTab() {
+  const [channels, setChannels] = useState<ChannelBasic[]>([]);
+  const [channelId, setChannelId] = useState("");
+  const [storeUrl, setStoreUrl] = useState("");
+  const [consumerKey, setConsumerKey] = useState("");
+  const [consumerSecret, setConsumerSecret] = useState("");
+  const [webhookSecret, setWebhookSecret] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [connectResult, setConnectResult] = useState<WooCommerceConnectOut | null>(null);
+  const [connectErr, setConnectErr] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const loadChannels = useCallback(async () => {
+    const r = await fetch("/api/ims/v1/admin/channels");
+    if (r.ok) setChannels((await r.json()) as ChannelBasic[]);
+  }, []);
+
+  useEffect(() => { void loadChannels(); }, [loadChannels]);
+
+  const channelOptions = channels.map((c) => ({ value: c.id, label: `${c.name} (${c.type})` }));
+
+  async function handleConnect(e: React.FormEvent) {
+    e.preventDefault();
+    if (!channelId) { setConnectErr("Select a channel first"); return; }
+    setConnecting(true);
+    setConnectErr(null);
+    setConnectResult(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/channels/${channelId}/woocommerce/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          woocommerce_store_url: storeUrl.trim(),
+          woocommerce_consumer_key: consumerKey.trim(),
+          woocommerce_consumer_secret: consumerSecret.trim(),
+          woocommerce_webhook_secret: webhookSecret.trim(),
+        }),
+      });
+      if (r.ok) {
+        setConnectResult((await r.json()) as WooCommerceConnectOut);
+        setConsumerSecret(""); setWebhookSecret("");
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setConnectErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch {
+      setConnectErr("Network error. Please try again.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  async function runAction(action: "sync-catalog" | "import-catalog") {
+    if (!channelId) return;
+    setActionLoading(action);
+    setSyncResult(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/channels/${channelId}/woocommerce/${action}`, { method: "POST" });
+      const d = await r.json() as Record<string, unknown>;
+      setSyncResult(JSON.stringify(d, null, 2));
+    } catch {
+      setSyncResult("Network error. Could not complete action.");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Panel title="Connect WooCommerce store" subtitle="Link a WooCommerce store to an IMS channel.">
+        <form onSubmit={(e) => void handleConnect(e)} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-on-surface mb-1">Channel</label>
+            <SelectInput options={channelOptions} value={channelId} onChange={setChannelId} placeholder="Select channel" />
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-on-surface">
+                Store URL
+                <TextInput className="mt-1" value={storeUrl} onChange={(e) => setStoreUrl(e.target.value)} placeholder="https://mystore.com" required />
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-on-surface">
+                Consumer key
+                <TextInput className="mt-1" value={consumerKey} onChange={(e) => setConsumerKey(e.target.value)} placeholder="ck_…" required />
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-on-surface">
+                Consumer secret
+                <TextInput type="password" className="mt-1" value={consumerSecret} onChange={(e) => setConsumerSecret(e.target.value)} placeholder="cs_…" required />
+              </label>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-on-surface">
+                Webhook secret
+                <TextInput type="password" className="mt-1" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} placeholder="For HMAC verification" required />
+              </label>
+            </div>
+          </div>
+          {connectErr && <p className="text-sm text-error">{connectErr}</p>}
+          {connectResult && (
+            <div className="rounded-xl border border-tertiary/20 bg-tertiary-fixed/20 p-4 text-sm">
+              <p className="font-semibold text-on-surface">Connected: {connectResult.store_name}</p>
+              <p className="text-on-surface-variant">{connectResult.store_url} · Currency: {connectResult.currency ?? "—"}</p>
+            </div>
+          )}
+          <PrimaryButton type="submit" disabled={connecting || !channelId}>
+            {connecting ? "Connecting…" : "Connect store"}
+          </PrimaryButton>
+        </form>
+      </Panel>
+
+      {channelId && (
+        <Panel title="Sync actions" subtitle="Sync products and import orders from WooCommerce.">
+          <div className="flex flex-wrap gap-3">
+            {(["sync-catalog", "import-catalog"] as const).map((action) => (
+              <PrimaryButton
+                key={action}
+                type="button"
+                disabled={actionLoading !== null}
+                onClick={() => void runAction(action)}
+              >
+                <span className="material-symbols-outlined text-lg">sync</span>
+                {actionLoading === action ? "Running…" : action.replace(/-/g, " ")}
+              </PrimaryButton>
+            ))}
+          </div>
+          {syncResult && (
+            <pre className="mt-4 overflow-x-auto rounded-lg bg-surface-container p-3 font-mono text-xs text-on-surface-variant">
+              {syncResult}
+            </pre>
+          )}
+        </Panel>
+      )}
     </div>
   );
 }
@@ -436,13 +723,15 @@ function CsvImportTab() {
 // ---------------------------------------------------------------------------
 
 const TABS = [
-  { id: "webhooks", label: "Webhooks" },
-  { id: "tokens", label: "API Tokens" },
-  { id: "csv", label: "CSV Import" },
+  { id: "shopify",      label: "Shopify" },
+  { id: "woocommerce",  label: "WooCommerce" },
+  { id: "webhooks",     label: "Webhooks" },
+  { id: "tokens",       label: "API Tokens" },
+  { id: "csv",          label: "CSV Import" },
 ];
 
 export default function IntegrationsPage() {
-  const [tab, setTab] = useState("webhooks");
+  const [tab, setTab] = useState("shopify");
 
   return (
     <div className="space-y-8">
@@ -454,6 +743,8 @@ export default function IntegrationsPage() {
 
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
 
+      {tab === "shopify" && <ShopifyTab />}
+      {tab === "woocommerce" && <WooCommerceTab />}
       {tab === "webhooks" && <WebhookTab />}
       {tab === "tokens" && <ApiTokensTab />}
       {tab === "csv" && <CsvImportTab />}
