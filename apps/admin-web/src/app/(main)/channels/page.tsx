@@ -342,6 +342,159 @@ function CheckoutDomainPanel({ channelId }: { channelId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Shipping tab
+// ---------------------------------------------------------------------------
+
+function ShippingTab({ channels }: { channels: Channel[] }) {
+  const [selectedChannelId, setSelectedChannelId] = useState("");
+  const [config, setConfig] = useState<{
+    configured: boolean; provider: string | null;
+    pickup_location: string | null; email: string | null;
+  } | null>(null);
+  const [configLoading, setConfigLoading] = useState(false);
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [pickupLocation, setPickupLocation] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const channelOptions = channels.map((c) => ({ value: c.id, label: c.name }));
+
+  const loadConfig = useCallback(async (channelId: string) => {
+    if (!channelId) return;
+    setConfigLoading(true);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/channels/${channelId}/shipping/config`);
+      if (r.ok) setConfig((await r.json()) as typeof config);
+    } catch { /* ignore */ }
+    finally { setConfigLoading(false); }
+  }, []);
+
+  function selectChannel(id: string) {
+    setSelectedChannelId(id);
+    setMsg(null); setErr(null);
+    void loadConfig(id);
+  }
+
+  async function handleSetup(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true); setMsg(null); setErr(null);
+    try {
+      const r = await fetch(
+        `/api/ims/v1/admin/channels/${selectedChannelId}/shipping/setup-shiprocket`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: email.trim(), password,
+            pickup_location: pickupLocation.trim(),
+          }),
+        }
+      );
+      if (r.ok) {
+        setMsg("Shiprocket configured successfully.");
+        setPassword("");
+        void loadConfig(selectedChannelId);
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch { setErr("Network error. Please try again."); }
+    finally { setSaving(false); }
+  }
+
+  async function handleDisconnect() {
+    if (!confirm("Remove Shiprocket from this channel?")) return;
+    try {
+      await fetch(
+        `/api/ims/v1/admin/channels/${selectedChannelId}/shipping/config`,
+        { method: "DELETE" }
+      );
+      setConfig(null); setMsg("Shipping provider removed.");
+    } catch { setErr("Network error."); }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Panel title="Shipping configuration" subtitle="Select a channel to configure Shiprocket.">
+        <div className="max-w-sm">
+          <label className="block text-sm font-medium text-on-surface mb-1">Channel</label>
+          <SelectInput
+            options={channelOptions} value={selectedChannelId}
+            onChange={selectChannel} placeholder="Select channel"
+          />
+        </div>
+
+        {selectedChannelId && (
+          configLoading ? (
+            <p className="mt-4 text-sm text-on-surface-variant">Loading…</p>
+          ) : config?.configured ? (
+            <div className="mt-4 flex items-center gap-4 flex-wrap">
+              <Badge tone="good">Shiprocket connected</Badge>
+              <span className="text-xs text-on-surface-variant">
+                {config.email} · Pickup: {config.pickup_location}
+              </span>
+              <button
+                type="button" onClick={() => void handleDisconnect()}
+                className="text-xs text-error hover:underline"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-on-surface-variant">Not configured yet.</p>
+          )
+        )}
+      </Panel>
+
+      {selectedChannelId && (
+        <Panel
+          title="Connect Shiprocket"
+          subtitle="Credentials are verified and stored encrypted. Pickup location must match exactly in your Shiprocket account."
+        >
+          <form onSubmit={(e) => void handleSetup(e)} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="block text-sm font-medium text-on-surface">
+                  Shiprocket email
+                  <TextInput className="mt-1" type="email" value={email}
+                    onChange={(e) => setEmail(e.target.value)} required />
+                </label>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-on-surface">
+                  Shiprocket password
+                  <TextInput className="mt-1" type="password" value={password}
+                    onChange={(e) => setPassword(e.target.value)} required />
+                </label>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-sm font-medium text-on-surface">
+                  Pickup location name
+                  <TextInput
+                    className="mt-1" value={pickupLocation}
+                    onChange={(e) => setPickupLocation(e.target.value)}
+                    placeholder="Warehouse-Mumbai"
+                    required
+                  />
+                </label>
+              </div>
+            </div>
+            {msg && <p className="text-sm font-semibold text-primary">{msg}</p>}
+            {err && <p className="text-sm text-error">{err}</p>}
+            <PrimaryButton type="submit" disabled={saving}>
+              {saving ? "Connecting…" : "Connect Shiprocket"}
+            </PrimaryButton>
+          </form>
+        </Panel>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Payment tab
 // ---------------------------------------------------------------------------
 
@@ -595,10 +748,11 @@ function PaymentTab({ channels }: { channels: Channel[] }) {
 const TABS = [
   { id: "channels", label: "Channels" },
   { id: "payment", label: "Payment" },
+  { id: "shipping", label: "Shipping" },
 ];
 
 export default function ChannelsPage() {
-  const [tab, setTab] = useState<"channels" | "payment">("channels");
+  const [tab, setTab] = useState<"channels" | "payment" | "shipping">("channels");
   const [channels, setChannels] = useState<Channel[]>([]);
 
   const loadChannels = useCallback(async () => {
@@ -616,10 +770,11 @@ export default function ChannelsPage() {
         subtitle="Manage your sales channels and configure payment providers."
       />
 
-      <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as "channels" | "payment")} />
+      <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as "channels" | "payment" | "shipping")} />
 
       {tab === "channels" && <ChannelsTab />}
       {tab === "payment" && <PaymentTab channels={channels} />}
+      {tab === "shipping" && <ShippingTab channels={channels} />}
     </div>
   );
 }
