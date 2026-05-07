@@ -83,6 +83,8 @@ const ROOT_ROUTES = new Set([
   "channels",
   "discounts",
   "ecommerce",
+  "inventory-pools",
+  "tax",
 ]);
 
 const NAV = [
@@ -98,7 +100,9 @@ const NAV = [
   { href: "/reconciliation",  label: "Reconciliation",  icon: "account_balance", permission: "operations:read" },
   { href: "/audit",           label: "Audit Log",       icon: "policy",          permission: "audit:read" },
   { href: "/reports",         label: "Reports",         icon: "description",     permission: "reports:read" },
-  { href: "/channels",        label: "Channels",        icon: "storefront",      permission: "channels:manage" },
+  { href: "/channels",         label: "Channels",         icon: "storefront",      permission: "channels:manage" },
+  { href: "/inventory-pools", label: "Inventory Pools", icon: "layers",          permission: "inventory_pools:manage" },
+  { href: "/tax",             label: "Tax",             icon: "receipt",         permission: "tax:manage" },
   { href: "/discounts",       label: "Discounts",       icon: "local_offer",     permission: "discounts:read" },
   { href: "/ecommerce",       label: "E-commerce",      icon: "shopping_cart",   permission: "settings:read" },
   { href: "/integrations",    label: "Integrations",    icon: "hub",             permission: "integrations:read" },
