@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.models import CartItem, Channel, CheckoutSession, Order, OrderLine, Product
+from app.models import CartItem, Channel, CheckoutSession, Order, OrderLine, OrderPayment, Product
 from app.routers.storefront.auth import StorefrontChannelDep
 from app.services.customer_resolver import resolve_or_create_customer
 from app.services.payment_service import (
@@ -114,6 +114,17 @@ def _create_order_from_session(db: Session, channel: Channel, session: CheckoutS
         if ci.reservation_id:
             commit_reservation(db, ci.reservation_id)
         db.delete(ci)
+
+    # Record payment
+    db.add(OrderPayment(
+        tenant_id=channel.tenant_id,
+        order_id=order.id,
+        provider=payment_provider,
+        provider_ref=payment_id,
+        method="card",
+        amount_cents=session.total_cents,
+        status="paid",
+    ))
 
     session.status = "completed"
     session.order_id = order.id
