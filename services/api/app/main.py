@@ -24,6 +24,7 @@ from app.routers import (
     admin_integrations,
     admin_notifications,
     admin_orders,
+    admin_payment,
     admin_platform,
     admin_product_prices,
     admin_reconciliation,
@@ -87,6 +88,7 @@ app.include_router(admin_discounts.router)
 app.include_router(admin_entitlements.router)
 app.include_router(admin_inventory.router)
 app.include_router(admin_orders.router)
+app.include_router(admin_payment.router)
 app.include_router(admin_suppliers.router)
 app.include_router(admin_tax.router)
 app.include_router(admin_roles.router)

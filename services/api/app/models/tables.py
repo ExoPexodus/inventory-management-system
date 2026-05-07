@@ -1290,6 +1290,41 @@ class CartItem(Base):
     )
 
 
+class CheckoutSession(Base):
+    """Tracks one hosted checkout attempt from session creation to order completion."""
+    __tablename__ = "checkout_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="CASCADE"), nullable=False
+    )
+    cart_token: Mapped[str] = mapped_column(String(128), nullable=False)
+    session_token: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="pending", server_default="pending", nullable=False)
+    payment_provider: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    external_payment_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    subtotal_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    discount_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    shipping_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    tax_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    total_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False)
+    customer_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    shipping_address: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    discount_code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ChannelProductMapping(Base):
     """Maps an IMS product to its ID on an external channel (Shopify, WooCommerce, etc.)
 
