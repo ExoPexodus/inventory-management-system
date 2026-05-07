@@ -67,23 +67,8 @@ export default function TaxPage() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadErr(null);
-    fetch("/api/ims/v1/admin/tax/regions")
-      .then(async (r) => {
-        if (cancelled) return;
-        if (!r.ok) throw new Error(`Failed to load regions (${r.status})`);
-        setRegions((await r.json()) as TaxRegion[]);
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setLoadErr(e instanceof Error ? e.message : "Failed to load tax regions.");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, []);
+    void loadRegions();
+  }, [loadRegions]);
 
   async function loadRules(regionId: string) {
     if (rulesCache[regionId]) return;
@@ -110,32 +95,43 @@ export default function TaxPage() {
     e.preventDefault();
     setRegionSaving(true);
     setRegionErr(null);
-    const r = await fetch("/api/ims/v1/admin/tax/regions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: regionName.trim(),
-        country_code: regionCountry.trim().toUpperCase(),
-        state_code: regionState.trim().toUpperCase() || null,
-      }),
-    });
-    if (r.ok) {
-      setShowRegionForm(false);
-      setRegionName(""); setRegionCountry(""); setRegionState("");
-      void loadRegions();
-    } else {
-      const d = await r.json().catch(() => ({})) as { detail?: string };
-      setRegionErr(d.detail ?? `Failed (${r.status})`);
+    try {
+      const r = await fetch("/api/ims/v1/admin/tax/regions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: regionName.trim(),
+          country_code: regionCountry.trim().toUpperCase(),
+          state_code: regionState.trim().toUpperCase() || null,
+        }),
+      });
+      if (r.ok) {
+        setShowRegionForm(false);
+        setRegionName(""); setRegionCountry(""); setRegionState("");
+        void loadRegions();
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setRegionErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch {
+      setRegionErr("Network error. Please try again.");
+    } finally {
+      setRegionSaving(false);
     }
-    setRegionSaving(false);
   }
 
   async function handleDeleteRegion(id: string) {
     if (!confirm("Delete this tax region and all its rules?")) return;
-    const r = await fetch(`/api/ims/v1/admin/tax/regions/${id}`, { method: "DELETE" });
-    if (r.ok) {
-      setRulesCache((prev) => { const n = { ...prev }; delete n[id]; return n; });
-      void loadRegions();
+    try {
+      const r = await fetch(`/api/ims/v1/admin/tax/regions/${id}`, { method: "DELETE" });
+      if (r.ok) {
+        setRulesCache((prev) => { const n = { ...prev }; delete n[id]; return n; });
+        void loadRegions();
+      } else {
+        alert(`Failed to delete region (${r.status})`);
+      }
+    } catch {
+      alert("Network error. Could not delete region.");
     }
   }
 
@@ -158,39 +154,60 @@ export default function TaxPage() {
     if (!ruleRegionId) return;
     setRuleSaving(true);
     setRuleErr(null);
-    const r = await fetch(`/api/ims/v1/admin/tax/regions/${ruleRegionId}/rules`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tax_class: ruleTaxClass.trim() || "standard",
-        label: ruleLabel.trim(),
-        components: ruleComponents.map((c) => ({
-          label: c.label,
-          rate_bps: Number(c.rate_bps),
-        })),
-      }),
-    });
-    if (r.ok) {
-      const savedRegionId = ruleRegionId;
-      setRuleRegionId(null);
-      setRuleTaxClass("standard"); setRuleLabel(""); setRuleComponents([{ label: "Tax", rate_bps: 0 }]);
-      setRulesCache((prev) => { const n = { ...prev }; delete n[savedRegionId]; return n; });
-      void loadRules(savedRegionId);
-    } else {
-      const d = await r.json().catch(() => ({})) as { detail?: string };
-      setRuleErr(d.detail ?? `Failed (${r.status})`);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/tax/regions/${ruleRegionId}/rules`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tax_class: ruleTaxClass.trim() || "standard",
+          label: ruleLabel.trim(),
+          components: ruleComponents.map((c) => ({
+            label: c.label,
+            rate_bps: Number(c.rate_bps),
+          })),
+        }),
+      });
+      if (r.ok) {
+        const savedRegionId = ruleRegionId;
+        setRuleRegionId(null);
+        setRuleTaxClass("standard");
+        setRuleLabel("");
+        setRuleComponents([{ label: "Tax", rate_bps: 0 }]);
+        setRuleErr(null);
+        // Inline fetch to avoid stale-closure early-return in loadRules
+        try {
+          const rulesRes = await fetch(`/api/ims/v1/admin/tax/regions/${savedRegionId}/rules`);
+          if (rulesRes.ok) {
+            setRulesCache((prev) => ({ ...prev, [savedRegionId]: (await rulesRes.json()) as TaxRule[] }));
+          }
+        } catch {
+          // non-critical — rules will reload on next expand
+        }
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setRuleErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch {
+      setRuleErr("Network error. Please try again.");
+    } finally {
+      setRuleSaving(false);
     }
-    setRuleSaving(false);
   }
 
   async function handleDeleteRule(regionId: string, ruleId: string) {
     if (!confirm("Delete this tax rule?")) return;
-    const r = await fetch(`/api/ims/v1/admin/tax/regions/${regionId}/rules/${ruleId}`, { method: "DELETE" });
-    if (r.ok) {
-      setRulesCache((prev) => ({
-        ...prev,
-        [regionId]: (prev[regionId] ?? []).filter((ru) => ru.id !== ruleId),
-      }));
+    try {
+      const r = await fetch(`/api/ims/v1/admin/tax/regions/${regionId}/rules/${ruleId}`, { method: "DELETE" });
+      if (r.ok) {
+        setRulesCache((prev) => ({
+          ...prev,
+          [regionId]: (prev[regionId] ?? []).filter((ru) => ru.id !== ruleId),
+        }));
+      } else {
+        alert(`Failed to delete rule (${r.status})`);
+      }
+    } catch {
+      alert("Network error. Could not delete rule.");
     }
   }
 
