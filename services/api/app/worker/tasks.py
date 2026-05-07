@@ -106,3 +106,69 @@ def deliver_webhook(delivery_log_id: str) -> str:
     """RQ task: attempt delivery of one webhook event. Called by the worker process."""
     from app.services.webhook_service import deliver_webhook_sync
     return deliver_webhook_sync(delivery_log_id)
+
+
+def sweep_abandoned_carts(idle_hours: int = 2) -> str:
+    """RQ task: find carts idle for idle_hours and send recovery emails.
+
+    A cart is eligible if:
+    - It has a pending CheckoutSession with a customer_email
+    - The CartItem was last updated more than idle_hours ago
+    """
+    import logging
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.db.rls import set_rls_context
+    from app.db.session import SessionLocal
+    from app.models import CartItem, CheckoutSession
+    from app.services.email_service import send_abandoned_cart_email
+
+    logger = logging.getLogger(__name__)
+    db = SessionLocal()
+    sent_count = 0
+    try:
+        set_rls_context(db, is_admin=True, tenant_id=None)
+        cutoff = datetime.now(UTC) - timedelta(hours=idle_hours)
+        rows = db.execute(
+            select(
+                CartItem.cart_token,
+                CartItem.tenant_id,
+                CartItem.channel_id,
+                CheckoutSession.customer_email,
+            )
+            .join(
+                CheckoutSession,
+                (CheckoutSession.cart_token == CartItem.cart_token) &
+                (CheckoutSession.status == "pending"),
+            )
+            .where(
+                CartItem.updated_at < cutoff,
+                CheckoutSession.customer_email.isnot(None),
+            )
+            .distinct()
+        ).all()
+
+        for cart_token, tenant_id, channel_id, customer_email in rows:
+            if not customer_email:
+                continue
+            try:
+                ok = send_abandoned_cart_email(
+                    db=db,
+                    tenant_id=tenant_id,
+                    channel_id=channel_id,
+                    cart_token=cart_token,
+                    customer_email=customer_email,
+                )
+                if ok:
+                    sent_count += 1
+            except Exception:
+                logger.warning("Failed abandoned cart email for token %s", cart_token, exc_info=True)
+
+        return f"sent {sent_count} abandoned cart emails"
+    except Exception:
+        logger.exception("sweep_abandoned_carts failed")
+        return "error"
+    finally:
+        db.close()

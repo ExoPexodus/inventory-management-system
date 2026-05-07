@@ -218,6 +218,89 @@ def send_test_email(config: TenantEmailConfig, to_email: str) -> bool:
     return False
 
 
+def send_abandoned_cart_email(
+    db: Session,
+    tenant_id: UUID,
+    channel_id: UUID,
+    cart_token: str,
+    customer_email: str,
+    checkout_url: str | None = None,
+) -> bool:
+    """Send an abandoned cart recovery email. Never raises."""
+    config = db.execute(
+        select(TenantEmailConfig).where(TenantEmailConfig.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if config is None:
+        logger.debug("No email config for tenant %s, skipping abandoned cart email", tenant_id)
+        return False
+
+    api_key = decrypt_secret(config.api_key_encrypted)
+    provider = (config.provider or "").strip().lower()
+    if provider == "resend" and not api_key:
+        return False
+    if not config.from_email:
+        return False
+
+    from app.models import CartItem, Product
+    from sqlalchemy import select as sa_select
+
+    rows = db.execute(
+        sa_select(CartItem, Product)
+        .join(Product, CartItem.product_id == Product.id)
+        .where(CartItem.cart_token == cart_token, CartItem.channel_id == channel_id)
+    ).all()
+
+    if not rows:
+        return False
+
+    cart_items = [
+        {
+            "product_name": prod.name,
+            "quantity": ci.quantity,
+            "line_total_cents": ci.unit_price_cents * ci.quantity,
+        }
+        for ci, prod in rows
+    ]
+    total_cents = sum(item["line_total_cents"] for item in cart_items)
+    first_ci = rows[0][0]
+    currency = first_ci.currency_code
+
+    from_name = config.from_name or ""
+    from_address = f"{from_name} <{config.from_email}>" if from_name else config.from_email
+
+    try:
+        html = _render_template("abandoned_cart.html", {
+            "customer_email": customer_email,
+            "cart_items": cart_items,
+            "currency": currency,
+            "total_cents": total_cents,
+            "checkout_url": checkout_url,
+            "store_name": from_name,
+        })
+    except Exception:
+        logger.warning("Failed to render abandoned_cart template", exc_info=True)
+        return False
+
+    subject = "You left something in your cart"
+
+    try:
+        if provider == "smtp":
+            _send_via_smtp(config, to_email=customer_email, subject=subject,
+                           text_body="Complete your order.", html_body=html)
+            return True
+        if provider == "resend" and api_key:
+            return _resend_send(
+                api_key=api_key,
+                from_address=from_address,
+                to_email=customer_email,
+                subject=subject,
+                html=html,
+            )
+    except Exception:
+        logger.warning("Failed to send abandoned cart email to %s", customer_email, exc_info=True)
+    return False
+
+
 def _send_via_smtp(
     config: TenantEmailConfig,
     *,
