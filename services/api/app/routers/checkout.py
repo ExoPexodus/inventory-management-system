@@ -258,7 +258,13 @@ def create_checkout_session(
     db.add(session)
     db.commit()
 
-    base_url = str(request.base_url).rstrip("/")
+    checkout_domain = (channel.config or {}).get("checkout_domain", "").strip()
+    if checkout_domain:
+        if not checkout_domain.startswith(("http://", "https://")):
+            checkout_domain = f"https://{checkout_domain}"
+        base_url = checkout_domain.rstrip("/")
+    else:
+        base_url = str(request.base_url).rstrip("/")
     return CreateSessionOut(
         session_token=token,
         checkout_url=f"{base_url}/checkout/{token}",

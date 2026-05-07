@@ -276,6 +276,72 @@ function ChannelsTab() {
 }
 
 // ---------------------------------------------------------------------------
+// Checkout domain panel
+// ---------------------------------------------------------------------------
+
+function CheckoutDomainPanel({ channelId }: { channelId: string }) {
+  const [domain, setDomain] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMsg(null);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/channels/${channelId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config: { checkout_domain: domain.trim() || null },
+        }),
+      });
+      if (r.ok) {
+        setMsg("Checkout domain saved.");
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch {
+      setErr("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Panel
+      title="Custom checkout domain"
+      subtitle="Serve checkout from your own domain — e.g. checkout.yourstore.com."
+    >
+      <form onSubmit={(e) => void handleSave(e)} className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-on-surface mb-1">
+            Checkout domain
+          </label>
+          <TextInput
+            value={domain}
+            onChange={(e) => setDomain(e.target.value)}
+            placeholder="checkout.yourstore.com"
+          />
+          <p className="mt-1 text-xs text-on-surface-variant">
+            Leave blank to use the default API URL. Point this domain to your API via DNS/reverse proxy.
+            No &ldquo;https://&rdquo; needed.
+          </p>
+        </div>
+        {msg && <p className="text-sm font-semibold text-primary">{msg}</p>}
+        {err && <p className="text-sm text-error">{err}</p>}
+        <PrimaryButton type="submit" disabled={saving}>
+          {saving ? "Saving…" : "Save domain"}
+        </PrimaryButton>
+      </form>
+    </Panel>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Payment tab
 // ---------------------------------------------------------------------------
 
@@ -403,116 +469,119 @@ function PaymentTab({ channels }: { channels: Channel[] }) {
       </Panel>
 
       {selectedChannelId && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          {/* Stripe setup */}
-          <Panel title="Stripe" subtitle="Accept card payments via Stripe Checkout.">
-            <form onSubmit={(e) => void setupStripe(e)} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-on-surface">
-                  Secret key
-                  <TextInput
-                    type="password"
-                    className="mt-1"
-                    value={stripeSecret}
-                    onChange={(e) => setStripeSecret(e.target.value)}
-                    placeholder="sk_live_…"
-                    required
-                  />
-                </label>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-on-surface">
-                  Publishable key
-                  <TextInput
-                    className="mt-1"
-                    value={stripePublishable}
-                    onChange={(e) => setStripePublishable(e.target.value)}
-                    placeholder="pk_live_…"
-                    required
-                  />
-                </label>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-on-surface">
-                  Success URL
-                  <TextInput
-                    className="mt-1"
-                    value={stripeSuccess}
-                    onChange={(e) => setStripeSuccess(e.target.value)}
-                    placeholder="https://yourstore.com/order/success"
-                    required
-                  />
-                </label>
-              </div>
-              {stripeErr && <p className="text-sm text-error">{stripeErr}</p>}
-              {stripeOk && (
-                <div className="flex items-center justify-between rounded-xl border border-tertiary/20 bg-tertiary-fixed/20 px-4 py-3 text-sm font-semibold text-on-surface">
-                  Stripe configured successfully.
-                  <button type="button" className="text-xs text-primary underline" onClick={() => setStripeOk(false)}>
-                    Dismiss
-                  </button>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Stripe setup */}
+            <Panel title="Stripe" subtitle="Accept card payments via Stripe Checkout.">
+              <form onSubmit={(e) => void setupStripe(e)} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-on-surface">
+                    Secret key
+                    <TextInput
+                      type="password"
+                      className="mt-1"
+                      value={stripeSecret}
+                      onChange={(e) => setStripeSecret(e.target.value)}
+                      placeholder="sk_live_…"
+                      required
+                    />
+                  </label>
                 </div>
-              )}
-              <PrimaryButton type="submit" disabled={stripeSaving}>
-                {stripeSaving ? "Saving…" : "Set up Stripe"}
-              </PrimaryButton>
-            </form>
-          </Panel>
+                <div>
+                  <label className="block text-sm font-medium text-on-surface">
+                    Publishable key
+                    <TextInput
+                      className="mt-1"
+                      value={stripePublishable}
+                      onChange={(e) => setStripePublishable(e.target.value)}
+                      placeholder="pk_live_…"
+                      required
+                    />
+                  </label>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-on-surface">
+                    Success URL
+                    <TextInput
+                      className="mt-1"
+                      value={stripeSuccess}
+                      onChange={(e) => setStripeSuccess(e.target.value)}
+                      placeholder="https://yourstore.com/order/success"
+                      required
+                    />
+                  </label>
+                </div>
+                {stripeErr && <p className="text-sm text-error">{stripeErr}</p>}
+                {stripeOk && (
+                  <div className="flex items-center justify-between rounded-xl border border-tertiary/20 bg-tertiary-fixed/20 px-4 py-3 text-sm font-semibold text-on-surface">
+                    Stripe configured successfully.
+                    <button type="button" className="text-xs text-primary underline" onClick={() => setStripeOk(false)}>
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+                <PrimaryButton type="submit" disabled={stripeSaving}>
+                  {stripeSaving ? "Saving…" : "Set up Stripe"}
+                </PrimaryButton>
+              </form>
+            </Panel>
 
-          {/* Razorpay setup */}
-          <Panel title="Razorpay" subtitle="Accept payments via Razorpay Checkout.">
-            <form onSubmit={(e) => void setupRazorpay(e)} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-on-surface">
-                  Key ID
-                  <TextInput
-                    className="mt-1"
-                    value={razorKeyId}
-                    onChange={(e) => setRazorKeyId(e.target.value)}
-                    placeholder="rzp_live_…"
-                    required
-                  />
-                </label>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-on-surface">
-                  Key Secret
-                  <TextInput
-                    type="password"
-                    className="mt-1"
-                    value={razorKeySecret}
-                    onChange={(e) => setRazorKeySecret(e.target.value)}
-                    placeholder="••••••••"
-                    required
-                  />
-                </label>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-on-surface">
-                  Success URL
-                  <TextInput
-                    className="mt-1"
-                    value={razorSuccess}
-                    onChange={(e) => setRazorSuccess(e.target.value)}
-                    placeholder="https://yourstore.com/order/success"
-                    required
-                  />
-                </label>
-              </div>
-              {razorErr && <p className="text-sm text-error">{razorErr}</p>}
-              {razorOk && (
-                <div className="flex items-center justify-between rounded-xl border border-tertiary/20 bg-tertiary-fixed/20 px-4 py-3 text-sm font-semibold text-on-surface">
-                  Razorpay configured successfully.
-                  <button type="button" className="text-xs text-primary underline" onClick={() => setRazorOk(false)}>
-                    Dismiss
-                  </button>
+            {/* Razorpay setup */}
+            <Panel title="Razorpay" subtitle="Accept payments via Razorpay Checkout.">
+              <form onSubmit={(e) => void setupRazorpay(e)} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-on-surface">
+                    Key ID
+                    <TextInput
+                      className="mt-1"
+                      value={razorKeyId}
+                      onChange={(e) => setRazorKeyId(e.target.value)}
+                      placeholder="rzp_live_…"
+                      required
+                    />
+                  </label>
                 </div>
-              )}
-              <PrimaryButton type="submit" disabled={razorSaving}>
-                {razorSaving ? "Saving…" : "Set up Razorpay"}
-              </PrimaryButton>
-            </form>
-          </Panel>
+                <div>
+                  <label className="block text-sm font-medium text-on-surface">
+                    Key Secret
+                    <TextInput
+                      type="password"
+                      className="mt-1"
+                      value={razorKeySecret}
+                      onChange={(e) => setRazorKeySecret(e.target.value)}
+                      placeholder="••••••••"
+                      required
+                    />
+                  </label>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-on-surface">
+                    Success URL
+                    <TextInput
+                      className="mt-1"
+                      value={razorSuccess}
+                      onChange={(e) => setRazorSuccess(e.target.value)}
+                      placeholder="https://yourstore.com/order/success"
+                      required
+                    />
+                  </label>
+                </div>
+                {razorErr && <p className="text-sm text-error">{razorErr}</p>}
+                {razorOk && (
+                  <div className="flex items-center justify-between rounded-xl border border-tertiary/20 bg-tertiary-fixed/20 px-4 py-3 text-sm font-semibold text-on-surface">
+                    Razorpay configured successfully.
+                    <button type="button" className="text-xs text-primary underline" onClick={() => setRazorOk(false)}>
+                      Dismiss
+                    </button>
+                  </div>
+                )}
+                <PrimaryButton type="submit" disabled={razorSaving}>
+                  {razorSaving ? "Saving…" : "Set up Razorpay"}
+                </PrimaryButton>
+              </form>
+            </Panel>
+          </div>
+          <CheckoutDomainPanel channelId={selectedChannelId} />
         </div>
       )}
     </div>

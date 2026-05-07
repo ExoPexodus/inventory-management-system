@@ -170,6 +170,8 @@ def update_channel(
     for field, value in updates.items():
         if field == "currency_code" and value is not None:
             value = value.upper()
+        if field == "config" and value is not None:
+            value = {**(row.config or {}), **value}
         setattr(row, field, value)
 
     db.commit()
