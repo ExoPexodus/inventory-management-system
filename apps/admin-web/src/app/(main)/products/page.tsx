@@ -531,6 +531,32 @@ function EditProductDialog({
   );
 }
 
+/** Returns the number of fractional digits (exponent) for a currency code using the browser Intl API. */
+function currencyExponent(code: string): number {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: code })
+      .resolvedOptions().minimumFractionDigits;
+  } catch {
+    return 2; // safe default for unknown codes
+  }
+}
+
+/** Formats stored minor-unit cents to a display string using the currency's correct exponent. */
+function formatCurrencyAmount(amountCents: number, currencyCode: string): string {
+  const exp = currencyExponent(currencyCode);
+  const major = amountCents / 10 ** exp;
+  try {
+    return major.toLocaleString(undefined, {
+      style: "currency",
+      currency: currencyCode,
+      minimumFractionDigits: exp,
+      maximumFractionDigits: exp,
+    });
+  } catch {
+    return `${major.toFixed(exp)} ${currencyCode}`;
+  }
+}
+
 function PricesModal({
   productId,
   productName,
@@ -549,9 +575,16 @@ function PricesModal({
 
   const load = useCallback(async () => {
     setLoading(true);
+    setErr(null);
     try {
       const r = await fetch(`/api/ims/v1/admin/products/${productId}/prices`);
-      if (r.ok) setPrices((await r.json()) as ProductPrice[]);
+      if (r.ok) {
+        setPrices((await r.json()) as ProductPrice[]);
+      } else {
+        setErr(`Failed to load prices (${r.status})`);
+      }
+    } catch {
+      setErr("Network error. Could not load prices.");
     } finally {
       setLoading(false);
     }
@@ -570,7 +603,7 @@ function PricesModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           currency_code: currency.trim().toUpperCase(),
-          amount_cents: Math.round(parseFloat(amount) * 100),
+          amount_cents: Math.round(parseFloat(amount) * 10 ** currencyExponent(currency.trim().toUpperCase())),
           channel_id: null,
         }),
       });
@@ -667,7 +700,7 @@ function PricesModal({
                   <tr key={p.id}>
                     <td className="py-2 pr-4 font-mono text-on-surface">{p.currency_code}</td>
                     <td className="py-2 pr-4 text-on-surface tabular-nums">
-                      {(p.amount_cents / 100).toFixed(2)}
+                      {formatCurrencyAmount(p.amount_cents, p.currency_code)}
                     </td>
                     <td className="py-2">
                       <button
