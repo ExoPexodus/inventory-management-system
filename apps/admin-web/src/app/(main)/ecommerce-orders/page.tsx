@@ -7,10 +7,16 @@ type OrderSummary = {
   id: string;
   channel_id: string;
   status: string;
+  fulfillment_status: string;
   customer_email: string | null;
   total_cents: number;
   currency_code: string;
   placed_at: string;
+  awb_code: string | null;
+  tracking_url: string | null;
+  carrier_name: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
 };
 
 type OrderLine = {
@@ -54,6 +60,13 @@ function statusTone(s: string): "good" | "warn" | "danger" | "default" {
   if (s === "confirmed" || s === "fulfilled") return "good";
   if (s === "partially_refunded") return "warn";
   if (s === "refunded" || s === "cancelled") return "danger";
+  return "default";
+}
+
+function fulfillmentTone(s: string): "good" | "warn" | "danger" | "default" {
+  if (s === "delivered") return "good";
+  if (s === "shipped" || s === "out_for_delivery" || s === "processing") return "warn";
+  if (s === "failed" || s === "returned" || s === "cancelled") return "danger";
   return "default";
 }
 
@@ -196,7 +209,27 @@ export default function EcommerceOrdersPage() {
     }
   }
 
-  const STATUS_OPTIONS = ["", "confirmed", "fulfilled", "partially_refunded", "refunded", "cancelled"];
+  async function handleDispatch(orderId: string) {
+    try {
+      const r = await fetch(`/api/ims/v1/admin/ecommerce-orders/${orderId}/dispatch`, { method: "POST" });
+      if (r.ok) { setSelectedOrder(null); void load(); }
+      else alert("Dispatch failed — check the order status and channel shipping configuration.");
+    } catch { alert("Network error."); }
+  }
+
+  async function handleCancelShipment(orderId: string) {
+    if (!confirm("Cancel this shipment? This only works before pickup.")) return;
+    try {
+      const r = await fetch(`/api/ims/v1/admin/ecommerce-orders/${orderId}/cancel-shipment`, { method: "POST" });
+      if (r.ok) { setSelectedOrder(null); void load(); }
+      else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        alert(d.detail ?? "Could not cancel shipment.");
+      }
+    } catch { alert("Network error."); }
+  }
+
+  const STATUS_OPTIONS = ["", "confirmed", "fulfilled", "partially_refunded", "refunded", "cancelled", "processing", "shipped", "out_for_delivery", "delivered", "failed"];
 
   return (
     <div className="space-y-8">
@@ -238,6 +271,7 @@ export default function EcommerceOrdersPage() {
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Customer</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Total</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Status</th>
+                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Fulfillment</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Date</th>
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Actions</th>
               </tr>
@@ -252,6 +286,9 @@ export default function EcommerceOrdersPage() {
                   </td>
                   <td className="px-6 py-4">
                     <Badge tone={statusTone(order.status)}>{order.status}</Badge>
+                  </td>
+                  <td className="px-6 py-4">
+                    <Badge tone={fulfillmentTone(order.fulfillment_status)}>{order.fulfillment_status}</Badge>
                   </td>
                   <td className="px-6 py-4 text-on-surface-variant text-xs">
                     {new Date(order.placed_at).toLocaleDateString()}
@@ -332,6 +369,68 @@ export default function EcommerceOrdersPage() {
                   </div>
                 ))}
               </div>
+
+              {(selectedOrder.awb_code || selectedOrder.fulfillment_status !== "pending") && (
+                <div>
+                  <p className="mb-2 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                    Shipment
+                  </p>
+                  <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-4 space-y-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-on-surface-variant">Status</span>
+                      <Badge tone={fulfillmentTone(selectedOrder.fulfillment_status)}>
+                        {selectedOrder.fulfillment_status}
+                      </Badge>
+                    </div>
+                    {selectedOrder.carrier_name && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-on-surface-variant">Carrier</span>
+                        <span className="font-medium">{selectedOrder.carrier_name}</span>
+                      </div>
+                    )}
+                    {selectedOrder.awb_code && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-on-surface-variant">AWB</span>
+                        <span className="font-mono text-xs">{selectedOrder.awb_code}</span>
+                      </div>
+                    )}
+                    {selectedOrder.tracking_url && (
+                      <a href={selectedOrder.tracking_url} target="_blank" rel="noopener noreferrer"
+                        className="block text-xs font-semibold text-primary hover:underline">
+                        Track shipment →
+                      </a>
+                    )}
+                    {selectedOrder.shipped_at && (
+                      <div className="flex items-center justify-between text-xs text-on-surface-variant">
+                        <span>Shipped</span>
+                        <span>{new Date(selectedOrder.shipped_at).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    {selectedOrder.delivered_at && (
+                      <div className="flex items-center justify-between text-xs text-on-surface-variant">
+                        <span>Delivered</span>
+                        <span>{new Date(selectedOrder.delivered_at).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 flex gap-3">
+                    {!["delivered", "cancelled", "returned", "pending"].includes(
+                      selectedOrder.fulfillment_status
+                    ) && (
+                      <button type="button" onClick={() => void handleDispatch(selectedOrder.id)}
+                        className="text-xs font-semibold text-primary hover:underline">
+                        Re-dispatch
+                      </button>
+                    )}
+                    {["processing", "shipped"].includes(selectedOrder.fulfillment_status) && (
+                      <button type="button" onClick={() => void handleCancelShipment(selectedOrder.id)}
+                        className="text-xs font-semibold text-error hover:underline">
+                        Cancel pickup
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {selectedOrder.refunds.length > 0 && (
                 <div>
