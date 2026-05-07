@@ -176,3 +176,70 @@ def issue_refund(
     db.commit()
     db.refresh(refund)
     return refund
+
+
+@router.post("/{order_id}/dispatch", status_code=status.HTTP_202_ACCEPTED)
+def dispatch_order_manual(
+    order_id: UUID,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> dict:
+    """Manually trigger shipment dispatch. Idempotent — re-runs even if previous attempt failed."""
+    tenant_id = _require_tenant(ctx)
+    order = _get_order_or_404(db, order_id, tenant_id)
+    if order.status not in ("confirmed", "partially_refunded"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot dispatch order with status '{order.status}'"
+        )
+    from app.worker.queue import task_queue
+    task_queue().enqueue("app.worker.tasks.dispatch_shipment", str(order_id), job_timeout=120)
+    return {"queued": True, "order_id": str(order_id)}
+
+
+@router.post("/{order_id}/cancel-shipment", status_code=status.HTTP_200_OK)
+def cancel_order_shipment(
+    order_id: UUID,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> dict:
+    """Cancel the shipment for an order (only before pickup)."""
+    tenant_id = _require_tenant(ctx)
+    order = _get_order_or_404(db, order_id, tenant_id)
+    if not order.awb_code:
+        raise HTTPException(status_code=400, detail="Order has not been dispatched yet")
+    if order.fulfillment_status in ("delivered", "returned"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel shipment in status '{order.fulfillment_status}'"
+        )
+
+    from app.models import Channel as ChannelModel
+    channel = db.get(ChannelModel, order.channel_id)
+    if channel is None:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    from app.services.shipping.registry import get_channel_provider
+    from app.services.shipping.base import ShippingNotConfiguredError
+    try:
+        provider, config = get_channel_provider(channel)
+    except ShippingNotConfiguredError:
+        raise HTTPException(status_code=400, detail="No shipping provider configured")
+
+    config = {**config, "_provider_order_id": order.provider_order_id or ""}
+    success = provider.cancel_shipment(order.awb_code, config)
+
+    if success:
+        order.fulfillment_status = "cancelled"
+        from datetime import UTC, datetime
+        from app.models import ShipmentEvent
+        db.add(ShipmentEvent(
+            tenant_id=tenant_id, order_id=order.id,
+            status="cancelled", occurred_at=datetime.now(UTC),
+            provider_event_id=f"manual_cancel:{order.id}",
+            description="Shipment cancelled by admin",
+            raw_payload={},
+        ))
+        db.commit()
+
+    return {"cancelled": success, "order_id": str(order_id)}
