@@ -247,9 +247,20 @@ function EmailTab() {
           <div className="space-y-4">
             {provider === "smtp" ? (
               <>
-                <p className="text-xs text-on-surface-variant">
-                  Hostinger: <span className="font-mono">smtp.hostinger.com</span> · port 587 (TLS) or 465 (SSL)
-                </p>
+                <div className="flex flex-wrap items-center gap-3 rounded-lg bg-surface-container px-4 py-3">
+                  <p className="flex-1 text-xs text-on-surface-variant">
+                    <span className="font-semibold text-on-surface">Hostinger:</span>{" "}
+                    <span className="font-mono">smtp.hostinger.com</span> · port 587 (TLS) or 465 (SSL) ·{" "}
+                    your email address is both the username and the From address
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => { setSmtpHost("smtp.hostinger.com"); setSmtpPort("587"); }}
+                    className="shrink-0 rounded-md border border-primary/30 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary transition hover:bg-primary/10"
+                  >
+                    Use Hostinger defaults
+                  </button>
+                </div>
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
                     <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">
@@ -323,6 +334,11 @@ function EmailTab() {
                   placeholder="noreply@yourdomain.com"
                   required
                 />
+                {provider === "smtp" && (
+                  <p className="mt-1 text-[11px] text-on-surface-variant">
+                    For Hostinger, this must match your SMTP username.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-xs font-bold uppercase tracking-widest text-on-surface-variant">
