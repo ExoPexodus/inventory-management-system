@@ -228,8 +228,12 @@ function ShopifyTab() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const loadChannels = useCallback(async () => {
-    const r = await fetch("/api/ims/v1/admin/channels");
-    if (r.ok) setChannels((await r.json()) as ChannelBasic[]);
+    try {
+      const r = await fetch("/api/ims/v1/admin/channels");
+      if (r.ok) setChannels((await r.json()) as ChannelBasic[]);
+    } catch {
+      // channel list stays empty; user will see placeholder text in SelectInput
+    }
   }, []);
 
   useEffect(() => { void loadChannels(); }, [loadChannels]);
@@ -366,8 +370,12 @@ function WooCommerceTab() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const loadChannels = useCallback(async () => {
-    const r = await fetch("/api/ims/v1/admin/channels");
-    if (r.ok) setChannels((await r.json()) as ChannelBasic[]);
+    try {
+      const r = await fetch("/api/ims/v1/admin/channels");
+      if (r.ok) setChannels((await r.json()) as ChannelBasic[]);
+    } catch {
+      // channel list stays empty; user will see placeholder text in SelectInput
+    }
   }, []);
 
   useEffect(() => { void loadChannels(); }, [loadChannels]);
