@@ -131,6 +131,10 @@ def _create_order_from_session(db: Session, channel: Channel, session: CheckoutS
     session.external_payment_id = payment_id
     session.payment_provider = payment_provider
     db.commit()
+
+    from app.services.email_service import send_order_confirmation
+    send_order_confirmation(db, order)
+
     return order
 
 

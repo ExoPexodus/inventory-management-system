@@ -13,6 +13,7 @@ COPY alembic.ini .
 COPY alembic ./alembic
 COPY app ./app
 COPY templates ./templates
+COPY email_templates ./email_templates
 
 ENV PYTHONPATH=/app
 

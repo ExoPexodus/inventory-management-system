@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Order Confirmed</title>
+  <style>
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:560px;margin:0 auto;padding:20px;color:#333;background:#f9fafb}
+    .card{background:white;border-radius:8px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+    h2{font-size:1.4rem;margin:0 0 4px}
+    .subtitle{color:#6b7280;font-size:.9rem;margin:0 0 20px}
+    table{width:100%;border-collapse:collapse;margin:16px 0}
+    th{text-align:left;font-size:.8rem;color:#9ca3af;text-transform:uppercase;border-bottom:1px solid #e5e7eb;padding:4px 0}
+    td{padding:8px 0;font-size:.9rem;border-bottom:1px solid #f3f4f6}
+    .total-row td{font-weight:700;font-size:1rem;border-bottom:none;padding-top:12px}
+    .footer{margin-top:24px;font-size:.8rem;color:#9ca3af;text-align:center}
+    .badge{display:inline-block;background:#d1fae5;color:#065f46;padding:2px 8px;border-radius:9999px;font-size:.75rem;font-weight:600}
+  </style>
+</head>
+<body>
+<div class="card">
+  <h2>Order Confirmed</h2>
+  <p class="subtitle">Hi {{ customer_name or customer_email }}, your order is confirmed.</p>
+  <p><span class="badge">Order #{{ order_id[:8].upper() }}</span></p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Item</th>
+        <th style="text-align:right">Qty</th>
+        <th style="text-align:right">Price</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in order_lines %}
+      <tr>
+        <td>{{ line.title }}</td>
+        <td style="text-align:right">{{ line.quantity }}</td>
+        <td style="text-align:right">{{ currency }} {{ "%.2f"|format(line.line_total_cents / 100) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      {% if discount_cents > 0 %}
+      <tr>
+        <td colspan="2" style="text-align:right;color:#059669">Discount</td>
+        <td style="text-align:right;color:#059669">-{{ currency }} {{ "%.2f"|format(discount_cents / 100) }}</td>
+      </tr>
+      {% endif %}
+      {% if shipping_cents > 0 %}
+      <tr>
+        <td colspan="2" style="text-align:right">Shipping</td>
+        <td style="text-align:right">{{ currency }} {{ "%.2f"|format(shipping_cents / 100) }}</td>
+      </tr>
+      {% endif %}
+      {% if tax_cents > 0 %}
+      <tr>
+        <td colspan="2" style="text-align:right">Tax</td>
+        <td style="text-align:right">{{ currency }} {{ "%.2f"|format(tax_cents / 100) }}</td>
+      </tr>
+      {% endif %}
+      <tr class="total-row">
+        <td colspan="2" style="text-align:right">Total</td>
+        <td style="text-align:right">{{ currency }} {{ "%.2f"|format(total_cents / 100) }}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  {% if shipping_address %}
+  <p style="font-size:.85rem;color:#6b7280;margin:0">
+    <strong>Ships to:</strong>
+    {{ shipping_address.get("city", "") }}{% if shipping_address.get("country") %}, {{ shipping_address.get("country") }}{% endif %}
+  </p>
+  {% endif %}
+</div>
+<div class="footer">Sent by {{ store_name or "your store" }} via IMS</div>
+</body>
+</html>

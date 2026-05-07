@@ -153,6 +153,9 @@ def _handle_order_create(db: Session, channel: Channel, payload: dict) -> None:
     db.commit()
     logger.info("Shopify order %s ingested for channel %s", external_id, channel.id)
 
+    from app.services.email_service import send_order_confirmation
+    send_order_confirmation(db, order)
+
 
 def _handle_order_updated(db: Session, channel: Channel, payload: dict) -> None:
     external_id = str(payload["id"])

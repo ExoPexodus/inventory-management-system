@@ -243,6 +243,10 @@ def submit_order(
 
     db.commit()
     db.refresh(order)
+
+    from app.services.email_service import send_order_confirmation
+    send_order_confirmation(db, order)
+
     return OrderOut(
         id=str(order.id),
         channel_id=str(order.channel_id),

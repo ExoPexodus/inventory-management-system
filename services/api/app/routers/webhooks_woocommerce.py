@@ -126,6 +126,9 @@ def _handle_order_created(db: Session, channel: Channel, payload: dict) -> None:
 
     db.commit()
 
+    from app.services.email_service import send_order_confirmation
+    send_order_confirmation(db, order)
+
 
 def _handle_order_updated(db: Session, channel: Channel, payload: dict) -> None:
     order = db.execute(

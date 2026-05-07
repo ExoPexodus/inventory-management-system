@@ -18,6 +18,7 @@ from app.routers import (
     admin_channels,
     admin_customers,
     admin_discounts,
+    admin_email,
     admin_entitlements,
     admin_fx_rates,
     admin_inventory,
@@ -89,6 +90,7 @@ app.include_router(admin_discounts.router)
 app.include_router(admin_entitlements.router)
 app.include_router(admin_inventory.router)
 app.include_router(admin_orders.router)
+app.include_router(admin_email.router)
 app.include_router(admin_payment.router)
 app.include_router(admin_suppliers.router)
 app.include_router(admin_tax.router)
