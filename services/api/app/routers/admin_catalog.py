@@ -35,8 +35,8 @@ class ProductImageOut(BaseModel):
     url: str
     alt_text: str | None
     sort_order: int
+    file_size_bytes: int | None = None
     created_at: datetime
-
     model_config = {"from_attributes": True}
 
 
@@ -44,6 +44,7 @@ class ProductImageIn(BaseModel):
     url: str = Field(min_length=1, max_length=1024)
     alt_text: str | None = Field(default=None, max_length=255)
     sort_order: int = 0
+    file_size_bytes: int | None = Field(default=None, ge=1)
 
 
 class ProductDetailOut(BaseModel):
@@ -152,6 +153,8 @@ def add_product_image(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> ProductImage:
+    from sqlalchemy import update as sa_update
+    from app.models import Tenant as TenantModel
     tenant_id = _require_tenant(ctx)
     _get_product_or_404(db, product_id, tenant_id)
 
@@ -161,8 +164,20 @@ def add_product_image(
         url=body.url,
         alt_text=body.alt_text,
         sort_order=body.sort_order,
+        file_size_bytes=body.file_size_bytes,
     )
     db.add(img)
+    db.flush()
+
+    if body.file_size_bytes is not None:
+        tenant = db.get(TenantModel, tenant_id)
+        if tenant and tenant.storage_mode == "platform":
+            db.execute(
+                sa_update(TenantModel)
+                .where(TenantModel.id == tenant_id)
+                .values(storage_bytes_used=TenantModel.storage_bytes_used + body.file_size_bytes)
+            )
+
     db.commit()
     db.refresh(img)
     return img
@@ -179,11 +194,26 @@ def delete_product_image(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> None:
+    from sqlalchemy import update as sa_update
+    from app.models import Tenant as TenantModel
     tenant_id = _require_tenant(ctx)
     _get_product_or_404(db, product_id, tenant_id)
 
     img = db.get(ProductImage, image_id)
     if img is None or img.product_id != product_id or img.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Image not found")
+
+    file_size = img.file_size_bytes
     db.delete(img)
+    db.flush()
+
+    if file_size is not None:
+        tenant = db.get(TenantModel, tenant_id)
+        if tenant and tenant.storage_mode == "platform":
+            db.execute(
+                sa_update(TenantModel)
+                .where(TenantModel.id == tenant_id)
+                .values(storage_bytes_used=TenantModel.storage_bytes_used - file_size)
+            )
+
     db.commit()
