@@ -394,14 +394,18 @@ function ImageUploadSection({ productId }: { productId: string }) {
           folder: `products/${productId}`,
           filename: file.name,
           content_type: file.type,
+          file_size_bytes: file.size,
         }),
       });
       if (!presignResp.ok) {
         const d = await presignResp.json().catch(() => ({})) as { detail?: string };
         throw new Error(d.detail ?? `Presign failed (${presignResp.status})`);
       }
-      const { upload_url, public_url } = (await presignResp.json()) as {
-        upload_url: string; public_url: string; key: string;
+      const { upload_url, public_url, storage_warning } = (await presignResp.json()) as {
+        upload_url: string;
+        public_url: string;
+        key: string;
+        storage_warning: { used_pct: number; used_mb: number; limit_mb: number } | null;
       };
 
       // 2. PUT directly to R2 from browser
@@ -418,12 +422,17 @@ function ImageUploadSection({ productId }: { productId: string }) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: public_url, sort_order: images.length }),
+          body: JSON.stringify({ url: public_url, sort_order: images.length, file_size_bytes: file.size }),
         }
       );
       if (!saveResp.ok) throw new Error("Failed to save image URL");
 
       void loadImages();
+      if (storage_warning) {
+        setUploadErr(
+          `Storage ${storage_warning.used_pct}% used (${storage_warning.used_mb} MB of ${storage_warning.limit_mb} MB). Consider upgrading your plan.`
+        );
+      }
     } catch (err) {
       setUploadErr(err instanceof Error ? err.message : "Upload failed.");
     } finally {

@@ -220,6 +220,27 @@ export default function BillingPage() {
       {usage ? (
         <section>
           <h3 className="mb-4 text-xs font-bold uppercase tracking-widest text-on-surface-variant">Resource usage</h3>
+          {usage.storage_limit_mb > 0 &&
+            usage.storage_used_mb / usage.storage_limit_mb >= 0.8 && (
+            <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-400/40 bg-amber-50 px-5 py-4">
+              <span className="material-symbols-outlined mt-0.5 text-xl text-amber-600">warning</span>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-amber-900">
+                  Storage {Math.ceil(usage.storage_used_mb / usage.storage_limit_mb * 100)}% used
+                </p>
+                <p className="mt-0.5 text-xs text-amber-700">
+                  You&apos;ve used {usage.storage_used_mb} MB of your {usage.storage_limit_mb} MB storage limit.
+                  Upgrade your plan to continue uploading images without interruption.
+                </p>
+              </div>
+              <a
+                href="#plans"
+                className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-on-primary hover:opacity-90"
+              >
+                Upgrade →
+              </a>
+            </div>
+          )}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <UsageMeter label="Shops" used={usage.shops_used} limit={usage.shops_limit} icon="storefront" />
             <UsageMeter label="Employees" used={usage.employees_used} limit={usage.employees_limit} icon="badge" />
