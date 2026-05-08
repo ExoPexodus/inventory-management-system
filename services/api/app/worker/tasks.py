@@ -202,3 +202,57 @@ def sweep_abandoned_carts(idle_hours: int = 2) -> str:
         return "error"
     finally:
         db.close()
+
+
+def reconcile_storage_usage() -> str:
+    """RQ task: correct storage_bytes_used for all platform-mode tenants by
+    listing their actual R2 prefix and setting the ground-truth byte count.
+
+    Interval controlled by settings.storage_reconcile_interval_hours (default: 24).
+    Safe to run at any time — idempotent, never deletes anything.
+    """
+    import logging
+    from sqlalchemy import select, update as sa_update
+
+    from app.db.session import SessionLocal
+    from app.db.rls import set_rls_context
+    from app.models import Tenant
+    from app.services.storage_service import sum_r2_prefix
+
+    logger = logging.getLogger(__name__)
+    db = SessionLocal()
+    reconciled = 0
+    errors = 0
+
+    try:
+        set_rls_context(db, is_admin=True, tenant_id=None)
+        tenants = db.execute(
+            select(Tenant).where(Tenant.storage_mode == "platform")
+        ).scalars().all()
+
+        for tenant in tenants:
+            try:
+                prefix = f"{tenant.id}/"
+                actual_bytes = sum_r2_prefix(prefix)
+                db.execute(
+                    sa_update(Tenant)
+                    .where(Tenant.id == tenant.id)
+                    .values(storage_bytes_used=actual_bytes)
+                )
+                reconciled += 1
+            except Exception:
+                errors += 1
+                logger.warning(
+                    "Storage reconciliation failed for tenant %s", tenant.id, exc_info=True
+                )
+
+        db.commit()
+        logger.info(
+            "Storage reconciliation complete: %d tenants, %d errors", reconciled, errors
+        )
+        return f"reconciled {reconciled} tenants, {errors} errors"
+    except Exception:
+        logger.exception("reconcile_storage_usage failed")
+        return "error"
+    finally:
+        db.close()
