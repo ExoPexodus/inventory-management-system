@@ -38,6 +38,14 @@ class ProvisionTenantBody(BaseModel):
     slug: str = Field(min_length=1, max_length=64)
     admin_email: EmailStr
     admin_password: str = Field(min_length=8)
+    # Storage configuration — defaults to "platform" mode
+    storage_mode: str = Field(default="platform", pattern="^(platform|byo)$")
+    byo_storage_endpoint: str | None = None
+    byo_storage_bucket: str | None = None
+    byo_storage_access_key: str | None = None
+    byo_storage_secret_key: str | None = None
+    byo_storage_public_url: str | None = None
+    byo_storage_region: str | None = Field(default="auto")
 
 
 class ProvisionTenantOut(BaseModel):
@@ -73,6 +81,18 @@ def provision_tenant(
             )
         tenant = Tenant(id=body.tenant_id, name=body.name, slug=body.slug)
         db.add(tenant)
+        # Apply storage configuration
+        tenant.storage_mode = body.storage_mode
+        if body.storage_mode == "byo":
+            from app.services.email_service import encrypt_secret as _enc
+            tenant.byo_storage_endpoint = body.byo_storage_endpoint
+            tenant.byo_storage_bucket = body.byo_storage_bucket
+            tenant.byo_storage_public_url = body.byo_storage_public_url
+            tenant.byo_storage_region = body.byo_storage_region or "auto"
+            if body.byo_storage_access_key:
+                tenant.byo_storage_access_key = _enc(body.byo_storage_access_key)
+            if body.byo_storage_secret_key:
+                tenant.byo_storage_secret_key = _enc(body.byo_storage_secret_key)
         db.flush()
         tenant_status = "created"
 
