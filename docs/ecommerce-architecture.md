@@ -122,9 +122,12 @@ Verification returns a customer JWT. Include it as `Authorization: Bearer <token
 ### 3.5 Customer portal
 
 ```
-GET /v1/storefront/customers/me           → profile (email, name, customer_id)
-GET /v1/storefront/customers/me/orders    → order history with lines
+GET /v1/storefront/customers/me                        → profile (email, name, customer_id)
+GET /v1/storefront/customers/me/orders                 → order history with tracking fields
+GET /v1/storefront/customers/me/orders/{id}/tracking   → shipment event timeline
 ```
+
+Order history includes: `fulfillment_status`, `awb_code`, `tracking_url`, `carrier_name`, `shipped_at`, `delivered_at` — customers can track their shipments directly from the storefront.
 
 ---
 
@@ -237,7 +240,12 @@ Usage is recorded in `discount_uses` on every order completion. The apply logic 
 
 ## 7. Shipping
 
-### Zones and rates
+IMS has two shipping layers:
+
+1. **Static zones/rates** — rate tables configured per channel for checkout price display
+2. **Carrier dispatch** — actual shipment creation via a carrier API (Shiprocket first)
+
+### 7.1 Static zones and rates
 
 ```
 ShippingZone
@@ -253,8 +261,7 @@ ShippingZone
     └── condition_type: "none"
 ```
 
-### Admin API
-
+**Admin API:**
 ```
 GET    /v1/admin/shipping/zones
 POST   /v1/admin/shipping/zones
@@ -263,21 +270,81 @@ DELETE /v1/admin/shipping/zones/{id}
 GET    /v1/admin/shipping/zones/{id}/rates
 POST   /v1/admin/shipping/zones/{id}/rates
 DELETE /v1/admin/shipping/zones/{id}/rates/{rate_id}
+
+POST   /v1/shipping/calculate   → list of applicable rates
 ```
 
-### Calculate shipping options
+### 7.2 Carrier dispatch (Shiprocket)
+
+When a channel has `shipping_provider: "shiprocket"` in its config, every confirmed order is automatically dispatched via RQ:
 
 ```
-POST /v1/shipping/calculate
+order.confirmed
+    └── dispatch_shipment (RQ task)
+            └── ShiprocketProvider.create_shipment()
+                    ├── POST /orders/create/adhoc   → Shiprocket order
+                    ├── POST /courier/assign/awb    → AWB code + carrier
+                    ├── POST /courier/generate/pickup
+                    └── GET  /courier/generate/label
+            └── persists AWB, tracking_url, carrier_name, label_url on order
+            └── sets fulfillment_status = "processing"
+            └── sends shipping notification email
+            └── fires order.shipped outbound webhook
+```
+
+**Order fulfillment_status values:**
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Not yet dispatched |
+| `processing` | Dispatched, awaiting pickup |
+| `shipped` | In transit |
+| `out_for_delivery` | Out for delivery |
+| `delivered` | Delivered to customer |
+| `cancelled` | Cancelled before pickup |
+| `returned` | RTO / return to origin |
+| `failed` | Dispatch failed — retry via admin API |
+
+**Inbound webhook (Shiprocket → IMS):**
+```
+POST /v1/webhooks/shiprocket/{channel_id}
+Headers: X-Api-Key: <shiprocket_webhook_secret>
+Body: { "awb": "...", "current_status": "Delivered", "updated_at": "...", "location": "..." }
+```
+
+Events are deduplicated on `(order_id, provider_event_id)` — safe to receive duplicates. On delivery, fires `order.shipped` outbound webhook to merchant backends.
+
+**Admin setup API:**
+```
+POST   /v1/admin/channels/{id}/shipping/setup-shiprocket
+       Body: { email, password, pickup_location }
+       → validates credentials against Shiprocket API before storing (encrypted)
+
+GET    /v1/admin/channels/{id}/shipping/config
+DELETE /v1/admin/channels/{id}/shipping/config
+
+POST   /v1/admin/ecommerce-orders/{id}/dispatch        → manual re-dispatch
+POST   /v1/admin/ecommerce-orders/{id}/cancel-shipment → cancel before pickup
+```
+
+**Channel config keys added by Shiprocket setup:**
+```json
 {
-  "channel_id": "...",
-  "destination": { "country": "IN", "state": "MH" },
-  "cart_lines": [ { "product_id": "...", "quantity": 2, "unit_price_cents": 999 } ],
-  "currency": "INR"
+  "shipping_provider": "shiprocket",
+  "shiprocket_email": "store@example.com",
+  "shiprocket_password": "<encrypted>",
+  "shiprocket_pickup_location": "Warehouse-Mumbai",
+  "shiprocket_channel_id": "",
+  "shiprocket_webhook_secret": "<shared secret for webhook verification>"
 }
 ```
 
-Returns list of applicable rates sorted by price.
+**Adding a new carrier:**
+
+The provider abstraction is in `services/api/app/services/shipping/`. To add Delhivery:
+1. Create `services/api/app/services/shipping/delhivery/provider.py` implementing `ShippingProvider`
+2. Register `"delhivery"` in `registry.py`
+3. Done — the dispatch hook, webhook receiver pattern, and admin APIs are all generic
 
 ---
 
@@ -390,8 +457,9 @@ Orders are created by four paths — all fire identical post-creation hooks:
 ### Post-creation hooks (all paths)
 
 1. Send order confirmation email (`send_order_confirmation`)
-2. Fire `order.confirmed` webhook to all subscribed endpoints
+2. Fire `order.confirmed` outbound webhook to all subscribed endpoints
 3. Record discount use (if discount was applied)
+4. Enqueue `dispatch_shipment` RQ task if channel has `shipping_provider` configured (silent no-op if not)
 
 ### Refunds
 
@@ -422,6 +490,14 @@ POST   /v1/admin/webhooks/endpoints/{id}/rotate-secret
 GET    /v1/admin/webhooks/deliveries             → delivery log
 GET    /v1/admin/webhooks/supported-events
 ```
+
+**Supported events:**
+
+| Event | Fired when |
+|-------|-----------|
+| `order.confirmed` | Order is created (all channels) |
+| `order.shipped` | Shipment dispatch confirmed OR delivery confirmed via Shiprocket webhook |
+| `order.updated` | Order status changes |
 
 ### Signing and verification
 

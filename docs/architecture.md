@@ -235,13 +235,29 @@ Types: `pos` | `headless` | `shopify` | `woocommerce` | `manual`
 
 ```
 cart_items → checkout_session → order (confirmed)
-                                      ↓
-                               order_refund (partial/full)
+                                      │
+                    ┌─────────────────┼──────────────────┐
+                    ▼                 ▼                   ▼
+             order_refund      dispatch_shipment     order.confirmed
+             (partial/full)    (RQ task, if carrier   (outbound webhook)
+                               configured)
+                                      │
+                    ┌─────────────────┼──────────────────┐
+                    ▼                 ▼                   ▼
+             processing         shipment_events      order.shipped
+             → shipped          (append-only log)    (outbound webhook)
+             → delivered
 ```
 
-Orders are created by four paths: hosted checkout, headless storefront `/orders`, Shopify webhook, WooCommerce webhook. All paths fire `order.confirmed` webhooks and send confirmation emails.
+Orders are created by four paths: hosted checkout, headless storefront `/orders`, Shopify webhook, WooCommerce webhook. All paths fire the same post-creation hooks: confirmation email, `order.confirmed` outbound webhook, and dispatch enqueue (silent skip if no carrier configured).
 
-### 6.3 Storefront rate limiting
+**Fulfillment status** (`order.fulfillment_status`): `pending → processing → shipped → out_for_delivery → delivered | cancelled | returned | failed`
+
+### 6.3 Carrier shipping
+
+`services/api/app/services/shipping/` holds the provider abstraction. Add a new carrier by implementing `ShippingProvider` and registering in `registry.py`. Shiprocket is the first implementation — credentials encrypted in `channel.config`, auth token cached in Redis (9-day TTL).
+
+### 6.4 Storefront rate limiting
 
 `/v1/storefront/*` is rate-limited at **120 requests/minute per IP** using an async Redis counter. Fails open if Redis is unavailable. Admin routes are never rate-limited.
 
@@ -253,11 +269,11 @@ The RQ worker (`python -m app.worker`) processes tasks from the `ims-default` Re
 
 | Task function | Trigger | What it does |
 |--------------|---------|-------------|
-| `deliver_webhook` | Order creation | HTTP POST to merchant webhook endpoint (3 attempts, exp. backoff) |
+| `dispatch_shipment` | Order creation (if carrier set) | Creates shipment in carrier API, assigns AWB, persists tracking data |
+| `deliver_webhook` | Order creation / status change | HTTP POST to merchant webhook endpoint (3 attempts, exp. backoff) |
 | `sweep_expired_reservations` | Cron / manual | Marks stale stock reservations as expired |
 | `sweep_abandoned_carts` | Cron (every 2h) | Emails customers who started checkout but didn't complete |
 | `sync_all_tenant_licenses` | Cron | Pulls plan/license state from platform service |
-| `aggregate_report_placeholder` | Admin-triggered | Analytics placeholder |
 
 Enqueue: `task_queue().enqueue("app.worker.tasks.TASK_NAME", *args)`.
 

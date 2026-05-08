@@ -136,16 +136,28 @@ Transactional email uses `TenantEmailConfig` (per-tenant). Supported providers: 
 ### Webhooks-Out
 Merchants register HTTP endpoints via `POST /v1/admin/webhooks/endpoints`. Events are delivered asynchronously via RQ with exponential backoff (3 attempts: immediate, 5 min, 30 min). Payloads are HMAC-SHA256 signed. Currently supported event: `order.confirmed`.
 
+### Carrier Shipping (Shiprocket)
+When a channel has `shipping_provider: "shiprocket"` in `channel.config`, every confirmed order is automatically dispatched:
+
+```python
+# Provider abstraction in services/api/app/services/shipping/
+# Add new carriers by implementing ShippingProvider and registering in registry.py
+from app.services.shipping.registry import get_provider
+provider = get_provider("shiprocket")  # or "delhivery", etc.
+```
+
+Shiprocket credentials are stored **encrypted** in `channel.config` (same as Stripe/Razorpay). The `fulfillment_status` column on `Order` tracks dispatch state: `pending → processing → shipped → out_for_delivery → delivered`.
+
 ### Background Jobs
 RQ worker (`python -m app.worker`) processes:
 
 | Task | Trigger | Description |
 |------|---------|-------------|
 | `deliver_webhook` | On order creation | Delivers one webhook event with retry |
+| `dispatch_shipment` | On order creation (if carrier configured) | Creates shipment in carrier API, assigns AWB |
 | `sweep_expired_reservations` | Scheduled | Expires idle stock reservations |
 | `sweep_abandoned_carts` | Scheduled (2h) | Sends cart recovery emails |
 | `sync_all_tenant_licenses` | Scheduled | Syncs plan/license from platform service |
-| `aggregate_report_placeholder` | Admin-triggered | Analytics placeholder |
 
 ### Payment Key Encryption
 Stripe `stripe_secret_key` and Razorpay `razorpay_key_secret` are encrypted at rest in `channel.config` using `encrypt_secret()`/`decrypt_secret()` from `email_service.py`. Plain-text keys in config will fail decryption — reconfigure channels after any key rotation.

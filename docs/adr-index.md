@@ -180,9 +180,33 @@ Architecture Decision Records — why things are built the way they are.
 
 ---
 
+---
+
+## ADR-013: Generic carrier shipping provider abstraction
+
+**Status:** accepted
+
+**Decision:** Carrier integrations live behind a `ShippingProvider` Protocol (`shipping/base.py`). The first implementation is Shiprocket. Adding a new carrier = implementing the protocol and registering a name in `registry.py`. Nothing else changes.
+
+**Why:** Indian e-commerce requires multiple carrier options (Shiprocket, Delhivery, Bluedart, DTDC). Building to a generic interface from day one means the second carrier costs a fraction of the first. The pattern mirrors the existing payment provider abstraction (`payment_service.py` → Stripe/Razorpay).
+
+**Key design choices:**
+- Shiprocket auth token cached in Redis (9-day TTL) — never blocks dispatch at peak
+- `shipment_events` table is append-only and idempotent on `(order_id, provider_event_id)` — duplicate inbound webhooks are safe
+- Dispatch is always async via RQ — order creation latency is never affected by carrier API response time
+- Credentials encrypted identically to payment provider keys
+
+**Where:**
+- `services/api/app/services/shipping/` — provider abstraction + Shiprocket implementation
+- `services/api/app/routers/webhooks_shiprocket.py` — inbound webhook receiver
+- `services/api/app/routers/admin_shipping_providers.py` — setup/config endpoints
+- `services/api/app/models/tables.py` — `ShipmentEvent` model + order fulfillment columns
+
+---
+
 ## Next ADR candidates
 
-- **ADR-013:** Returns/inbound inventory workflow (currently manual stock adjustments)
-- **ADR-014:** Multi-shop transfer orders (stock movement across shops)
-- **ADR-015:** Customer account linking across channels (unified identity)
-- **ADR-016:** Advanced RBAC — custom role creation for per-operator permission sets
+- **ADR-014:** Returns/inbound inventory workflow — RMA flow + return pickup via carrier
+- **ADR-015:** Multi-shop transfer orders (stock movement across shops)
+- **ADR-016:** Customer account linking across channels (unified identity)
+- **ADR-017:** Advanced RBAC — custom role creation for per-operator permission sets

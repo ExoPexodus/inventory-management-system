@@ -192,7 +192,10 @@ const profile = await client.getCustomerProfile();
 // { email, name, customer_id }
 
 const orders = await client.getOrderHistory({ limit: 10 });
-// Array of { id, status, total_cents, currency_code, placed_at, lines[] }
+// Array of {
+//   id, status, fulfillment_status, total_cents, currency_code, placed_at,
+//   awb_code, tracking_url, carrier_name, shipped_at, delivered_at, lines[]
+// }
 ```
 
 ---
@@ -293,7 +296,17 @@ GET    /v1/storefront/customers/me
 GET    /v1/storefront/customers/me/orders
        ?limit=   (default: 20, max: 100)
        ?offset=  (default: 0)
-       → [ { id, status, total_cents, currency_code, placed_at, lines: [...] } ]
+       → [ {
+             id, status, fulfillment_status,
+             total_cents, currency_code, placed_at,
+             awb_code, tracking_url, carrier_name,
+             shipped_at, delivered_at,
+             lines: [...]
+           } ]
+
+GET    /v1/storefront/customers/me/orders/{order_id}/tracking
+       → [ { status, occurred_at, location, description } ]
+       (shipment event timeline, sorted oldest-first)
 ```
 
 ---

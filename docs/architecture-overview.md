@@ -96,6 +96,10 @@ Platform ─── X-Admin-Token ─────► /v1/internal/*       (plan/l
 | Storefront SDK (TypeScript) | ✅ Published |
 | Admin dashboard UI | ✅ Full coverage |
 | Returns/refund flow | ✅ Production-ready |
+| Carrier shipping (Shiprocket) | ✅ Production-ready |
+| Shipment tracking in customer portal | ✅ Production-ready |
+| Multi-carrier support (Delhivery, DTDC, etc.) | 🔄 Add provider in registry.py |
+| Return shipment / RMA flow | 🔄 Planned |
 | Advanced RBAC (custom roles) | 🔄 Iteration planned |
 | Transfer orders (cross-shop) | 🔄 Planned |
 | Storefront magic-link auth (alternatives to OTP) | 🔄 Planned |
