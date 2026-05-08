@@ -10,6 +10,12 @@ export interface ApiError {
 // Catalog
 // ---------------------------------------------------------------------------
 
+export interface StorefrontProductImage {
+  url: string;
+  alt_text: string | null;
+  sort_order: number;
+}
+
 export interface StorefrontProduct {
   id: string;
   name: string;
@@ -25,6 +31,7 @@ export interface StorefrontProduct {
   discount_price_cents: number | null;
   currency_code: string;
   image_url: string | null;
+  images: StorefrontProductImage[] | null;  // null in list responses, populated in detail
   tags: string[] | null;
   track_quantity: boolean;
   weight_grams: number | null;
