@@ -14,7 +14,7 @@ def auth(db, tenant: Tenant):
     from app.db.admin_deps_db import get_db_admin
     fake_ctx = AdminContext(
         user_id=None, tenant_id=tenant.id, role="owner", role_id=None,
-        is_legacy_token=False, permissions=frozenset({"catalog:write", "settings:read"}),
+        is_legacy_token=False, permissions=frozenset({"catalog:write", "settings:read", "settings:write"}),
     )
     app.dependency_overrides[require_admin_context] = lambda: fake_ctx
     app.dependency_overrides[get_db_admin] = lambda: db
