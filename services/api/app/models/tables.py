@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     DateTime,
     ForeignKey,
@@ -139,6 +140,9 @@ class Tenant(Base):
     auto_resolve_overage_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     financial_year_start_month: Mapped[Optional[int]] = mapped_column(SmallInteger(), nullable=True)
+    storage_bytes_used: Mapped[int] = mapped_column(
+        BigInteger, default=0, server_default="0", nullable=False
+    )
     # Storage configuration
     storage_mode: Mapped[str] = mapped_column(
         String(16), default="platform", server_default="platform", nullable=False
@@ -370,6 +374,7 @@ class ProductImage(Base):
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
     alt_text: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    file_size_bytes: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     product: Mapped["Product"] = relationship(back_populates="images")

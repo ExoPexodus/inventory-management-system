@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     ims_platform_sync_mode: str = "polling"  # "polling" or "offline"
     ims_platform_sync_interval_seconds: int = 300
     license_sync_interval_seconds: int = 300
+    storage_reconcile_interval_hours: int = 24
     # Platform R2 storage (used when tenant.storage_mode == "platform")
     r2_endpoint_url: str = ""
     r2_access_key_id: str = ""
