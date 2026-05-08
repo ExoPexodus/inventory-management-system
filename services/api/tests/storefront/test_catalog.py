@@ -113,3 +113,119 @@ def test_non_headless_channel_rejected(db, tenant: Tenant, shop: Shop) -> None:
     resp = client.get("/v1/storefront/products",
                       headers={"X-Channel-Id": str(pos_ch.id)})
     assert resp.status_code == 403
+
+
+def test_list_products_images_field_is_null(db, tenant: Tenant, storefront) -> None:
+    """List endpoint never returns the images array — always null."""
+    from app.db.session import get_db
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/storefront/products",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200
+        for item in resp.json()["items"]:
+            assert item["images"] is None
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_list_products_image_url_from_gallery(db, tenant: Tenant, storefront) -> None:
+    """image_url is populated from gallery when products.image_url is null."""
+    from app.models import ProductImage
+    from app.db.session import get_db
+    product = storefront["products"][0]
+    db.add(ProductImage(
+        tenant_id=tenant.id, product_id=product.id,
+        url="https://cdn.example.com/img1.jpg", sort_order=0,
+    ))
+    db.add(ProductImage(
+        tenant_id=tenant.id, product_id=product.id,
+        url="https://cdn.example.com/img2.jpg", sort_order=1,
+    ))
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/storefront/products",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200
+        item = next(i for i in resp.json()["items"] if i["id"] == str(product.id))
+        assert item["image_url"] == "https://cdn.example.com/img1.jpg"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_detail_returns_full_gallery(db, tenant: Tenant, storefront) -> None:
+    """Detail endpoint populates the images array in sort_order."""
+    from app.models import ProductImage
+    from app.db.session import get_db
+    product = storefront["products"][0]
+    db.add(ProductImage(
+        tenant_id=tenant.id, product_id=product.id,
+        url="https://cdn.example.com/a.jpg", sort_order=1,
+    ))
+    db.add(ProductImage(
+        tenant_id=tenant.id, product_id=product.id,
+        url="https://cdn.example.com/b.jpg", sort_order=0,
+    ))
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get(f"/v1/storefront/products/{product.id}",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["images"] is not None
+        assert len(body["images"]) == 2
+        assert body["images"][0]["url"] == "https://cdn.example.com/b.jpg"
+        assert body["images"][1]["url"] == "https://cdn.example.com/a.jpg"
+        assert body["image_url"] == "https://cdn.example.com/b.jpg"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_detail_products_image_url_overrides_gallery(db, tenant: Tenant, storefront) -> None:
+    """products.image_url takes priority over the gallery (legacy override)."""
+    from app.models import ProductImage
+    from app.db.session import get_db
+    product = storefront["products"][0]
+    product.image_url = "https://legacy.example.com/hero.jpg"
+    db.add(ProductImage(
+        tenant_id=tenant.id, product_id=product.id,
+        url="https://cdn.example.com/gallery.jpg", sort_order=0,
+    ))
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get(f"/v1/storefront/products/{product.id}",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["image_url"] == "https://legacy.example.com/hero.jpg"
+        assert len(body["images"]) == 1
+        assert body["images"][0]["url"] == "https://cdn.example.com/gallery.jpg"
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_detail_no_gallery_images_is_empty_list(db, tenant: Tenant, storefront) -> None:
+    """Detail images field is an empty list (not null) when product has no gallery."""
+    from app.db.session import get_db
+    product = storefront["products"][0]
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get(f"/v1/storefront/products/{product.id}",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["images"] == []
+        assert body["image_url"] is None
+    finally:
+        app.dependency_overrides.pop(get_db, None)
