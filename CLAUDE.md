@@ -136,6 +136,21 @@ Transactional email uses `TenantEmailConfig` (per-tenant). Supported providers: 
 ### Webhooks-Out
 Merchants register HTTP endpoints via `POST /v1/admin/webhooks/endpoints`. Events are delivered asynchronously via RQ with exponential backoff (3 attempts: immediate, 5 min, 30 min). Payloads are HMAC-SHA256 signed. Currently supported event: `order.confirmed`.
 
+### Image Storage (Cloudflare R2)
+Product images are uploaded **directly from the browser to R2** via presigned PUT URLs — file bytes never pass through the API server.
+
+Two storage modes per tenant:
+- `platform` (default) — IMS shared R2 bucket, key prefix `{tenant_id}/products/...`
+- `byo` — tenant's own R2 or S3-compatible bucket (credentials encrypted in tenant row)
+
+Upload flow: `POST /v1/admin/media/presign-upload` → browser PUT to R2 → `POST /v1/admin/catalog/products/{id}/images`.
+
+**Storage quotas (platform-mode only):** `TenantLicenseCache.storage_limit_mb` is the limit. The counter `tenants.storage_bytes_used` is incremented atomically on image save and decremented on delete. Presign returns HTTP 402 at 100%, `storage_warning` JSON at 80%. BYO tenants are fully exempt.
+
+Required env vars (set in `.env`): `R2_ENDPOINT_URL`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL`. Configure `STORAGE_RECONCILE_INTERVAL_HOURS` (default `24`) for the daily drift-correction job.
+
+Full reference: `docs/ecommerce-architecture.md §16`.
+
 ### Carrier Shipping (Shiprocket)
 When a channel has `shipping_provider: "shiprocket"` in `channel.config`, every confirmed order is automatically dispatched:
 
@@ -155,6 +170,7 @@ RQ worker (`python -m app.worker`) processes:
 |------|---------|-------------|
 | `deliver_webhook` | On order creation | Delivers one webhook event with retry |
 | `dispatch_shipment` | On order creation (if carrier configured) | Creates shipment in carrier API, assigns AWB |
+| `reconcile_storage_usage` | Daily (configurable) | Corrects `storage_bytes_used` from real R2 contents |
 | `sweep_expired_reservations` | Scheduled | Expires idle stock reservations |
 | `sweep_abandoned_carts` | Scheduled (2h) | Sends cart recovery emails |
 | `sync_all_tenant_licenses` | Scheduled | Syncs plan/license from platform service |
@@ -174,7 +190,7 @@ alembic upgrade head
 
 Migration files: `services/api/alembic/versions/`. Naming convention: `YYYYMMDDNNNNNN_description.py`. The API container runs `alembic upgrade head` automatically on start.
 
-Latest head as of writing: `20260522000001` (product_variants).
+Latest head as of writing: `20260525000001` (storage quota fields).
 
 ---
 

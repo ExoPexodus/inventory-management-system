@@ -98,6 +98,8 @@ Platform ─── X-Admin-Token ─────► /v1/internal/*       (plan/l
 | Returns/refund flow | ✅ Production-ready |
 | Carrier shipping (Shiprocket) | ✅ Production-ready |
 | Shipment tracking in customer portal | ✅ Production-ready |
+| Image storage (Cloudflare R2, BYO or platform-managed) | ✅ Production-ready |
+| Per-tenant storage quotas (80% warn + 100% hard block) | ✅ Production-ready |
 | Multi-carrier support (Delhivery, DTDC, etc.) | 🔄 Add provider in registry.py |
 | Return shipment / RMA flow | 🔄 Planned |
 | Advanced RBAC (custom roles) | 🔄 Iteration planned |

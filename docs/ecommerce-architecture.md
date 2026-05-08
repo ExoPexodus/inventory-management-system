@@ -621,3 +621,123 @@ tenant_feature_overrides > PLAN_FEATURES[plan_codename] > FEATURE_CATALOG defaul
 ```
 
 Resolution is cached in Redis for 5 minutes. Writes invalidate the cache automatically.
+
+---
+
+## 16. Image storage (Cloudflare R2)
+
+Product images are stored in Cloudflare R2 (S3-compatible object storage). Uploads go
+**directly from the merchant's browser to R2** — image bytes never pass through the IMS
+API server.
+
+### Two storage modes
+
+Every tenant is created with one of two modes:
+
+| Mode | Who owns the bucket | When to use |
+|------|-------------------|-------------|
+| `platform` (default) | IMS — one shared bucket, prefixed `{tenant_id}/` | Most merchants |
+| `byo` | The merchant — their own R2 or S3-compatible bucket | Enterprise / regulatory requirements |
+
+Set the mode at tenant creation time in the platform-web create-tenant modal, or change
+it later via:
+
+```
+GET  /v1/admin/tenant-settings/storage   → { storage_mode, configured, ... }
+PUT  /v1/admin/tenant-settings/storage   → change mode and/or BYO credentials
+```
+
+BYO bucket credentials (endpoint URL, access key, secret key, public CDN URL) are stored
+**encrypted** in the tenant row, identical to how Stripe/Razorpay keys are stored.
+
+### Upload flow
+
+```
+1. Browser selects file
+2. POST /v1/admin/media/presign-upload   { folder, filename, content_type, file_size_bytes }
+        ↓ quota check (platform-mode only)
+        ↓ returns { upload_url, public_url, storage_warning? }
+3. Browser PUT file bytes → upload_url  (directly to R2, no API involved)
+4. POST /v1/admin/catalog/products/{id}/images  { url: public_url, file_size_bytes }
+        ↓ increments tenant.storage_bytes_used atomically
+```
+
+Presigned PUT URLs expire after 15 minutes. Allowed content types: `image/jpeg`,
+`image/png`, `image/webp`, `image/gif`, `image/avif`. Maximum file size: 10 MB.
+
+### Object key structure
+
+| Mode | Key pattern |
+|------|------------|
+| `platform` | `{tenant_id}/products/{product_id}/{uuid}.{ext}` |
+| `byo` | `products/{product_id}/{uuid}.{ext}` |
+
+### Storage quotas (platform-mode only)
+
+BYO tenants are exempt — they manage their own bucket limits.
+
+For platform-mode tenants, the quota comes from `TenantLicenseCache.storage_limit_mb`
+which is synced automatically from the billing service when a merchant upgrades or
+purchases a storage add-on.
+
+**Enforcement:**
+
+| Threshold | Behaviour |
+|-----------|-----------|
+| < 80 % | Upload proceeds normally |
+| ≥ 80 % | Upload proceeds, presign response includes `storage_warning: { used_pct, used_mb, limit_mb }` — admin-web shows inline warning after upload and a banner on the billing page |
+| > 100 % | `POST /presign-upload` returns **HTTP 402** with `{ detail, used_bytes, limit_bytes }` — upload is blocked |
+
+**Counter mechanics:**
+- `tenants.storage_bytes_used` — atomic SQL expression updates (`SET col = col + X`), never ORM read-modify-write, safe under concurrent uploads
+- Incremented when `POST .../images` is called with `file_size_bytes`
+- Decremented when `DELETE .../images/{id}` is called (skipped if `file_size_bytes` is NULL for pre-existing images)
+- Accurate even when the same merchant uploads from multiple tabs simultaneously
+
+**Daily reconciliation:**
+A background RQ task (`reconcile_storage_usage`) lists every platform tenant's R2 prefix
+via `ListObjectsV2` and sets `storage_bytes_used` to the ground truth. This corrects drift
+from pre-feature images (NULL sizes) and any edge cases. Interval is configurable:
+
+```
+STORAGE_RECONCILE_INTERVAL_HOURS=24   # default, set in docker-compose / .env
+```
+
+**Billing page** shows live storage usage (MB used vs MB limit) via the existing
+`UsageMeter` component, which now reads the real counter.
+
+### Environment variables
+
+Set in `.env` (required for platform-mode uploads to work):
+
+```bash
+R2_ENDPOINT_URL=https://{ACCOUNT_ID}.r2.cloudflarestorage.com
+R2_ACCESS_KEY_ID=your_r2_access_key
+R2_SECRET_ACCESS_KEY=your_r2_secret_key
+R2_BUCKET_NAME=ims-media
+R2_PUBLIC_URL=https://media.yourplatform.com   # CDN domain pointed at your R2 bucket
+R2_REGION=auto                                  # always "auto" for Cloudflare R2
+STORAGE_RECONCILE_INTERVAL_HOURS=24
+```
+
+Leave blank in local development — the presign endpoint returns a `400` with
+`"Platform R2 storage is not configured"` which is the expected dev behaviour.
+
+For BYO tenants, their credentials are stored encrypted in the tenant row — no
+environment variables needed on the IMS server.
+
+### Admin API reference
+
+```
+POST   /v1/admin/media/presign-upload
+       Body: { folder, filename, content_type, file_size_bytes }
+       → { upload_url, public_url, key, expires_in, storage_warning? }
+       → 402 if quota exceeded
+
+GET    /v1/admin/catalog/products/{id}/images
+POST   /v1/admin/catalog/products/{id}/images   { url, alt_text?, sort_order?, file_size_bytes? }
+DELETE /v1/admin/catalog/products/{id}/images/{image_id}
+
+GET    /v1/admin/tenant-settings/storage
+PUT    /v1/admin/tenant-settings/storage   { storage_mode, byo_* fields }
+```
