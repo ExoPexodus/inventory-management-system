@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import math
 import time
 from typing import Annotated
 from uuid import UUID
@@ -269,12 +270,16 @@ def get_billing_usage(
     ).scalar_one()
     cache = db.execute(select(TenantLicenseCache).where(TenantLicenseCache.tenant_id == tenant_id)).scalar_one_or_none()
 
+    # Read real storage usage from tenant counter
+    tenant = db.get(Tenant, tenant_id)
+    storage_used_mb = math.ceil((tenant.storage_bytes_used if tenant else 0) / 1_048_576)
+
     return UsageOut(
         shops_used=shops_used,
         shops_limit=cache.max_shops if cache else 999,
         employees_used=employees_used,
         employees_limit=cache.max_employees if cache else 999,
-        storage_used_mb=0,
+        storage_used_mb=storage_used_mb,
         storage_limit_mb=cache.storage_limit_mb if cache else 999,
     )
 
