@@ -352,6 +352,143 @@ export default function ProductsPage() {
   );
 }
 
+function ImageUploadSection({ productId }: { productId: string }) {
+  const [images, setImages] = useState<{ id: string; url: string; alt_text: string | null }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+
+  const loadImages = useCallback(async () => {
+    setLoading(true);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/catalog/products/${productId}/images`);
+      if (r.ok) setImages((await r.json()) as { id: string; url: string; alt_text: string | null }[]);
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
+
+  useEffect(() => { void loadImages(); }, [loadImages]);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"].includes(file.type)) {
+      setUploadErr("Only JPEG, PNG, WebP, GIF, and AVIF images are accepted.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadErr("Image must be under 10 MB.");
+      return;
+    }
+
+    setUploading(true);
+    setUploadErr(null);
+    try {
+      // 1. Get presigned URL
+      const presignResp = await fetch("/api/ims/v1/admin/media/presign-upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder: `products/${productId}`,
+          filename: file.name,
+          content_type: file.type,
+        }),
+      });
+      if (!presignResp.ok) {
+        const d = await presignResp.json().catch(() => ({})) as { detail?: string };
+        throw new Error(d.detail ?? `Presign failed (${presignResp.status})`);
+      }
+      const { upload_url, public_url } = (await presignResp.json()) as {
+        upload_url: string; public_url: string; key: string;
+      };
+
+      // 2. PUT directly to R2 from browser
+      const putResp = await fetch(upload_url, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+      if (!putResp.ok) throw new Error(`Storage upload failed (${putResp.status})`);
+
+      // 3. Save URL to product gallery
+      const saveResp = await fetch(
+        `/api/ims/v1/admin/catalog/products/${productId}/images`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: public_url, sort_order: images.length }),
+        }
+      );
+      if (!saveResp.ok) throw new Error("Failed to save image URL");
+
+      void loadImages();
+    } catch (err) {
+      setUploadErr(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  }
+
+  async function handleDelete(imageId: string) {
+    if (!confirm("Remove this image?")) return;
+    try {
+      await fetch(`/api/ims/v1/admin/catalog/products/${productId}/images/${imageId}`, {
+        method: "DELETE",
+      });
+      void loadImages();
+    } catch { /* silently ignore */ }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+        Product images
+      </p>
+
+      {loading ? (
+        <p className="text-xs text-on-surface-variant">Loading…</p>
+      ) : images.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {images.map((img) => (
+            <div key={img.id} className="group relative">
+              <img
+                src={img.url}
+                alt={img.alt_text ?? ""}
+                className="h-20 w-20 rounded-lg object-cover border border-outline-variant/20"
+              />
+              <button
+                type="button"
+                onClick={() => void handleDelete(img.id)}
+                className="absolute -right-1.5 -top-1.5 hidden h-5 w-5 items-center justify-center rounded-full bg-error text-[10px] text-white group-hover:flex"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      <label className={`flex cursor-pointer items-center gap-2 rounded-lg border-2 border-dashed border-outline-variant/40 px-4 py-3 text-sm text-on-surface-variant transition hover:border-primary/50 hover:text-primary ${uploading ? "opacity-50 cursor-not-allowed" : ""}`}>
+        <span className="material-symbols-outlined text-lg">add_photo_alternate</span>
+        {uploading ? "Uploading…" : "Add image"}
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+          className="sr-only"
+          disabled={uploading}
+          onChange={(e) => void handleFileChange(e)}
+        />
+      </label>
+
+      {uploadErr && <p className="text-xs text-error">{uploadErr}</p>}
+      <p className="text-[11px] text-on-surface-variant">JPEG, PNG, WebP, GIF or AVIF · max 10 MB</p>
+    </div>
+  );
+}
+
 function EditProductDialog({
   product,
   onClose,
@@ -551,6 +688,7 @@ function EditProductDialog({
             Allow sales when stock reaches zero (permit negative stock)
           </label>
           {err ? <p className="text-sm text-error">{err}</p> : null}
+          <ImageUploadSection productId={product.id} />
           <div className="flex gap-2 pt-2">
             <PrimaryButton type="submit" disabled={saving}>{saving ? "Saving…" : "Save changes"}</PrimaryButton>
             <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
