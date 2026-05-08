@@ -139,6 +139,13 @@ function CreateTenantModal({ onClose, onCreated }: { onClose: () => void; onCrea
   const [adminEmail, setAdminEmail] = useState("");
   const [adminPassword, setAdminPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [storageMode, setStorageMode] = useState<"platform" | "byo">("platform");
+  const [byoEndpoint, setByoEndpoint] = useState("");
+  const [byoBucket, setByoBucket] = useState("");
+  const [byoAccessKey, setByoAccessKey] = useState("");
+  const [byoSecretKey, setByoSecretKey] = useState("");
+  const [byoPublicUrl, setByoPublicUrl] = useState("");
+  const [byoRegion, setByoRegion] = useState("auto");
 
   function handleNameChange(val: string) {
     setName(val);
@@ -172,6 +179,15 @@ function CreateTenantModal({ onClose, onCreated }: { onClose: () => void; onCrea
           currency_exponent: currencyExponent,
           initial_admin_email: adminEmail.trim(),
           initial_admin_password: adminPassword,
+          storage_mode: storageMode,
+          ...(storageMode === "byo" && {
+            byo_storage_endpoint: byoEndpoint.trim(),
+            byo_storage_bucket: byoBucket.trim(),
+            byo_storage_access_key: byoAccessKey.trim(),
+            byo_storage_secret_key: byoSecretKey.trim(),
+            byo_storage_public_url: byoPublicUrl.trim(),
+            byo_storage_region: byoRegion.trim() || "auto",
+          }),
         }),
       });
       if (r.ok) {
@@ -293,6 +309,105 @@ function CreateTenantModal({ onClose, onCreated }: { onClose: () => void; onCrea
               </button>
             </div>
           </label>
+
+          {/* Storage */}
+          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant pt-2">
+            Storage
+          </p>
+          <div>
+            <p className="text-sm font-medium text-on-surface mb-2">Image storage mode</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(["platform", "byo"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setStorageMode(mode)}
+                  className={`rounded-xl border px-4 py-3 text-left transition ${
+                    storageMode === mode
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-outline-variant/30 text-on-surface-variant hover:border-primary/40"
+                  }`}
+                >
+                  <p className="font-semibold text-sm">
+                    {mode === "platform" ? "Platform-managed" : "BYO Bucket"}
+                  </p>
+                  <p className="text-[11px] mt-0.5 opacity-70">
+                    {mode === "platform"
+                      ? "IMS shared R2 bucket"
+                      : "Tenant's own R2 / S3"}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {storageMode === "byo" && (
+            <div className="space-y-3 rounded-xl border border-outline-variant/10 bg-surface-container-low p-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-on-surface mb-1">
+                    S3 endpoint URL
+                  </label>
+                  <input
+                    type="text" value={byoEndpoint}
+                    onChange={(e) => setByoEndpoint(e.target.value)}
+                    placeholder="https://{account_id}.r2.cloudflarestorage.com"
+                    className="w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-on-surface mb-1">Bucket name</label>
+                  <input
+                    type="text" value={byoBucket}
+                    onChange={(e) => setByoBucket(e.target.value)}
+                    placeholder="my-store-media"
+                    className="w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-on-surface mb-1">Region</label>
+                  <input
+                    type="text" value={byoRegion}
+                    onChange={(e) => setByoRegion(e.target.value)}
+                    placeholder="auto"
+                    className="w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-on-surface mb-1">Access key ID</label>
+                  <input
+                    type="text" value={byoAccessKey}
+                    onChange={(e) => setByoAccessKey(e.target.value)}
+                    placeholder="R2 access key"
+                    className="w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-on-surface mb-1">Secret access key</label>
+                  <input
+                    type="password" value={byoSecretKey}
+                    onChange={(e) => setByoSecretKey(e.target.value)}
+                    placeholder="R2 secret key"
+                    className="w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-on-surface mb-1">
+                    Public CDN URL
+                  </label>
+                  <input
+                    type="text" value={byoPublicUrl}
+                    onChange={(e) => setByoPublicUrl(e.target.value)}
+                    placeholder="https://media.mystore.com"
+                    className="w-full rounded-lg border border-outline-variant/30 bg-surface-container-lowest px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                  <p className="mt-1 text-[11px] text-on-surface-variant">
+                    The base URL for serving images (Cloudflare custom domain on R2).
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {err && <p className="text-sm text-error">{err}</p>}
 
