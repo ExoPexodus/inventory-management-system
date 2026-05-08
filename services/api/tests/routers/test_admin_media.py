@@ -35,6 +35,7 @@ def test_presign_upload_returns_urls(db, tenant: Tenant, auth) -> None:
             "folder": "products/abc",
             "filename": "hero.jpg",
             "content_type": "image/jpeg",
+            "file_size_bytes": 1024,
         })
     assert resp.status_code == 200, resp.text
     body = resp.json()
@@ -50,6 +51,7 @@ def test_presign_upload_rejects_unsupported_type(db, tenant: Tenant, auth) -> No
             "folder": "products/abc",
             "filename": "document.pdf",
             "content_type": "application/pdf",
+            "file_size_bytes": 1024,
         })
     assert resp.status_code == 400
     assert "not allowed" in resp.json()["detail"]
