@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     ims_platform_sync_mode: str = "polling"  # "polling" or "offline"
     ims_platform_sync_interval_seconds: int = 300
     license_sync_interval_seconds: int = 300
+    # Platform R2 storage (used when tenant.storage_mode == "platform")
+    r2_endpoint_url: str = ""
+    r2_access_key_id: str = ""
+    r2_secret_access_key: str = ""
+    r2_bucket_name: str = ""
+    r2_public_url: str = ""
+    r2_region: str = "auto"
 
 
 settings = Settings()

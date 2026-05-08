@@ -139,6 +139,17 @@ class Tenant(Base):
     auto_resolve_overage_cents: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     timezone: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     financial_year_start_month: Mapped[Optional[int]] = mapped_column(SmallInteger(), nullable=True)
+    # Storage configuration
+    storage_mode: Mapped[str] = mapped_column(
+        String(16), default="platform", server_default="platform", nullable=False
+    )
+    # storage_mode: "platform" (IMS-managed R2) | "byo" (tenant-owned bucket)
+    byo_storage_endpoint: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    byo_storage_bucket: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    byo_storage_access_key: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    byo_storage_secret_key: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    byo_storage_public_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    byo_storage_region: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     shops: Mapped[list[Shop]] = relationship(back_populates="tenant")
