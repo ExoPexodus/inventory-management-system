@@ -131,3 +131,42 @@ def presign_upload(
         "expires_in": PRESIGN_TTL_SECONDS,
         "content_type": content_type,
     }
+
+
+def sum_r2_prefix(prefix: str) -> int:
+    """Return the total bytes of all objects under a key prefix in the platform R2 bucket.
+
+    Paginates automatically. Returns 0 if the platform bucket is not configured
+    or the prefix has no objects.
+    """
+    if not settings.r2_endpoint_url or not settings.r2_bucket_name:
+        logger.debug("Platform R2 not configured — sum_r2_prefix returning 0")
+        return 0
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=settings.r2_endpoint_url,
+        aws_access_key_id=settings.r2_access_key_id,
+        aws_secret_access_key=settings.r2_secret_access_key,
+        region_name=settings.r2_region or "auto",
+        config=Config(signature_version="s3v4"),
+    )
+
+    total_bytes = 0
+    continuation_token: str | None = None
+
+    while True:
+        kwargs: dict = {"Bucket": settings.r2_bucket_name, "Prefix": prefix}
+        if continuation_token:
+            kwargs["ContinuationToken"] = continuation_token
+
+        resp = s3.list_objects_v2(**kwargs)
+        for obj in resp.get("Contents", []):
+            total_bytes += obj.get("Size", 0)
+
+        if resp.get("IsTruncated"):
+            continuation_token = resp.get("NextContinuationToken")
+        else:
+            break
+
+    return total_bytes
