@@ -7,10 +7,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
-from app.models import Product
+from app.models import Product, ProductImage
 from app.routers.storefront.auth import StorefrontChannelDep
 
 router = APIRouter(prefix="/v1/storefront", tags=["Storefront Catalog"])
@@ -66,7 +66,7 @@ def _to_out(product: Product, currency: str) -> StorefrontProductOut:
         unit_price_cents=product.unit_price_cents,
         discount_price_cents=product.discount_price_cents,
         currency_code=currency,
-        image_url=product.image_url,
+        image_url=product.image_url or (product.images[0].url if product.images else None),
         tags=product.tags,
         track_quantity=product.track_quantity,
         weight_grams=product.weight_grams,
@@ -103,7 +103,8 @@ def list_products(
     ).scalar_one()
 
     rows = db.execute(
-        base.order_by(Product.name).offset((page - 1) * per_page).limit(per_page)
+        base.options(selectinload(Product.images))
+        .order_by(Product.name).offset((page - 1) * per_page).limit(per_page)
     ).scalars().all()
 
     return ProductListOut(
@@ -122,7 +123,9 @@ def get_product(
     try:
         uid = UUID(product_slug_or_id)
         product = db.execute(
-            select(Product).where(
+            select(Product)
+            .options(selectinload(Product.images))
+            .where(
                 Product.id == uid,
                 Product.tenant_id == channel.tenant_id,
                 Product.status == "active",
@@ -133,7 +136,9 @@ def get_product(
 
     if product is None:
         product = db.execute(
-            select(Product).where(
+            select(Product)
+            .options(selectinload(Product.images))
+            .where(
                 Product.slug == product_slug_or_id,
                 Product.tenant_id == channel.tenant_id,
                 Product.status == "active",
