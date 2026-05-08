@@ -41,6 +41,14 @@ services:
       PLATFORM_API_SECRET: ${PLATFORM_API_SECRET:-platform-dev-jwt-secret}
       PLATFORM_WEB_URL: ${PLATFORM_WEB_URL:-http://localhost:3200}
       PLATFORM_DOWNLOAD_BASE_URL: ${PLATFORM_DOWNLOAD_BASE_URL:-http://localhost:8002}
+      # Cloudflare R2 image storage (leave blank in dev — upload will return 400 until configured)
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      R2_REGION: ${R2_REGION:-auto}
+      STORAGE_RECONCILE_INTERVAL_HOURS: ${STORAGE_RECONCILE_INTERVAL_HOURS:-24}
     ports:
       # Default 8001 avoids clashing with other stacks on :8000 (override with API_PUBLISH_PORT).
       - "${API_PUBLISH_PORT:-8001}:8000"
@@ -61,6 +69,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-only-change-me}
       PLATFORM_API_URL: ${PLATFORM_API_URL:-http://platform:8000}
       PLATFORM_API_SECRET: ${PLATFORM_API_SECRET:-platform-dev-jwt-secret}
+      # Cloudflare R2 — required for reconcile_storage_usage task
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      R2_REGION: ${R2_REGION:-auto}
+      STORAGE_RECONCILE_INTERVAL_HOURS: ${STORAGE_RECONCILE_INTERVAL_HOURS:-24}
     depends_on:
       redis:
         condition: service_healthy
