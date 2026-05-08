@@ -26,6 +26,7 @@ from app.routers import (
     admin_discounts,
     admin_email,
     admin_entitlements,
+    admin_media,
     admin_webhooks,
     admin_fx_rates,
     admin_inventory,
@@ -50,6 +51,7 @@ from app.routers import (
     admin_staff,
     admin_suppliers,
     admin_tax,
+    admin_tenant_storage,
     admin_web,
     admin_woocommerce,
     audit,
@@ -114,6 +116,8 @@ app.include_router(admin_integrations.router)
 app.include_router(admin_notifications.router)
 app.include_router(admin_reconciliation.router)
 app.include_router(admin_shifts.router)
+app.include_router(admin_media.router)
+app.include_router(admin_tenant_storage.router)
 app.include_router(admin_platform.router)
 app.include_router(admin_billing.router)
 app.include_router(admin_business_type.router)
