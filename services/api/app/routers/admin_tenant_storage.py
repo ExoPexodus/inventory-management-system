@@ -16,7 +16,6 @@ from app.services.email_service import encrypt_secret
 router = APIRouter(
     prefix="/v1/admin/tenant-settings",
     tags=["Tenant Storage Settings"],
-    dependencies=[require_permission("settings:read")],
 )
 
 
@@ -46,7 +45,8 @@ def _require_tenant(ctx: AdminAuthDep) -> UUID:
     return ctx.tenant_id
 
 
-@router.get("/storage", response_model=StorageConfigOut)
+@router.get("/storage", response_model=StorageConfigOut,
+            dependencies=[require_permission("settings:read")])
 def get_storage_config(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
@@ -66,7 +66,8 @@ def get_storage_config(
     )
 
 
-@router.put("/storage", response_model=StorageConfigOut)
+@router.put("/storage", response_model=StorageConfigOut,
+            dependencies=[require_permission("settings:write")])
 def update_storage_config(
     body: StorageConfigIn,
     ctx: AdminAuthDep,
