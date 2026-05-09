@@ -73,21 +73,23 @@ If/when these features are actually built, they'll be added back with real persi
 
 ### Q2 — Dashboard Pending Orders card (type-aware)
 
+**Important context discovery:** The existing `pending_order_count` field on `DashboardSummaryOut` actually counts `PurchaseOrder.status == "ordered"` — these are *purchase orders awaiting delivery from suppliers*, not POS sales or ecommerce orders. The card label "Pending Orders" with link to `/orders` (the POS transaction ledger) is mislabeled — the link target doesn't match the data source. The audit's framing was off; the underlying issue is bigger than just business-type-awareness.
+
 **Files:**
-- `services/api/app/routers/admin_web.py` — `DashboardSummaryOut` (line 330) and `dashboard_summary()` (line 344). Add the `pending_ecommerce_order_count` field to the model and populate it in the function (count `Order` rows joined to channels under the tenant where status indicates awaiting fulfilment). Also expose `business_type` on the response by reading `tenant.business_type`.
+- `services/api/app/routers/admin_web.py` — `DashboardSummaryOut` (line 330) and `dashboard_summary()` (line 344). Add `pending_ecommerce_order_count: int = 0` and `business_type: str` fields. Populate `pending_ecommerce_order_count` by counting `Order` rows where `tenant_id == tenant_id AND fulfillment_status == "pending"`. Populate `business_type` by reading `tenant.business_type`.
 - `apps/admin-web/src/app/(main)/overview/page.tsx`
 
-The existing `OverviewPage` is a Server Component that already fetches `dashboard-summary`. Add `business_type` and `pending_ecommerce_order_count` to the response. Update the card rendering as follows:
+The existing `OverviewPage` is a Server Component that already fetches `dashboard-summary`. Update the card rendering using the new `business_type` field:
 
 | business_type | Card label | Count source | Link target |
 |---|---|---|---|
-| `retail` | "Pending Orders" | `pending_order_count` | `/orders` |
+| `retail` | "Open Purchase Orders" | `pending_order_count` | `/purchase-orders` |
 | `online` | "Pending Online Orders" | `pending_ecommerce_order_count` | `/ecommerce-orders` |
 | `hybrid` | "Pending Online Orders" | `pending_ecommerce_order_count` | `/ecommerce-orders` |
 
-The "View all orders" link in the Recent Activity section uses the same logic.
+The "View all orders" link in the Recent Activity section follows the same logic — pointing to `/purchase-orders` for retail, `/ecommerce-orders` for online/hybrid.
 
-Rationale: POS pending orders are resolved live at the till by the cashier; they're not actionable from a dashboard. Ecommerce pending orders need merchant follow-up across all relevant types.
+Rationale: POS sales resolve at the till and aren't actionable from a dashboard. Open POs (incoming inventory) are meaningful for retail. Pending ecommerce orders are time-sensitive across all types that have ecommerce. Hybrid prioritises ecommerce because PO awareness is already covered by the existing `/purchase-orders` flow.
 
 ### Q3 — Header scope-aware search
 
