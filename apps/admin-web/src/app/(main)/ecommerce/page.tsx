@@ -11,6 +11,7 @@ import {
   TextInput,
   SelectInput,
 } from "@/components/ui/primitives";
+import { RequiresBusinessType } from "@/components/dashboard/RequiresBusinessType";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -1379,7 +1380,7 @@ const TABS = [
   { id: "shipping", label: "Shipping" },
 ];
 
-export default function EcommercePage() {
+function EcommercePageInner() {
   const [tab, setTab] = useState("email");
 
   return (
@@ -1395,5 +1396,13 @@ export default function EcommercePage() {
       {tab === "fx-rates" && <FxRatesTab />}
       {tab === "shipping" && <ShippingTab />}
     </div>
+  );
+}
+
+export default function EcommercePage() {
+  return (
+    <RequiresBusinessType types={["online", "hybrid"]}>
+      <EcommercePageInner />
+    </RequiresBusinessType>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Badge, PageHeader, Panel, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui/primitives";
+import { RequiresBusinessType } from "@/components/dashboard/RequiresBusinessType";
 
 type OrderSummary = {
   id: string;
@@ -175,7 +176,7 @@ function RefundModal({
   );
 }
 
-export default function EcommerceOrdersPage() {
+function EcommerceOrdersPageInner() {
   const [orders, setOrders] = useState<OrderSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -467,5 +468,13 @@ export default function EcommerceOrdersPage() {
         />
       )}
     </div>
+  );
+}
+
+export default function EcommerceOrdersPage() {
+  return (
+    <RequiresBusinessType types={["online", "hybrid"]}>
+      <EcommerceOrdersPageInner />
+    </RequiresBusinessType>
   );
 }

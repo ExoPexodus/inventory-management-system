@@ -10,6 +10,7 @@ import {
   Tabs,
   TextInput,
 } from "@/components/ui/primitives";
+import { RequiresBusinessType } from "@/components/dashboard/RequiresBusinessType";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -751,7 +752,7 @@ const TABS = [
   { id: "shipping", label: "Shipping" },
 ];
 
-export default function ChannelsPage() {
+function ChannelsPageInner() {
   const [tab, setTab] = useState<"channels" | "payment" | "shipping">("channels");
   const [channels, setChannels] = useState<Channel[]>([]);
 
@@ -776,5 +777,13 @@ export default function ChannelsPage() {
       {tab === "payment" && <PaymentTab channels={channels} />}
       {tab === "shipping" && <ShippingTab channels={channels} />}
     </div>
+  );
+}
+
+export default function ChannelsPage() {
+  return (
+    <RequiresBusinessType types={["online", "hybrid"]}>
+      <ChannelsPageInner />
+    </RequiresBusinessType>
   );
 }

@@ -16,6 +16,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { formatMoney, fmtDatetime } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
 import { useTenantTimezone } from "@/lib/localisation-context";
+import { RequiresBusinessType } from "@/components/dashboard/RequiresBusinessType";
 
 type Shift = {
   id: string;
@@ -45,7 +46,7 @@ function fmtDuration(openedAt: string, closedAt: string | null) {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-export default function ShiftsPage() {
+function ShiftsPageInner() {
   const currency = useCurrency();
   const timezone = useTenantTimezone();
   const [rows, setRows] = useState<Shift[]>([]);
@@ -390,5 +391,13 @@ export default function ShiftsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ShiftsPage() {
+  return (
+    <RequiresBusinessType types={["retail", "hybrid"]}>
+      <ShiftsPageInner />
+    </RequiresBusinessType>
   );
 }

@@ -10,6 +10,7 @@ import {
   SelectInput,
   TextInput,
 } from "@/components/ui/primitives";
+import { RequiresBusinessType } from "@/components/dashboard/RequiresBusinessType";
 
 type Shop = { id: string; name: string };
 
@@ -31,7 +32,7 @@ function policyLabel(policy: string): string {
   return POLICY_OPTIONS.find((o) => o.value === policy)?.label ?? policy;
 }
 
-export default function InventoryPoolsPage() {
+function InventoryPoolsPageInner() {
   const [pools, setPools] = useState<InventoryPool[]>([]);
   const [shops, setShops] = useState<Shop[]>([]);
   const [loading, setLoading] = useState(true);
@@ -337,5 +338,13 @@ export default function InventoryPoolsPage() {
         )}
       </Panel>
     </div>
+  );
+}
+
+export default function InventoryPoolsPage() {
+  return (
+    <RequiresBusinessType types={["online", "hybrid"]}>
+      <InventoryPoolsPageInner />
+    </RequiresBusinessType>
   );
 }
