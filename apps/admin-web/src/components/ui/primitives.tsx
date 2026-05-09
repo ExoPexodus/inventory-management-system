@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import Image from "next/image";
+import Link from "next/link";
 export { SelectInput } from "@/components/ui/SelectInput";
 export type { SelectInputProps, SelectOption } from "@/components/ui/SelectInput";
 
@@ -161,11 +162,29 @@ export function SecondaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElem
 
 // ─── Empty State ──────────────────────────────────────────────────────────────
 
-export function EmptyState({ title, detail }: { title: string; detail?: string }) {
+export function EmptyState({
+  title,
+  detail,
+  actionLabel,
+  actionHref,
+}: {
+  title: string;
+  detail?: string;
+  actionLabel?: string;
+  actionHref?: string;
+}) {
   return (
     <div className="px-4 py-12 text-center">
       <p className="font-headline text-base font-bold text-on-surface">{title}</p>
       {detail ? <p className="mt-1 text-sm text-on-surface-variant">{detail}</p> : null}
+      {actionLabel && actionHref ? (
+        <Link
+          href={actionHref}
+          className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary transition-opacity hover:opacity-90"
+        >
+          {actionLabel}
+        </Link>
+      ) : null}
     </div>
   );
 }
