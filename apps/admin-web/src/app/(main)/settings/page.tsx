@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PrimaryButton, SecondaryButton, SelectInput, TextInput, Toggle } from "@/components/ui/primitives";
 import { TIMEZONE_OPTIONS, MONTH_OPTIONS } from "@/lib/timezones";
+import { useBusinessType } from "@/lib/business-type-context";
 
 type CurrencySettings = {
   currency_code: string;
@@ -12,6 +13,8 @@ type CurrencySettings = {
 };
 
 export default function SettingsPage() {
+  const { invalidate: invalidateBusinessType } = useBusinessType();
+
   const [emailDigest, setEmailDigest] = useState(true);
   const [lowStockAlerts, setLowStockAlerts] = useState(true);
   const [pushNotify, setPushNotify] = useState(false);
@@ -256,7 +259,7 @@ export default function SettingsPage() {
   useEffect(() => {
     void (async () => {
       try {
-        const r = await fetch("/api/ims/v1/admin/business-type");
+        const r = await fetch("/api/ims/v1/admin/tenant-settings/business-type");
         if (r.ok) {
           const d = (await r.json()) as { business_type: string };
           if (d.business_type === "online" || d.business_type === "retail" || d.business_type === "hybrid") {
@@ -307,13 +310,20 @@ export default function SettingsPage() {
     setBtMsg(null);
     setBtErr(null);
     try {
-      const r = await fetch("/api/ims/v1/admin/business-type", {
+      const r = await fetch("/api/ims/v1/admin/tenant-settings/business-type", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ business_type: businessType }),
       });
       if (r.ok) {
-        setBtMsg("Business type saved.");
+        invalidateBusinessType();
+        if (businessType === "hybrid") {
+          setBtMsg("Hybrid mode active — both POS and ecommerce features are now available in the sidebar.");
+        } else if (businessType === "online") {
+          setBtMsg("Switched to online-only. Existing POS data is preserved; you can switch back anytime.");
+        } else {
+          setBtMsg("Switched to retail. Ecommerce sections are hidden; existing data is preserved and can be restored anytime.");
+        }
       } else {
         const d = await r.json().catch(() => ({})) as { detail?: string };
         setBtErr(d.detail ?? "Failed to save.");
