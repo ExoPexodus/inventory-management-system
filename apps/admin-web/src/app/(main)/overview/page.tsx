@@ -2,6 +2,7 @@ import Link from "next/link";
 import { serverJsonGet } from "@/lib/api/server-json";
 import { formatMoney, type CurrencyConfig } from "@/lib/format";
 import { OverviewRevenueChart } from "@/components/ui/OverviewRevenueChart";
+import { SetupChecklist, type ChecklistItem } from "@/components/dashboard/SetupChecklist";
 
 type DashboardSummary = {
   posted_transaction_count: number;
@@ -15,6 +16,11 @@ type DashboardSummary = {
   business_type?: "online" | "retail" | "hybrid";
   avg_transaction_cents?: number;
   revenue_delta_pct?: number;
+  has_first_product?: boolean;
+  has_first_shop?: boolean;
+  has_first_channel?: boolean;
+  has_payment_configured?: boolean;
+  has_email_configured?: boolean;
   recent_activity: Array<{ kind: string; ref_id: string; created_at: string; detail: string }>;
 };
 
@@ -51,6 +57,72 @@ export default async function OverviewPage() {
         count: d.pending_order_count ?? 0,
         href: "/purchase-orders",
       };
+  type SetupItemDef = {
+    key: string;
+    label: string;
+    detail: string;
+    href: string;
+    icon: string;
+    types: ("online" | "retail" | "hybrid")[];
+    done: boolean;
+  };
+
+  const allSetupItems: SetupItemDef[] = [
+    {
+      key: "first_product",
+      label: "Add your first product",
+      detail: "Products are what you sell — add at least one to get started.",
+      href: "/entries",
+      icon: "category",
+      types: ["online", "retail", "hybrid"],
+      done: d.has_first_product ?? false,
+    },
+    {
+      key: "first_shop",
+      label: "Add a shop",
+      detail: "Shops are your physical locations. Your cashier app uses shops to manage sales.",
+      href: "/shops/new",
+      icon: "storefront",
+      types: ["retail", "hybrid"],
+      done: d.has_first_shop ?? false,
+    },
+    {
+      key: "first_channel",
+      label: "Set up a sales channel",
+      detail: "Channels connect your inventory to storefronts and other selling surfaces.",
+      href: "/channels?new=1",
+      icon: "hub",
+      types: ["online", "hybrid"],
+      done: d.has_first_channel ?? false,
+    },
+    {
+      key: "payment",
+      label: "Configure a payment provider",
+      detail: "Connect Stripe or Razorpay to start accepting payments at checkout.",
+      href: "/channels",
+      icon: "credit_card",
+      types: ["online", "hybrid"],
+      done: d.has_payment_configured ?? false,
+    },
+    {
+      key: "email",
+      label: "Configure email",
+      detail: "Send order confirmations and receipts to your customers.",
+      href: "/settings",
+      icon: "mail",
+      types: ["online", "retail", "hybrid"],
+      done: d.has_email_configured ?? false,
+    },
+  ];
+
+  const bt = (d.business_type ?? "retail") as "online" | "retail" | "hybrid";
+  const visibleSetupItems: ChecklistItem[] = allSetupItems
+    .filter((item) => item.types.includes(bt))
+    .map(({ key, label, detail, href, icon, done }) => ({ key, label, detail, href, icon, done }))
+    .sort((a, b) => Number(a.done) - Number(b.done));
+  const anyUnchecked = visibleSetupItems.some((item) => !item.done);
+  const tenantPrefix = "";
+
   const revDelta = d.revenue_delta_pct ?? 0;
   const chartPoints = seriesRes.ok ? seriesRes.data.points : [];
   const chartValues = chartPoints.map((p) => p.gross_cents / 100);
@@ -66,6 +138,11 @@ export default async function OverviewPage() {
         <h2 className="font-headline text-4xl font-extrabold tracking-tight text-on-surface">Operations Pulse</h2>
         <p className="mt-2 text-on-surface-variant">Live summary for your organization.</p>
       </div>
+
+      {/* Setup checklist — visible until all items complete */}
+      {anyUnchecked && (
+        <SetupChecklist items={visibleSetupItems} tenantPrefix={tenantPrefix} />
+      )}
 
       {/* Bento stat cards */}
       <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
