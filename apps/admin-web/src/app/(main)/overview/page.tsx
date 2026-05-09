@@ -11,6 +11,8 @@ type DashboardSummary = {
   shop_count: number;
   product_count: number;
   pending_order_count?: number;
+  pending_ecommerce_order_count?: number;
+  business_type?: "online" | "retail" | "hybrid";
   avg_transaction_cents?: number;
   revenue_delta_pct?: number;
   recent_activity: Array<{ kind: string; ref_id: string; created_at: string; detail: string }>;
@@ -36,6 +38,19 @@ export default async function OverviewPage() {
   }
 
   const d = res.data;
+  const businessType = d.business_type ?? "retail";
+  const isEcomOrientedDashboard = businessType === "online" || businessType === "hybrid";
+  const pendingCard = isEcomOrientedDashboard
+    ? {
+        label: "Pending Online Orders",
+        count: d.pending_ecommerce_order_count ?? 0,
+        href: "/ecommerce-orders",
+      }
+    : {
+        label: "Open Purchase Orders",
+        count: d.pending_order_count ?? 0,
+        href: "/purchase-orders",
+      };
   const revDelta = d.revenue_delta_pct ?? 0;
   const chartPoints = seriesRes.ok ? seriesRes.data.points : [];
   const chartValues = chartPoints.map((p) => p.gross_cents / 100);
@@ -79,18 +94,21 @@ export default async function OverviewPage() {
             <p className="mt-1 text-xs text-on-surface-variant/60">Per posted transaction</p>
           </div>
         </div>
-        <div className="flex flex-col justify-between rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
+        <Link
+          href={pendingCard.href}
+          className="flex flex-col justify-between rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm transition-colors hover:bg-surface-container-low/60"
+        >
           <div className="flex items-start justify-between">
-            <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Pending Orders</span>
+            <span className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">{pendingCard.label}</span>
             <div className="h-2 w-2 animate-pulse rounded-full bg-secondary" />
           </div>
           <div className="mt-4">
             <h3 className="font-headline text-4xl font-extrabold tracking-tighter text-primary">
-              {d.pending_order_count ?? 0}
+              {pendingCard.count}
             </h3>
             <p className="mt-1 text-xs text-on-surface-variant/60">Awaiting processing</p>
           </div>
-        </div>
+        </Link>
       </div>
 
       {/* Revenue Trends Chart */}
@@ -106,7 +124,7 @@ export default async function OverviewPage() {
             <OverviewRevenueChart values={chartValues} labels={chartLabels} currency={currency} />
           ) : (
             <div className="flex h-full items-center justify-center text-sm text-on-surface-variant">
-              No transactions in the last 30 days.
+              No sales in the last 30 days yet — your revenue chart will fill in as orders come in.
             </div>
           )}
         </div>
@@ -150,8 +168,11 @@ export default async function OverviewPage() {
               <span className="material-symbols-outlined text-xl">history</span>
               Recent Activity
             </h3>
-            <Link href="/orders" className="rounded-full bg-secondary/10 px-3 py-1 text-xs font-bold text-on-secondary-container transition-colors hover:bg-secondary/20">
-              View all orders
+            <Link
+              href={isEcomOrientedDashboard ? "/ecommerce-orders" : "/purchase-orders"}
+              className="rounded-full bg-secondary/10 px-3 py-1 text-xs font-bold text-on-secondary-container transition-colors hover:bg-secondary/20"
+            >
+              {isEcomOrientedDashboard ? "View online orders" : "View purchase orders"}
             </Link>
           </div>
           <div className="overflow-hidden rounded-xl border border-outline-variant/10 bg-surface-container-lowest">
@@ -190,7 +211,7 @@ export default async function OverviewPage() {
                 {d.recent_activity.length === 0 && (
                   <tr>
                     <td colSpan={3} className="px-6 py-10 text-center text-sm text-on-surface-variant">
-                      No recent activity. Seed demo data to populate.
+                      Recent activity will appear here once you make sales.
                     </td>
                   </tr>
                 )}
