@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Avatar,
   Badge,
+  EmptyState,
   ErrorState,
   LoadingRow,
   PageHeader,
@@ -50,6 +52,7 @@ function poStatusClass(s: string): string {
 }
 
 export default function PurchaseOrdersPage() {
+  const newParams = useSearchParams();
   const currency = useCurrency();
   const [pos, setPos] = useState<PO[]>([]);
   const [loading, setLoading] = useState(true);
@@ -61,6 +64,13 @@ export default function PurchaseOrdersPage() {
 
   // create form
   const [showCreate, setShowCreate] = useState(false);
+
+  useEffect(() => {
+    if (newParams.get("new") === "1") {
+      setShowCreate(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newParams]);
   const [supplierId, setSupplierId] = useState("");
   const [createNotes, setCreateNotes] = useState("");
   const [createDelivery, setCreateDelivery] = useState("");
@@ -269,8 +279,13 @@ export default function PurchaseOrdersPage() {
                   <LoadingRow colSpan={4} />
                 ) : pos.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-6 py-12 text-center text-sm text-on-surface-variant">
-                      No purchase orders yet — create one above.
+                    <td colSpan={4} className="px-6 py-10">
+                      <EmptyState
+                        title="No purchase orders yet"
+                        detail="Track inventory restocks from suppliers."
+                        actionLabel="Create a purchase order"
+                        actionHref="?new=1"
+                      />
                     </td>
                   </tr>
                 ) : (

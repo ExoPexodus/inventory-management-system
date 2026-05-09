@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Avatar,
   Badge,
+  EmptyState,
   ErrorState,
   PageHeader,
   PrimaryButton,
@@ -73,9 +75,17 @@ function SupplierCard({ s, onEdit }: { s: Supplier; onEdit: (s: Supplier) => voi
 }
 
 export default function SuppliersPage() {
+  const newParams = useSearchParams();
   const [rows, setRows] = useState<Supplier[]>([]);
   const [q, setQ] = useState("");
   const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    if (newParams.get("new") === "1") {
+      setShowForm(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newParams]);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -223,6 +233,15 @@ export default function SuppliersPage() {
       {err ? <ErrorState detail={err} /> : null}
       {msg ? <p className="text-sm text-on-surface-variant">{msg}</p> : null}
       {loading ? <p className="text-sm text-on-surface-variant">Loading suppliers…</p> : null}
+
+      {rows.length === 0 && !loading ? (
+        <EmptyState
+          title="No suppliers yet"
+          detail="Add suppliers to track purchase orders and inventory restocks."
+          actionLabel="Add your first supplier"
+          actionHref="?new=1"
+        />
+      ) : null}
 
       <section className="space-y-4">
         <h2 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Active partners</h2>

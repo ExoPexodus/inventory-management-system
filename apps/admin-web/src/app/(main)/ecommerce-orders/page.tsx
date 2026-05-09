@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Badge, PageHeader, Panel, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui/primitives";
+import { Badge, EmptyState, PageHeader, Panel, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui/primitives";
 import { RequiresBusinessType } from "@/components/dashboard/RequiresBusinessType";
 
 type OrderSummary = {
@@ -263,7 +263,10 @@ function EcommerceOrdersPageInner() {
         ) : loadErr ? (
           <p className="px-6 py-8 text-center text-sm text-error">{loadErr}</p>
         ) : orders.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-on-surface-variant">No orders yet.</p>
+          <EmptyState
+            title="No online orders yet"
+            detail="Customer orders from your storefront will appear here."
+          />
         ) : (
           <table className="min-w-full text-left text-sm">
             <thead>

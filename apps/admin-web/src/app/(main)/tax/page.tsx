@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Badge,
+  EmptyState,
   PageHeader,
   Panel,
   PrimaryButton,
@@ -29,6 +31,7 @@ type TaxRule = {
 };
 
 export default function TaxPage() {
+  const newParams = useSearchParams();
   const [regions, setRegions] = useState<TaxRegion[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadErr, setLoadErr] = useState<string | null>(null);
@@ -38,6 +41,14 @@ export default function TaxPage() {
 
   // Create region form
   const [showRegionForm, setShowRegionForm] = useState(false);
+
+  useEffect(() => {
+    if (newParams.get("new") === "1") {
+      setShowRegionForm(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newParams]);
+
   const [regionName, setRegionName] = useState("");
   const [regionCountry, setRegionCountry] = useState("");
   const [regionState, setRegionState] = useState("");
@@ -261,7 +272,12 @@ export default function TaxPage() {
         ) : loadErr ? (
           <p className="px-6 py-8 text-center text-sm text-error">{loadErr}</p>
         ) : regions.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-on-surface-variant">No tax regions configured.</p>
+          <EmptyState
+            title="No tax regions yet"
+            detail="Configure tax rules so the right rates apply at checkout."
+            actionLabel="Add a tax region"
+            actionHref="?new=1"
+          />
         ) : (
           <div className="divide-y divide-outline-variant/10">
             {regions.map((region) => (

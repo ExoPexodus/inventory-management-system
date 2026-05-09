@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Badge,
+  EmptyState,
   PageHeader,
   Panel,
   PrimaryButton,
@@ -39,6 +41,7 @@ type PaymentConfig = {
 // ---------------------------------------------------------------------------
 
 function ChannelsTab() {
+  const newParams = useSearchParams();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -52,6 +55,13 @@ function ChannelsTab() {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [statusErr, setStatusErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (newParams.get("new") === "1") {
+      setShowForm(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newParams]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -212,7 +222,12 @@ function ChannelsTab() {
         {loading ? (
           <p className="px-6 py-8 text-sm text-on-surface-variant">Loading…</p>
         ) : channels.length === 0 ? (
-          <p className="px-6 py-8 text-center text-sm text-on-surface-variant">No channels yet.</p>
+          <EmptyState
+            title="No channels yet"
+            detail="Channels are sales surfaces (your storefront, Shopify, etc.). Create one to start selling online."
+            actionLabel="Set up your first channel"
+            actionHref="?new=1"
+          />
         ) : (
           <table className="min-w-full text-left text-sm">
             <thead>

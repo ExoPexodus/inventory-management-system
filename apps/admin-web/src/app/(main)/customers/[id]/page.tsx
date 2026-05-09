@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import {
+  EmptyState,
   PageHeader,
   Panel,
   PrimaryButton,
@@ -114,7 +115,11 @@ export default function CustomerProfilePage() {
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
               {customer.transactions.length === 0 ? (
-                <tr><td colSpan={4} className="px-6 py-4 text-sm text-on-surface-variant">No transactions yet.</td></tr>
+                <tr>
+                  <td colSpan={4} className="px-6 py-10">
+                    <EmptyState title="No transactions yet" detail="This customer hasn't made any purchases." />
+                  </td>
+                </tr>
               ) : (
                 customer.transactions.map((tx) => (
                   <tr key={tx.id} className="hover:bg-surface-container-low/50">

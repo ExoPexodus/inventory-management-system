@@ -35,6 +35,13 @@ export default function CustomersPage() {
   const [groupFilter, setGroupFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
+  useEffect(() => {
+    if (params.get("new") === "1") {
+      setShowCreate(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
   async function fetchData() {
     setLoading(true);
     const sp = new URLSearchParams();

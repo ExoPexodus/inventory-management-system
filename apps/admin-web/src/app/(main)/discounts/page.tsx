@@ -1,8 +1,10 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Badge,
+  EmptyState,
   ErrorState,
   LoadingRow,
   PageHeader,
@@ -52,11 +54,19 @@ function typeLabel(type: Discount["discount_type"]): string {
 }
 
 export default function DiscountsPage() {
+  const newParams = useSearchParams();
   const [items, setItems] = useState<Discount[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    if (newParams.get("new") === "1") {
+      setShowForm(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newParams]);
 
   // form state
   const [fname, setFname] = useState("");
@@ -409,11 +419,13 @@ export default function DiscountsPage() {
                 <LoadingRow colSpan={8} label="Loading discounts…" />
               ) : items.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={8}
-                    className="px-6 py-12 text-center text-sm text-on-surface-variant"
-                  >
-                    No discounts yet — create one above.
+                  <td colSpan={8} className="px-6 py-10">
+                    <EmptyState
+                      title="No discounts yet"
+                      detail="Create promo codes or automatic discounts to drive sales."
+                      actionLabel="Create your first discount"
+                      actionHref="?new=1"
+                    />
                   </td>
                 </tr>
               ) : (

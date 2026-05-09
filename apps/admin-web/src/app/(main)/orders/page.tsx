@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Avatar,
+  EmptyState,
   ErrorState,
   LoadingRow,
   PageHeader,
@@ -268,8 +269,11 @@ export default function OrdersPage() {
               ) : null}
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center text-sm text-on-surface-variant">
-                    No transactions for this page.
+                  <td colSpan={7} className="px-6 py-10">
+                    <EmptyState
+                      title="No transactions yet"
+                      detail="Sales will appear here when your team starts processing orders."
+                    />
                   </td>
                 </tr>
               ) : null}
