@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Avatar,
   ErrorState,
   LoadingRow,
   PageHeader,
   Pagination,
-  SearchBar,
   SelectInput,
 } from "@/components/ui/primitives";
 import { DateInput } from "@/components/ui/DateInput";
@@ -58,8 +58,9 @@ function statusBadgeClasses(status: string): string {
 
 export default function OrdersPage() {
   const currency = useCurrency();
+  const params = useSearchParams();
+  const q = params.get("q") ?? "";
   const [status, setStatus] = useState("");
-  const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [page, setPage] = useState(1);
@@ -180,22 +181,14 @@ export default function OrdersPage() {
         title="Synced transactions"
         subtitle="Cursor-paginated register with shift health and exportable audit trail."
         action={
-          <>
-            <SearchBar
-              className="min-w-[14rem]"
-              placeholder="Search SKU / product…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={exportAuditReport}
-              className="ink-gradient inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-on-primary shadow-sm transition hover:opacity-90"
-            >
-              <span className="material-symbols-outlined text-lg">download</span>
-              Export audit report
-            </button>
-          </>
+          <button
+            type="button"
+            onClick={exportAuditReport}
+            className="ink-gradient inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-on-primary shadow-sm transition hover:opacity-90"
+          >
+            <span className="material-symbols-outlined text-lg">download</span>
+            Export audit report
+          </button>
         }
       />
 

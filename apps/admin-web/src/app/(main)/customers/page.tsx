@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   EmptyState,
@@ -8,7 +9,6 @@ import {
   PageHeader,
   Panel,
   PrimaryButton,
-  SearchBar,
   SecondaryButton,
   SelectInput,
   TextInput,
@@ -27,10 +27,11 @@ type Customer = {
 };
 
 export default function CustomersPage() {
+  const params = useSearchParams();
+  const q = params.get("q") ?? "";
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [groups, setGroups] = useState<CustomerGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
   const [groupFilter, setGroupFilter] = useState("");
   const [showCreate, setShowCreate] = useState(false);
 
@@ -65,12 +66,6 @@ export default function CustomersPage() {
       />
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant/10 bg-surface-container-low p-4 shadow-sm">
-        <SearchBar
-          className="min-w-[14rem] flex-1"
-          placeholder="Search name or phone"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
         <SelectInput
           className="min-w-[10rem]"
           value={groupFilter}

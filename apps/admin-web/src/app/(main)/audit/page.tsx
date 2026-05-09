@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Avatar,
   Badge,
   PageHeader,
   Panel,
   SecondaryButton,
-  SearchBar,
 } from "@/components/ui/primitives";
 import { DateInput } from "@/components/ui/DateInput";
 
@@ -32,7 +32,8 @@ function actionTone(action: string): "default" | "good" | "warn" | "danger" {
 }
 
 export default function AuditPage() {
-  const [q, setQ] = useState("");
+  const params = useSearchParams();
+  const q = params.get("q") ?? "";
   const [debounced, setDebounced] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -102,7 +103,6 @@ export default function AuditPage() {
       />
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant/10 bg-surface-container-low p-4 shadow-sm">
-        <SearchBar className="min-w-[14rem] flex-1" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search actor, action, resource…" />
         <DateInput className="min-w-[10rem]" value={fromDate} onChange={setFromDate} placeholder="From date" />
         <DateInput className="min-w-[10rem]" value={toDate} onChange={setToDate} placeholder="To date" />
         {(fromDate || toDate) && (

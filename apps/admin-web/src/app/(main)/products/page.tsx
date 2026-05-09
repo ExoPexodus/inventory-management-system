@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   Avatar,
   Badge,
@@ -10,7 +11,6 @@ import {
   PageHeader,
   Panel,
   PrimaryButton,
-  SearchBar,
   SecondaryButton,
   SelectInput,
   TextInput,
@@ -65,9 +65,10 @@ function statusTone(s: string): "default" | "good" | "warn" | "danger" {
 
 export default function ProductsPage() {
   const currency = useCurrency();
+  const params = useSearchParams();
+  const q = params.get("q") ?? "";
   const [rows, setRows] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
   const [status, setStatus] = useState("");
   const [category, setCategory] = useState("");
   const [editProduct, setEditProduct] = useState<Product | null>(null);
@@ -151,7 +152,6 @@ export default function ProductsPage() {
       />
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-outline-variant/10 bg-surface-container-low p-4 shadow-sm">
-        <SearchBar className="min-w-[14rem] flex-1" placeholder="Search name or SKU" value={q} onChange={(e) => setQ(e.target.value)} />
         <SelectInput
           className="min-w-[9rem]"
           value={status}
