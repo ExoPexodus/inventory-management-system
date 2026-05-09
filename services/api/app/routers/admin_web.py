@@ -21,6 +21,7 @@ from app.db.admin_deps_db import get_db_admin
 from app.services.audit_service import write_audit
 from app.services.localisation import effective_timezone
 from app.models import (
+    Order,
     Product,
     ProductGroup,
     PurchaseOrder,
@@ -337,7 +338,9 @@ class DashboardSummaryOut(BaseModel):
     tenant_count: int
     avg_transaction_cents: int = 0
     pending_order_count: int = 0
+    pending_ecommerce_order_count: int = 0
     revenue_delta_pct: float = 0.0
+    business_type: str = "retail"
     recent_activity: list[RecentActivityItem]
 
 
@@ -386,7 +389,18 @@ def dashboard_summary(
         ).scalar_one()
     )
 
-    tz = effective_timezone(None, db.get(Tenant, tenant_id))
+    pending_ecommerce_order_count = int(
+        db.execute(
+            select(func.count())
+            .select_from(Order)
+            .where(Order.tenant_id == tenant_id, Order.fulfillment_status == "pending")
+        ).scalar_one()
+    )
+
+    tenant_row = db.get(Tenant, tenant_id)
+    business_type = tenant_row.business_type if tenant_row else "retail"
+
+    tz = effective_timezone(None, tenant_row)
     local_now = datetime.now(ZoneInfo(tz))
     period_start = (local_now - timedelta(days=30)).replace(
         hour=0, minute=0, second=0, microsecond=0
@@ -457,7 +471,9 @@ def dashboard_summary(
         tenant_count=tenant_count,
         avg_transaction_cents=avg_transaction_cents,
         pending_order_count=pending_order_count,
+        pending_ecommerce_order_count=pending_ecommerce_order_count,
         revenue_delta_pct=revenue_delta_pct,
+        business_type=business_type,
         recent_activity=items,
     )
 
