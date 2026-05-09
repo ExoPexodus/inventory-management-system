@@ -198,7 +198,7 @@ const NEW_ENTRY_ITEMS: NewEntryItem[] = [
   { href: "/entries",            label: "Create Product",  icon: "inventory_2", allowedTypes: ALL_TYPES_NE },
   { href: "/customers?new=1",    label: "Create Customer", icon: "person_add",  allowedTypes: ALL_TYPES_NE },
   { href: "/shops/new",          label: "Create Shop",     icon: "store",       allowedTypes: ["retail", "hybrid"] },
-  { href: "/channels?new=1",     label: "Create Channel",  icon: "storefront",  allowedTypes: ["online", "hybrid"] },
+  { href: "/channels/setup",     label: "Create Channel",  icon: "storefront",  allowedTypes: ["online", "hybrid"] },
   { href: "/discounts?new=1",    label: "Create Discount", icon: "local_offer", allowedTypes: ["online", "hybrid"] },
 ];
 

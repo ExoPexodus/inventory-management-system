@@ -90,7 +90,7 @@ export default async function OverviewPage() {
       key: "first_channel",
       label: "Set up a sales channel",
       detail: "Channels connect your inventory to storefronts and other selling surfaces.",
-      href: "/channels?new=1",
+      href: "/channels/setup",
       icon: "hub",
       types: ["online", "hybrid"],
       done: d.has_first_channel ?? false,

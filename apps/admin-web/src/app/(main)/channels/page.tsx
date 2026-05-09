@@ -56,12 +56,25 @@ function ChannelsTab() {
   const [err, setErr] = useState<string | null>(null);
   const [statusErr, setStatusErr] = useState<string | null>(null);
 
+  const [createdBanner, setCreatedBanner] = useState<string | null>(null);
+  const [paymentErrorBanner, setPaymentErrorBanner] = useState(false);
+
   useEffect(() => {
     if (newParams.get("new") === "1") {
       setShowForm(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newParams]);
+
+  useEffect(() => {
+    const created = newParams.get("created");
+    const paymentErr = newParams.get("payment_error");
+    if (created) {
+      setCreatedBanner(created);
+      if (paymentErr === "1") setPaymentErrorBanner(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -218,6 +231,29 @@ function ChannelsTab() {
         </p>
       )}
 
+      {createdBanner && !paymentErrorBanner && (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-green-400/30 bg-green-50 px-5 py-3">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-xl text-green-600">check_circle</span>
+            <p className="text-sm font-semibold text-green-900">Channel created successfully — your storefront is ready to connect.</p>
+          </div>
+          <button type="button" onClick={() => setCreatedBanner(null)} className="text-green-700 hover:opacity-70">
+            <span className="material-symbols-outlined text-xl">close</span>
+          </button>
+        </div>
+      )}
+      {paymentErrorBanner && (
+        <div className="mb-4 flex items-center justify-between rounded-xl border border-amber-400/30 bg-amber-50 px-5 py-3">
+          <div className="flex items-center gap-3">
+            <span className="material-symbols-outlined text-xl text-amber-600">warning</span>
+            <p className="text-sm font-semibold text-amber-900">Your channel was created, but payment setup failed. Configure it from the channel settings below.</p>
+          </div>
+          <button type="button" onClick={() => setPaymentErrorBanner(false)} className="text-amber-700 hover:opacity-70">
+            <span className="material-symbols-outlined text-xl">close</span>
+          </button>
+        </div>
+      )}
+
       <Panel title="Channels" subtitle={`${channels.length} channel${channels.length === 1 ? "" : "s"}`} noPad>
         {loading ? (
           <p className="px-6 py-8 text-sm text-on-surface-variant">Loading…</p>
@@ -226,7 +262,7 @@ function ChannelsTab() {
             title="No channels yet"
             detail="Channels are sales surfaces (your storefront, Shopify, etc.). Create one to start selling online."
             actionLabel="Set up your first channel"
-            actionHref="?new=1"
+            actionHref="/channels/setup"
           />
         ) : (
           <table className="min-w-full text-left text-sm">
