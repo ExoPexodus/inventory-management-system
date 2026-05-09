@@ -21,6 +21,7 @@ from app.db.admin_deps_db import get_db_admin
 from app.services.audit_service import write_audit
 from app.services.localisation import effective_timezone
 from app.models import (
+    Channel,
     Order,
     Product,
     ProductGroup,
@@ -31,6 +32,7 @@ from app.models import (
     StockMovement,
     Supplier,
     Tenant,
+    TenantEmailConfig,
     Transaction,
     TransactionLine,
     User,
@@ -341,6 +343,11 @@ class DashboardSummaryOut(BaseModel):
     pending_ecommerce_order_count: int = 0
     revenue_delta_pct: float = 0.0
     business_type: str = "retail"
+    has_first_product: bool = False
+    has_first_shop: bool = False
+    has_first_channel: bool = False
+    has_payment_configured: bool = False
+    has_email_configured: bool = False
     recent_activity: list[RecentActivityItem]
 
 
@@ -399,6 +406,38 @@ def dashboard_summary(
 
     tenant_row = db.get(Tenant, tenant_id)
     business_type = tenant_row.business_type if tenant_row else "retail"
+
+    # Setup checklist booleans
+    has_first_product = product_count > 0
+    has_first_shop = shop_count > 0
+
+    has_first_channel = bool(db.execute(
+        select(func.count())
+        .select_from(Channel)
+        .where(
+            Channel.tenant_id == tenant_id,
+            Channel.type != "pos",
+            Channel.status == "active",
+        )
+    ).scalar_one())
+
+    has_payment_configured = bool(db.execute(
+        select(func.count())
+        .select_from(Channel)
+        .where(
+            Channel.tenant_id == tenant_id,
+            Channel.config["payment_provider"].as_string().isnot(None),
+        )
+    ).scalar_one())
+
+    has_email_configured = bool(db.execute(
+        select(func.count())
+        .select_from(TenantEmailConfig)
+        .where(
+            TenantEmailConfig.tenant_id == tenant_id,
+            TenantEmailConfig.is_active.is_(True),
+        )
+    ).scalar_one())
 
     tz = effective_timezone(None, tenant_row)
     local_now = datetime.now(ZoneInfo(tz))
@@ -474,6 +513,11 @@ def dashboard_summary(
         pending_ecommerce_order_count=pending_ecommerce_order_count,
         revenue_delta_pct=revenue_delta_pct,
         business_type=business_type,
+        has_first_product=has_first_product,
+        has_first_shop=has_first_shop,
+        has_first_channel=has_first_channel,
+        has_payment_configured=has_payment_configured,
+        has_email_configured=has_email_configured,
         recent_activity=items,
     )
 
