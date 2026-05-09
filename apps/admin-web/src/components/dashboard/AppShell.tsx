@@ -5,6 +5,10 @@ import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { LogoutButton } from "@/components/dashboard/LogoutButton";
 import { useHasPermission } from "@/lib/auth/user-context";
+import { BusinessTypeProvider, useBusinessType, typeAllows } from "@/lib/business-type-context";
+import type { BusinessType } from "@/lib/business-type-context";
+import { NavGroup } from "@/components/dashboard/NavGroup";
+import type { NavItem } from "@/components/dashboard/NavGroup";
 
 type NotifItem = {
   id: string;
@@ -88,32 +92,107 @@ const ROOT_ROUTES = new Set([
   "tax",
 ]);
 
-const NAV = [
-  { href: "/overview",        label: "Dashboard",       icon: "dashboard",       permission: null },
-  { href: "/inventory",       label: "Inventory",       icon: "inventory_2",     permission: "inventory:read" },
-  { href: "/team",            label: "Team",            icon: "groups",          permission: "staff:read" },
-  { href: "/orders",          label: "Orders",          icon: "receipt_long",    permission: "sales:read" },
-  { href: "/analytics",       label: "Analytics",       icon: "analytics",       permission: "analytics:read" },
-  { href: "/suppliers",       label: "Suppliers",       icon: "local_shipping",  permission: "procurement:read" },
-  { href: "/products",        label: "Products",        icon: "category",        permission: "catalog:read" },
-  { href: "/purchase-orders", label: "Purchase Orders", icon: "shopping_bag",    permission: "procurement:read" },
-  { href: "/shifts",          label: "Shifts",          icon: "event_note",      permission: "operations:read" },
-  { href: "/reconciliation",  label: "Reconciliation",  icon: "account_balance", permission: "operations:read" },
-  { href: "/audit",           label: "Audit Log",       icon: "policy",          permission: "audit:read" },
-  { href: "/reports",         label: "Reports",         icon: "description",     permission: "reports:read" },
-  { href: "/channels",         label: "Channels",         icon: "storefront",      permission: "channels:manage" },
-  { href: "/ecommerce-orders", label: "E-comm Orders",   icon: "orders",          permission: "orders:manage" },
-  { href: "/inventory-pools", label: "Inventory Pools", icon: "layers",          permission: "inventory_pools:manage" },
-  { href: "/tax",             label: "Tax",             icon: "receipt",         permission: "tax:manage" },
-  { href: "/discounts",       label: "Discounts",       icon: "local_offer",     permission: "discounts:read" },
-  { href: "/ecommerce",       label: "E-commerce",      icon: "shopping_cart",   permission: "settings:read" },
-  { href: "/integrations",    label: "Integrations",    icon: "hub",             permission: "integrations:read" },
-  { href: "/billing",         label: "Billing",         icon: "payments",        permission: "settings:read" },
-  { href: "/apps",            label: "Get Apps",        icon: "install_mobile",  permission: "settings:read" },
-  { href: "/settings",        label: "Settings",        icon: "settings",        permission: "settings:read" },
+type NavItemDef = NavItem & {
+  permission: string | null;
+  allowedTypes: BusinessType[];   // empty = all types
+};
+
+const ALL_TYPES: BusinessType[] = ["online", "retail", "hybrid"];
+
+const HOME: NavItemDef = {
+  href: "/overview", label: "Dashboard", icon: "dashboard", permission: null, allowedTypes: ALL_TYPES,
+};
+
+interface NavGroupDef {
+  label: string;
+  items: NavItemDef[];
+}
+
+const NAV_GROUPS: NavGroupDef[] = [
+  {
+    label: "Sell",
+    items: [
+      { href: "/orders",          label: "Orders",         icon: "receipt_long", permission: "sales:read",      allowedTypes: ["retail", "hybrid"] },
+      { href: "/ecommerce-orders",label: "E-comm Orders",  icon: "orders",       permission: "orders:manage",   allowedTypes: ["online", "hybrid"] },
+      { href: "/channels",        label: "Channels",       icon: "storefront",   permission: "channels:manage", allowedTypes: ["online", "hybrid"] },
+      { href: "/discounts",       label: "Discounts",      icon: "local_offer",  permission: "discounts:read",  allowedTypes: ALL_TYPES },
+      { href: "/tax",             label: "Tax",            icon: "receipt",      permission: "tax:manage",      allowedTypes: ALL_TYPES },
+    ],
+  },
+  {
+    label: "Catalog",
+    items: [
+      { href: "/products",        label: "Products",        icon: "category",       permission: "catalog:read",     allowedTypes: ALL_TYPES },
+      { href: "/purchase-orders", label: "Purchase Orders", icon: "shopping_bag",   permission: "procurement:read", allowedTypes: ALL_TYPES },
+      { href: "/suppliers",       label: "Suppliers",       icon: "local_shipping", permission: "procurement:read", allowedTypes: ALL_TYPES },
+    ],
+  },
+  {
+    label: "Stock",
+    items: [
+      { href: "/inventory",       label: "Inventory",       icon: "inventory_2",     permission: "inventory:read",         allowedTypes: ALL_TYPES },
+      { href: "/inventory-pools", label: "Inventory Pools", icon: "layers",          permission: "inventory_pools:manage", allowedTypes: ["online", "hybrid"] },
+      { href: "/reconciliation",  label: "Reconciliation",  icon: "account_balance", permission: "operations:read",        allowedTypes: ["retail", "hybrid"] },
+    ],
+  },
+  {
+    label: "Insights",
+    items: [
+      { href: "/analytics", label: "Analytics", icon: "analytics",   permission: "analytics:read", allowedTypes: ALL_TYPES },
+      { href: "/reports",   label: "Reports",   icon: "description", permission: "reports:read",   allowedTypes: ALL_TYPES },
+      { href: "/audit",     label: "Audit Log", icon: "policy",      permission: "audit:read",     allowedTypes: ALL_TYPES },
+    ],
+  },
+  {
+    label: "People",
+    items: [
+      { href: "/team",   label: "Team",   icon: "groups",     permission: "staff:read",      allowedTypes: ALL_TYPES },
+      { href: "/shifts", label: "Shifts", icon: "event_note", permission: "operations:read", allowedTypes: ["retail", "hybrid"] },
+    ],
+  },
+  {
+    label: "Setup",
+    items: [
+      { href: "/ecommerce",    label: "E-commerce",   icon: "shopping_cart",  permission: "settings:read",     allowedTypes: ["online", "hybrid"] },
+      { href: "/integrations", label: "Integrations", icon: "hub",            permission: "integrations:read", allowedTypes: ALL_TYPES },
+      { href: "/billing",      label: "Billing",      icon: "payments",       permission: "settings:read",     allowedTypes: ALL_TYPES },
+      { href: "/apps",         label: "Get Apps",     icon: "install_mobile", permission: "settings:read",     allowedTypes: ALL_TYPES },
+      { href: "/settings",     label: "Settings",     icon: "settings",       permission: "settings:read",     allowedTypes: ALL_TYPES },
+    ],
+  },
 ];
 
+const EXPANDED_GROUPS_KEY = "nav-expanded-groups";
+
+function readExpandedGroups(): Record<string, boolean> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(EXPANDED_GROUPS_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+
+function writeExpandedGroups(state: Record<string, boolean>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(EXPANDED_GROUPS_KEY, JSON.stringify(state));
+  } catch {
+    // ignore
+  }
+}
+
 export function AppShell({ children, current }: { children: ReactNode; current?: string }) {
+  return (
+    <BusinessTypeProvider>
+      <AppShellInner current={current}>{children}</AppShellInner>
+    </BusinessTypeProvider>
+  );
+}
+
+function AppShellInner({ children, current }: { children: ReactNode; current?: string }) {
   const [notifOpen, setNotifOpen] = useState(false);
   const { items: notifItems, unread, loading: notifLoading, markAllRead, markRead } = useNotifications(notifOpen);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -139,8 +218,34 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
     ? activePathRaw.slice(tenantPrefix.length) || "/"
     : activePathRaw;
 
+  const { flags, loading: btLoading } = useBusinessType();
   const hasPermission = useHasPermission;
-  const visibleNav = NAV.filter((item) => !item.permission || hasPermission(item.permission));
+
+  // Compute which group contains the active page (auto-expand)
+  const activeGroupLabel = NAV_GROUPS.find((g) =>
+    g.items.some((i) => i.href === activePath)
+  )?.label ?? null;
+
+  const filterItem = (item: NavItemDef): boolean => {
+    if (item.permission && !hasPermission(item.permission)) return false;
+    return typeAllows(flags, item.allowedTypes);
+  };
+
+  const homeVisible = filterItem(HOME);
+  const visibleGroups = NAV_GROUPS
+    .map((g) => ({ ...g, items: g.items.filter(filterItem) }))
+    .filter((g) => g.items.length > 0);
+
+  const expandedFromStorage = typeof window !== "undefined" ? readExpandedGroups() : {};
+  const handleGroupToggle = (label: string, expanded: boolean) => {
+    const next = { ...readExpandedGroups(), [label]: expanded };
+    writeExpandedGroups(next);
+  };
+  const isExpanded = (label: string): boolean => {
+    if (label === activeGroupLabel) return true;
+    if (label in expandedFromStorage) return Boolean(expandedFromStorage[label]);
+    return label === "Sell"; // default
+  };
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -150,26 +255,45 @@ export function AppShell({ children, current }: { children: ReactNode; current?:
           <h1 className="text-base font-bold leading-tight text-on-surface">The Tactile Archive</h1>
           <p className="mt-0.5 text-[9px] uppercase tracking-widest text-on-surface-variant opacity-60">Management Suite</p>
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 pb-2">
-          {visibleNav.map((item) => {
-            const active = activePath === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={`${tenantPrefix}${item.href}`}
-                className={`flex items-center gap-3 rounded-lg px-4 py-2.5 text-[13px] transition-colors duration-150 ${
-                  active
-                    ? "bg-primary/10 font-bold text-primary"
-                    : "font-medium text-on-surface-variant hover:bg-surface-container-lowest/60 hover:text-on-surface"
-                }`}
-              >
-                <span className={`material-symbols-outlined text-[20px] leading-none ${active ? "" : "opacity-70"}`} aria-hidden="true">
-                  {item.icon}
-                </span>
-                {item.label}
-              </Link>
-            );
-          })}
+        <nav className="flex-1 space-y-2 overflow-y-auto px-3 pb-2">
+          {btLoading && !flags ? (
+            <div className="space-y-1.5 px-1">
+              {[0,1,2,3,4,5].map((i) => (
+                <div key={i} className="h-9 animate-pulse rounded-lg bg-surface-container-lowest/60" />
+              ))}
+            </div>
+          ) : (
+            <>
+              {homeVisible && (
+                <div className="space-y-0.5">
+                  <Link
+                    href={`${tenantPrefix}${HOME.href}`}
+                    className={`flex items-center gap-3 rounded-lg px-4 py-2.5 text-[13px] transition-colors duration-150 ${
+                      activePath === HOME.href
+                        ? "bg-primary/10 font-bold text-primary"
+                        : "font-medium text-on-surface-variant hover:bg-surface-container-lowest/60 hover:text-on-surface"
+                    }`}
+                  >
+                    <span className={`material-symbols-outlined text-[20px] leading-none ${activePath === HOME.href ? "" : "opacity-70"}`} aria-hidden="true">
+                      {HOME.icon}
+                    </span>
+                    {HOME.label}
+                  </Link>
+                </div>
+              )}
+              {visibleGroups.map((g) => (
+                <NavGroup
+                  key={g.label}
+                  label={g.label}
+                  items={g.items}
+                  activePath={activePath}
+                  tenantPrefix={tenantPrefix}
+                  initiallyExpanded={isExpanded(g.label)}
+                  onToggle={(expanded) => handleGroupToggle(g.label, expanded)}
+                />
+              ))}
+            </>
+          )}
         </nav>
         <div className="shrink-0 space-y-3 px-3 pb-4 pt-2">
           <div ref={entryMenuRef} className="relative">
