@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { getSearchConfig } from "@/lib/search-context";
 import { LogoutButton } from "@/components/dashboard/LogoutButton";
 import { useHasPermission } from "@/lib/auth/user-context";
 import { BusinessTypeProvider, useBusinessType, typeAllows } from "@/lib/business-type-context";
@@ -184,6 +185,70 @@ function writeExpandedGroups(state: Record<string, boolean>): void {
   }
 }
 
+type NewEntryItem = {
+  href: string;
+  label: string;
+  icon: string;
+  allowedTypes: BusinessType[];
+};
+
+const ALL_TYPES_NE: BusinessType[] = ["online", "retail", "hybrid"];
+
+const NEW_ENTRY_ITEMS: NewEntryItem[] = [
+  { href: "/entries",            label: "Create Product",  icon: "inventory_2", allowedTypes: ALL_TYPES_NE },
+  { href: "/customers?new=1",    label: "Create Customer", icon: "person_add",  allowedTypes: ALL_TYPES_NE },
+  { href: "/shops/new",          label: "Create Shop",     icon: "store",       allowedTypes: ["retail", "hybrid"] },
+  { href: "/channels?new=1",     label: "Create Channel",  icon: "storefront",  allowedTypes: ["online", "hybrid"] },
+  { href: "/discounts?new=1",    label: "Create Discount", icon: "local_offer", allowedTypes: ["online", "hybrid"] },
+];
+
+function HeaderSearch() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const cfg = getSearchConfig(pathname);
+  const [value, setValue] = useState(params.get(cfg?.paramName ?? "q") ?? "");
+
+  // Sync local state from URL when navigating
+  useEffect(() => {
+    setValue(params.get(cfg?.paramName ?? "q") ?? "");
+  }, [params, cfg?.paramName]);
+
+  // Debounce push to URL
+  useEffect(() => {
+    if (!cfg) return;
+    const handle = window.setTimeout(() => {
+      const next = new URLSearchParams(params.toString());
+      if (value.trim()) next.set(cfg.paramName, value.trim());
+      else next.delete(cfg.paramName);
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname);
+    }, 300);
+    return () => window.clearTimeout(handle);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+
+  if (!cfg) return null;
+
+  return (
+    <div className="relative w-full max-w-sm">
+      <span
+        className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant"
+        aria-hidden="true"
+      >
+        search
+      </span>
+      <input
+        className="w-full rounded-full border-none bg-surface-container-low py-2 pl-10 pr-4 text-sm text-on-surface outline-none placeholder:text-on-surface-variant focus:ring-1 focus:ring-primary"
+        placeholder={cfg.placeholder}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        type="text"
+      />
+    </div>
+  );
+}
+
 export function AppShell({ children, current }: { children: ReactNode; current?: string }) {
   return (
     <BusinessTypeProvider>
@@ -219,6 +284,9 @@ function AppShellInner({ children, current }: { children: ReactNode; current?: s
     : activePathRaw;
 
   const { flags, loading: btLoading } = useBusinessType();
+  const visibleNewEntryItems = NEW_ENTRY_ITEMS.filter((item) =>
+    typeAllows(flags, item.allowedTypes)
+  );
   const hasPermission = useHasPermission;
 
   // Compute which group contains the active page (auto-expand)
@@ -307,22 +375,19 @@ function AppShellInner({ children, current }: { children: ReactNode; current?: s
             </button>
             {entryMenuOpen && (
               <div className="absolute bottom-full left-0 right-0 mb-1 overflow-hidden rounded-lg border border-outline-variant/10 bg-surface-container-lowest shadow-lg">
-                <Link
-                  href={`${tenantPrefix}/entries`}
-                  onClick={() => setEntryMenuOpen(false)}
-                  className="flex items-center gap-2 px-4 py-3 text-[13px] font-medium text-on-surface hover:bg-surface-container"
-                >
-                  <span className="material-symbols-outlined text-[18px]" aria-hidden="true">inventory_2</span>
-                  Create Product
-                </Link>
-                <Link
-                  href={`${tenantPrefix}/shops/new`}
-                  onClick={() => setEntryMenuOpen(false)}
-                  className="flex items-center gap-2 border-t border-outline-variant/10 px-4 py-3 text-[13px] font-medium text-on-surface hover:bg-surface-container"
-                >
-                  <span className="material-symbols-outlined text-[18px]" aria-hidden="true">store</span>
-                  Create Shop
-                </Link>
+                {visibleNewEntryItems.map((item, idx) => (
+                  <Link
+                    key={item.href}
+                    href={`${tenantPrefix}${item.href}`}
+                    onClick={() => setEntryMenuOpen(false)}
+                    className={`flex items-center gap-2 px-4 py-3 text-[13px] font-medium text-on-surface hover:bg-surface-container ${
+                      idx > 0 ? "border-t border-outline-variant/10" : ""
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[18px]" aria-hidden="true">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                ))}
               </div>
             )}
           </div>
@@ -344,14 +409,7 @@ function AppShellInner({ children, current }: { children: ReactNode; current?: s
         {/* Top bar */}
         <header className="sticky top-0 z-40 flex h-20 items-center justify-between border-b border-outline-variant/20 bg-background/80 px-8 backdrop-blur-md">
           <div className="flex flex-1 items-center">
-            <div className="relative w-full max-w-sm">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-lg text-on-surface-variant" aria-hidden="true">search</span>
-              <input
-                className="w-full rounded-full border-none bg-surface-container-low py-2 pl-10 pr-4 text-sm text-on-surface outline-none placeholder:text-on-surface-variant focus:ring-1 focus:ring-primary"
-                placeholder="Search archive..."
-                type="text"
-              />
-            </div>
+            <HeaderSearch />
           </div>
           <div className="flex items-center gap-3">
             <button
