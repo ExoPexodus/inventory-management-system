@@ -5,13 +5,14 @@ export interface PageSearchConfig {
   paramName: string;
 }
 
+// Inventory and ecommerce-orders are intentionally absent — they have no text-search
+// filter today. Adding them would render a header input that doesn't filter the list.
+// Add them back here when they get q-filter wiring on the page itself.
 const PAGE_SEARCH_CONFIG: Record<string, PageSearchConfig> = {
-  "/products":         { placeholder: "Search products...",      paramName: "q" },
-  "/inventory":        { placeholder: "Search inventory...",     paramName: "q" },
-  "/orders":           { placeholder: "Search transactions...",  paramName: "q" },
-  "/ecommerce-orders": { placeholder: "Search online orders...", paramName: "q" },
-  "/customers":        { placeholder: "Search customers...",     paramName: "q" },
-  "/audit":            { placeholder: "Search audit events...",  paramName: "q" },
+  "/products":  { placeholder: "Search products...",     paramName: "q" },
+  "/orders":    { placeholder: "Search transactions...", paramName: "q" },
+  "/customers": { placeholder: "Search customers...",    paramName: "q" },
+  "/audit":     { placeholder: "Search audit events...", paramName: "q" },
 };
 
 const ROOT_ROUTES = new Set([
