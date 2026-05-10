@@ -1,7 +1,7 @@
 """Admin endpoints for e-commerce orders (channel orders, not POS transactions)."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, time
 from typing import Annotated
 from uuid import UUID
 
@@ -99,6 +99,8 @@ def list_orders(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     order_status: str | None = Query(default=None, alias="status"),
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD inclusive lower bound"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD inclusive upper bound"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[Order]:
@@ -106,6 +108,18 @@ def list_orders(
     q = select(Order).where(Order.tenant_id == tenant_id).order_by(Order.placed_at.desc())
     if order_status:
         q = q.where(Order.status == order_status)
+    if date_from:
+        try:
+            d = datetime.strptime(date_from, "%Y-%m-%d").date()
+            q = q.where(Order.placed_at >= datetime.combine(d, time.min))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_from must be YYYY-MM-DD")
+    if date_to:
+        try:
+            d = datetime.strptime(date_to, "%Y-%m-%d").date()
+            q = q.where(Order.placed_at <= datetime.combine(d, time.max))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_to must be YYYY-MM-DD")
     q = q.limit(limit).offset(offset)
     return list(db.execute(q).scalars().all())
 

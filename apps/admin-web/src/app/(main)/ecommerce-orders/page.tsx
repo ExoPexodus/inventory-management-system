@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Badge, EmptyState, PageHeader, Panel, PrimaryButton, SecondaryButton, TextInput } from "@/components/ui/primitives";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { RequiresBusinessType } from "@/components/dashboard/RequiresBusinessType";
 
 type OrderSummary = {
@@ -183,12 +184,18 @@ function EcommerceOrdersPageInner() {
   const [selectedOrder, setSelectedOrder] = useState<OrderDetail | null>(null);
   const [refundOrder, setRefundOrder] = useState<OrderDetail | null>(null);
   const [statusFilter, setStatusFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
     setLoadErr(null);
     try {
-      const qs = statusFilter ? `?status=${statusFilter}` : "";
+      const sp = new URLSearchParams();
+      if (statusFilter) sp.set("status", statusFilter);
+      if (dateFrom) sp.set("date_from", dateFrom);
+      if (dateTo) sp.set("date_to", dateTo);
+      const qs = sp.toString() ? `?${sp.toString()}` : "";
       const r = await fetch(`/api/ims/v1/admin/ecommerce-orders${qs}`);
       if (!r.ok) throw new Error(`Failed (${r.status})`);
       setOrders((await r.json()) as OrderSummary[]);
@@ -197,7 +204,7 @@ function EcommerceOrdersPageInner() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, dateFrom, dateTo]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -256,6 +263,12 @@ function EcommerceOrdersPageInner() {
           </button>
         ))}
       </div>
+
+      <DateRangePicker
+        from={dateFrom}
+        to={dateTo}
+        onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
+      />
 
       <Panel title="Orders" subtitle={`${orders.length} orders`} noPad>
         {loading ? (

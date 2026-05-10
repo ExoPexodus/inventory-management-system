@@ -11,7 +11,7 @@ import {
   Pagination,
   SelectInput,
 } from "@/components/ui/primitives";
-import { DateInput } from "@/components/ui/DateInput";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 import { formatMoney } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
 
@@ -229,16 +229,11 @@ export default function OrdersPage() {
                 { value: "flagged", label: "Flagged" },
               ]}
             />
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">From</label>
-                <DateInput value={dateFrom} onChange={setDateFrom} />
-              </div>
-              <div>
-                <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">To</label>
-                <DateInput value={dateTo} onChange={setDateTo} />
-              </div>
-            </div>
+            <DateRangePicker
+              from={dateFrom}
+              to={dateTo}
+              onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
+            />
           </div>
         </div>
       </div>
