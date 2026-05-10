@@ -231,3 +231,215 @@ def delete_role(
     db.delete(role)
     db.commit()
     invalidate_role_cache(role_id)
+
+
+# ---------------------------------------------------------------------------
+# Clone endpoint
+# ---------------------------------------------------------------------------
+
+@router.post("/{role_id}/clone", response_model=RoleOut, status_code=201, dependencies=[require_permission("roles:write")])
+def clone_role(
+    role_id: UUID,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> RoleOut:
+    """Clone an existing role. Creates a copy with the same permissions."""
+    tenant_id = _require_operator_tenant(ctx)
+    source = db.execute(
+        select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if source is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+
+    # Eager-load source permissions within the session
+    _ = source.permissions
+
+    # Find a unique name: {source.name}_copy, then _copy_2, _copy_3, …
+    base_name = f"{source.name}_copy"
+    candidate = base_name
+    suffix = 2
+    for _ in range(1000):
+        existing = db.execute(
+            select(func.count()).select_from(Role).where(
+                Role.tenant_id == tenant_id,
+                Role.name == candidate,
+            )
+        ).scalar_one()
+        if existing == 0:
+            break
+        candidate = f"{base_name}_{suffix}"
+        suffix += 1
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Could not generate a unique name for the cloned role",
+        )
+
+    new_role = Role(
+        tenant_id=tenant_id,
+        name=candidate,
+        display_name=f"Copy of {source.display_name}",
+        is_system=False,
+    )
+    db.add(new_role)
+    db.flush()
+
+    # Copy all permission rows from source
+    for rp in source.permissions:
+        db.add(RolePermission(role_id=new_role.id, permission_id=rp.permission_id))
+
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="clone_role",
+        resource_type="role",
+        resource_id=str(new_role.id),
+        after={"source_role_id": str(role_id)},
+    )
+    db.commit()
+    db.refresh(new_role)
+    return _role_out(new_role, db)
+
+
+# ---------------------------------------------------------------------------
+# Assigned-users endpoint
+# ---------------------------------------------------------------------------
+
+class AssignedUser(BaseModel):
+    id: UUID
+    name: str
+    email: str
+
+
+@router.get("/{role_id}/assigned-users", response_model=list[AssignedUser], dependencies=[require_permission("roles:read")])
+def list_assigned_users(
+    role_id: UUID,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> list[AssignedUser]:
+    """Return all users currently assigned to this role, ordered by name."""
+    tenant_id = _require_operator_tenant(ctx)
+    role = db.execute(
+        select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+
+    users = db.execute(
+        select(User)
+        .where(User.role_id == role_id, User.tenant_id == tenant_id)
+        .order_by(User.name)
+    ).scalars().all()
+
+    return [AssignedUser(id=u.id, name=u.name or "", email=u.email) for u in users]
+
+
+# ---------------------------------------------------------------------------
+# Reassign-and-delete endpoint
+# ---------------------------------------------------------------------------
+
+class ReassignAssignment(BaseModel):
+    user_id: UUID
+    new_role_id: UUID
+
+
+class ReassignAndDeleteBody(BaseModel):
+    assignments: list[ReassignAssignment]
+
+
+@router.post("/{role_id}/reassign-and-delete", status_code=204, dependencies=[require_permission("roles:write")])
+def reassign_and_delete_role(
+    role_id: UUID,
+    body: ReassignAndDeleteBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> None:
+    """Reassign all users from a role to other roles, then delete the role."""
+    tenant_id = _require_operator_tenant(ctx)
+
+    # 404 check
+    role = db.execute(
+        select(Role).where(Role.id == role_id, Role.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+    if role is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+
+    # 403 check
+    if role.is_system:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="System roles cannot be deleted",
+        )
+
+    # Fetch all users currently assigned to this role within this tenant
+    current_users = db.execute(
+        select(User).where(User.role_id == role_id, User.tenant_id == tenant_id)
+    ).scalars().all()
+    current_user_ids = {u.id for u in current_users}
+
+    # Validate: every assigned user must appear in the assignments list
+    assignment_user_ids = {a.user_id for a in body.assignments}
+    missing = current_user_ids - assignment_user_ids
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Missing reassignment for {len(missing)} user(s). All users holding this role must be reassigned.",
+        )
+    # No extra users allowed (they can't hold the role anyway, just reject)
+    extra = assignment_user_ids - current_user_ids
+    if extra:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Assignments include {len(extra)} user(s) not currently holding this role.",
+        )
+
+    # Validate: every new_role_id must exist within this tenant and not be the role being deleted
+    new_role_ids = {a.new_role_id for a in body.assignments}
+    if role_id in new_role_ids:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot reassign users to the role being deleted.",
+        )
+
+    if new_role_ids:
+        found_roles_count = db.execute(
+            select(func.count()).select_from(Role).where(
+                Role.id.in_(new_role_ids),
+                Role.tenant_id == tenant_id,
+            )
+        ).scalar_one()
+        if found_roles_count != len(new_role_ids):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="One or more target roles do not exist within this tenant.",
+            )
+
+    # Atomic: reassign all users then delete the role
+    user_map = {u.id: u for u in current_users}
+    for assignment in body.assignments:
+        user = user_map.get(assignment.user_id)
+        if user is not None:
+            user.role_id = assignment.new_role_id
+
+    db.flush()
+
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="reassign_and_delete_role",
+        resource_type="role",
+        resource_id=str(role_id),
+        after={
+            "deleted_role_id": str(role_id),
+            "assignments": [
+                {"user_id": str(a.user_id), "new_role_id": str(a.new_role_id)}
+                for a in body.assignments
+            ],
+        },
+    )
+
+    db.delete(role)
+    db.commit()
+    invalidate_role_cache(role_id)

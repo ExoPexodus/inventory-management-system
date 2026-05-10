@@ -806,7 +806,12 @@ function TeamTab({ roles, permissionsByRole }: { roles: Role[]; permissionsByRol
 
 // ─── Roles Tab (unchanged except Access category) ─────────────────────────────
 
-const CATEGORY_ORDER = ["access", "staff", "catalog", "inventory", "procurement", "sales", "analytics", "operations", "settings", "integrations", "operators", "roles", "audit", "reports", "notifications", "enrollment", "shops"];
+const CATEGORY_ORDER = [
+  "access", "staff", "catalog", "inventory", "procurement", "sales",
+  "billing", "commerce", "channels", "customers", "shipping",
+  "analytics", "operations", "settings", "integrations", "operators",
+  "roles", "audit", "reports", "notifications", "enrollment", "shops"
+];
 
 function groupPermissions(perms: Permission[]) {
   const map = new Map<string, Permission[]>();
@@ -952,6 +957,189 @@ function RoleModal({ open, onClose, role, allPermissions, onSaved }: {
   );
 }
 
+// ─── ReassignDeleteModal ──────────────────────────────────────────────────────
+
+type AssignedUser = { id: string; name: string; email: string };
+
+function ReassignDeleteModal({ role, allRoles, onClose, onDeleted }: {
+  role: Role;
+  allRoles: Role[];
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [users, setUsers] = useState<AssignedUser[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  // Map user_id → new_role_id
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [bulkRoleId, setBulkRoleId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Roles available as targets (exclude the role being deleted)
+  const targetRoles = useMemo(
+    () => allRoles.filter((r) => r.id !== role.id),
+    [allRoles, role.id]
+  );
+
+  // Default target: first system role that isn't being deleted, or first available role
+  const defaultRoleId = useMemo(
+    () => targetRoles.find((r) => r.is_system)?.id ?? targetRoles[0]?.id ?? "",
+    [targetRoles]
+  );
+
+  useEffect(() => {
+    setLoadingUsers(true);
+    setUsersError(null);
+    fetch(`/api/ims/v1/admin/roles/${role.id}/assigned-users`)
+      .then(async (r) => {
+        if (!r.ok) throw new Error("Failed to load assigned users");
+        return r.json() as Promise<AssignedUser[]>;
+      })
+      .then((list) => {
+        setUsers(list);
+        // Pre-fill all users with the default target role
+        const init: Record<string, string> = {};
+        list.forEach((u) => { init[u.id] = defaultRoleId; });
+        setAssignments(init);
+      })
+      .catch(() => setUsersError("Could not load assigned users"))
+      .finally(() => setLoadingUsers(false));
+  }, [role.id, defaultRoleId]);
+
+  function setUserRole(userId: string, newRoleId: string) {
+    setAssignments((prev) => ({ ...prev, [userId]: newRoleId }));
+  }
+
+  function applyBulk() {
+    if (!bulkRoleId) return;
+    const next: Record<string, string> = {};
+    users.forEach((u) => { next[u.id] = bulkRoleId; });
+    setAssignments(next);
+  }
+
+  async function handleReassignAndDelete() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const body = {
+        assignments: users.map((u) => ({
+          user_id: u.id,
+          new_role_id: assignments[u.id] ?? defaultRoleId,
+        })),
+      };
+      const r = await fetch(`/api/ims/v1/admin/roles/${role.id}/reassign-and-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (r.ok || r.status === 204) {
+        onDeleted();
+        onClose();
+        return;
+      }
+      const d = (await r.json()) as { detail?: string };
+      setErr(d.detail ?? `Error ${r.status}`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Delete role — ${role.display_name}`}>
+      <div className="space-y-4">
+        <p className="text-sm text-on-surface-variant">
+          This role has assigned users. Reassign each user to another role before deleting.
+        </p>
+
+        {loadingUsers && <p className="text-sm text-on-surface-variant">Loading users…</p>}
+        {usersError && <p className="rounded-lg border border-error/20 bg-error-container/20 px-3 py-2 text-xs text-on-error-container">{usersError}</p>}
+
+        {!loadingUsers && !usersError && users.length === 0 && (
+          <p className="text-sm text-on-surface-variant">No users are assigned to this role. You can delete it directly.</p>
+        )}
+
+        {users.length > 0 && (
+          <>
+            {/* Bulk setter */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-on-surface-variant shrink-0">Set all to:</span>
+              <select
+                className={`${inputCls} flex-1`}
+                value={bulkRoleId}
+                onChange={(e) => setBulkRoleId(e.target.value)}
+              >
+                <option value="">— pick a role —</option>
+                {targetRoles.map((r) => (
+                  <option key={r.id} value={r.id}>{r.display_name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={applyBulk}
+                disabled={!bulkRoleId}
+                className="shrink-0 rounded-lg border border-outline-variant/30 px-3 py-2 text-xs font-semibold text-on-surface disabled:opacity-40 hover:bg-surface-container-low transition"
+              >
+                Apply
+              </button>
+            </div>
+
+            {/* Per-user table */}
+            <div className="overflow-hidden rounded-lg border border-outline-variant/15">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-container-low">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">User</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Reassign to</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-outline-variant/10">
+                  {users.map((u) => (
+                    <tr key={u.id} className="bg-surface-container-lowest">
+                      <td className="px-3 py-2">
+                        <p className="font-semibold text-on-surface text-xs">{u.name || "—"}</p>
+                        <p className="font-mono text-[10px] text-on-surface-variant">{u.email}</p>
+                      </td>
+                      <td className="px-3 py-2">
+                        <select
+                          className={`${inputCls} text-xs`}
+                          value={assignments[u.id] ?? ""}
+                          onChange={(e) => setUserRole(u.id, e.target.value)}
+                        >
+                          <option value="">— pick a role —</option>
+                          {targetRoles.map((r) => (
+                            <option key={r.id} value={r.id}>{r.display_name}</option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {err && <p className="rounded-lg border border-error/20 bg-error-container/20 px-3 py-2 text-xs text-on-error-container">{err}</p>}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <SecondaryButton type="button" onClick={onClose}>Cancel</SecondaryButton>
+          <button
+            type="button"
+            onClick={() => void handleReassignAndDelete()}
+            disabled={busy || loadingUsers || !!usersError || users.some((u) => !assignments[u.id])}
+            className="rounded-xl bg-error px-4 py-2 text-sm font-semibold text-on-error transition hover:opacity-90 disabled:opacity-40"
+          >
+            {busy ? "Deleting…" : "Reassign and delete role"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── RolesTab ─────────────────────────────────────────────────────────────────
+
 function RolesTab() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [allPermissions, setAllPermissions] = useState<Permission[]>([]);
@@ -959,6 +1147,8 @@ function RolesTab() {
   const [error, setError] = useState<string | null>(null);
   const [modalTarget, setModalTarget] = useState<Role | null | "create">(null);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  // Role being targeted for reassign-and-delete
+  const [reassignTarget, setReassignTarget] = useState<Role | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -981,11 +1171,34 @@ function RolesTab() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  async function deleteRole(role: Role) {
-    if (!confirm(`Delete role "${role.display_name}"? This cannot be undone.`)) return;
+  async function attemptDelete(role: Role) {
+    // First try the simple delete
     const r = await fetch(`/api/ims/v1/admin/roles/${role.id}`, { method: "DELETE" });
-    if (r.ok) void refresh();
-    else { const d = (await r.json()) as { detail?: string }; alert(d.detail ?? "Failed to delete"); }
+    if (r.ok || r.status === 204) {
+      void refresh();
+      return;
+    }
+    if (r.status === 409) {
+      // Role has assigned users — open reassign modal
+      setReassignTarget(role);
+      return;
+    }
+    // Other error — show message
+    const d = (await r.json()) as { detail?: string };
+    alert(d.detail ?? `Failed to delete (${r.status})`);
+  }
+
+  async function cloneRole(role: Role) {
+    if (!confirm(`Clone role "${role.display_name}"? A copy will be created.`)) return;
+    const r = await fetch(`/api/ims/v1/admin/roles/${role.id}/clone`, { method: "POST" });
+    if (r.ok) {
+      const newRole = (await r.json()) as Role;
+      await refresh();
+      setSelectedRole(newRole);
+      return;
+    }
+    const d = (await r.json()) as { detail?: string };
+    alert(d.detail ?? `Failed to clone (${r.status})`);
   }
 
   const grouped = useMemo(() => groupPermissions(allPermissions), [allPermissions]);
@@ -1051,24 +1264,33 @@ function RolesTab() {
                   <p className="mt-1 font-headline text-xl font-extrabold text-on-primary">{selectedRole.display_name}</p>
                   <p className="mt-1 font-mono text-sm text-on-primary/70">{selectedRole.name}</p>
                 </div>
-                {!selectedRole.is_system && (
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setModalTarget(selectedRole)}
-                      className="rounded-lg border border-on-primary/30 px-3 py-1.5 text-xs font-semibold text-on-primary transition hover:bg-on-primary/10"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void deleteRole(selectedRole)}
-                      className="rounded-lg border border-error/40 bg-error-container/30 px-3 py-1.5 text-xs font-semibold text-on-error-container transition hover:bg-error-container/60"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void cloneRole(selectedRole)}
+                    className="rounded-lg border border-on-primary/30 px-3 py-1.5 text-xs font-semibold text-on-primary transition hover:bg-on-primary/10"
+                  >
+                    Clone
+                  </button>
+                  {!selectedRole.is_system && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setModalTarget(selectedRole)}
+                        className="rounded-lg border border-on-primary/30 px-3 py-1.5 text-xs font-semibold text-on-primary transition hover:bg-on-primary/10"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void attemptDelete(selectedRole)}
+                        className="rounded-lg border border-error/40 bg-error-container/30 px-3 py-1.5 text-xs font-semibold text-on-error-container transition hover:bg-error-container/60"
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
               <div className="max-h-[60vh] overflow-y-auto p-6 space-y-4">
                 {grouped.map(({ category, items }) => {
@@ -1112,6 +1334,15 @@ function RolesTab() {
         allPermissions={allPermissions}
         onSaved={() => void refresh()}
       />
+
+      {reassignTarget && (
+        <ReassignDeleteModal
+          role={reassignTarget}
+          allRoles={roles}
+          onClose={() => setReassignTarget(null)}
+          onDeleted={() => void refresh()}
+        />
+      )}
     </div>
   );
 }
