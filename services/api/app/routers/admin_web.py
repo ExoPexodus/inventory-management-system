@@ -1348,51 +1348,65 @@ class ProductListItem(BaseModel):
     slug: str | None = None
 
 
-@router.get("/products", response_model=list[ProductListItem], dependencies=[require_permission("catalog:read")])
+class ProductListResponse(BaseModel):
+    items: list[ProductListItem]
+    total: int
+    page: int
+    per_page: int
+
+
+@router.get("/products", response_model=ProductListResponse, dependencies=[require_permission("catalog:read")])
 def admin_list_products(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
     q: str | None = None,
     status_filter: str | None = Query(None, alias="status"),
     category: str | None = None,
-) -> list[ProductListItem]:
+    tags: list[str] | None = Query(default=None, alias="tags[]"),
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=50, ge=1, le=200),
+) -> ProductListResponse:
     tenant_id = _require_operator_tenant(ctx)
-    stmt = select(Product).options(selectinload(Product.product_group)).order_by(Product.name.asc())
-    stmt = stmt.where(Product.tenant_id == tenant_id)
+
+    base_where = [Product.tenant_id == tenant_id]
     if q and q.strip():
         like = f"%{q.strip()}%"
-        stmt = stmt.where(or_(Product.name.ilike(like), Product.sku.ilike(like)))
+        base_where.append(or_(Product.name.ilike(like), Product.sku.ilike(like)))
     if status_filter:
-        stmt = stmt.where(Product.status == status_filter)
+        base_where.append(Product.status == status_filter)
     if category and category.strip():
-        stmt = stmt.where(Product.category == category.strip())
-    rows = db.execute(stmt).scalars().all()
-    return [
+        base_where.append(Product.category == category.strip())
+    if tags:
+        tag_clauses = [Product.tags.op("?")(t) for t in tags if t]
+        if tag_clauses:
+            base_where.append(or_(*tag_clauses))
+
+    total = db.execute(select(func.count(Product.id)).where(*base_where)).scalar_one()
+
+    rows = db.execute(
+        select(Product)
+        .options(selectinload(Product.product_group))
+        .where(*base_where)
+        .order_by(Product.name.asc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    ).scalars().all()
+
+    items = [
         ProductListItem(
-            id=r.id,
-            sku=r.sku,
-            name=r.name,
-            status=r.status,
-            category=r.category,
-            unit_price_cents=r.unit_price_cents,
-            reorder_point=r.reorder_point,
+            id=r.id, sku=r.sku, name=r.name, status=r.status, category=r.category,
+            unit_price_cents=r.unit_price_cents, reorder_point=r.reorder_point,
             variant_label=r.variant_label,
             group_title=r.product_group.title if r.product_group else None,
-            barcode=r.barcode,
-            cost_price_cents=r.cost_price_cents,
-            mrp_cents=r.mrp_cents,
-            hsn_code=r.hsn_code,
-            negative_inventory_allowed=r.negative_inventory_allowed,
-            product_type=r.product_type,
-            subtitle=r.subtitle,
-            ribbon=r.ribbon,
-            discount_price_cents=r.discount_price_cents,
-            track_quantity=r.track_quantity,
-            tags=r.tags,
-            slug=r.slug,
+            barcode=r.barcode, cost_price_cents=r.cost_price_cents, mrp_cents=r.mrp_cents,
+            hsn_code=r.hsn_code, negative_inventory_allowed=r.negative_inventory_allowed,
+            product_type=r.product_type, subtitle=r.subtitle, ribbon=r.ribbon,
+            discount_price_cents=r.discount_price_cents, track_quantity=r.track_quantity,
+            tags=r.tags, slug=r.slug,
         )
         for r in rows
     ]
+    return ProductListResponse(items=items, total=total, page=page, per_page=per_page)
 
 
 @router.post("/products", response_model=CreateProductResponse, dependencies=[require_permission("catalog:write")])

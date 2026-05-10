@@ -79,6 +79,9 @@ export default function ProductsPage() {
   const [bulkReorderPt, setBulkReorderPt] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const PER_PAGE = 50;
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
   async function fetchProducts() {
     setLoading(true);
@@ -86,16 +89,29 @@ export default function ProductsPage() {
     if (q.trim()) sp.set("q", q.trim());
     if (status) sp.set("status", status);
     if (category.trim()) sp.set("category", category.trim());
+    sp.set("page", String(page));
+    sp.set("per_page", String(PER_PAGE));
     const r = await fetch(`/api/ims/v1/admin/products?${sp.toString()}`);
-    if (r.ok) setRows((await r.json()) as Product[]);
-    else setRows([]);
+    if (r.ok) {
+      const data = await r.json() as { items: Product[]; total: number; page: number; per_page: number };
+      setRows(data.items);
+      setTotal(data.total);
+    } else {
+      setRows([]);
+      setTotal(0);
+    }
     setLoading(false);
   }
 
+  // Reset to page 1 whenever a filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [q, status, category]);
+
   useEffect(() => {
     void fetchProducts();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, status, category]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, status, category, page]);
 
   const categories = useMemo(() => {
     const s = new Set<string>();
@@ -232,7 +248,7 @@ export default function ProductsPage() {
         </button>
       </BulkActionsBar>
 
-      <Panel title="Products" subtitle={`${rows.length} rows`} noPad>
+      <Panel title="Products" subtitle={`${total > 0 ? total.toLocaleString() : rows.length} rows`} noPad>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead>
@@ -344,6 +360,31 @@ export default function ProductsPage() {
             </tbody>
           </table>
         </div>
+        {total > 0 && (
+          <div className="flex items-center justify-between border-t border-outline-variant/10 px-6 py-4">
+            <p className="text-xs text-on-surface-variant">
+              Page {page} of {Math.max(1, Math.ceil(total / PER_PAGE))} · {total.toLocaleString()} products
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="rounded-lg border border-outline-variant/30 px-3 py-1.5 text-xs font-semibold text-on-surface hover:bg-surface-container-low disabled:opacity-40"
+              >
+                ← Prev
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((p) => p + 1)}
+                disabled={page >= Math.ceil(total / PER_PAGE) || loading}
+                className="rounded-lg border border-outline-variant/30 px-3 py-1.5 text-xs font-semibold text-on-surface hover:bg-surface-container-low disabled:opacity-40"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </Panel>
 
       <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-6 shadow-sm">
