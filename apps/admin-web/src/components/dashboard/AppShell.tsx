@@ -10,6 +10,7 @@ import { BusinessTypeProvider, useBusinessType, typeAllows } from "@/lib/busines
 import type { BusinessType } from "@/lib/business-type-context";
 import { NavGroup } from "@/components/dashboard/NavGroup";
 import type { NavItem } from "@/components/dashboard/NavGroup";
+import { CommandPalette } from "@/components/dashboard/CommandPalette";
 
 type NotifItem = {
   id: string;
@@ -263,6 +264,7 @@ function AppShellInner({ children, current }: { children: ReactNode; current?: s
   const panelRef = useRef<HTMLDivElement>(null);
   const [entryMenuOpen, setEntryMenuOpen] = useState(false);
   const entryMenuRef = useRef<HTMLDivElement>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
 
   useEffect(() => {
     if (!entryMenuOpen) return;
@@ -274,6 +276,17 @@ function AppShellInner({ children, current }: { children: ReactNode; current?: s
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [entryMenuOpen]);
+
+  useEffect(() => {
+    function handleKeydown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setPaletteOpen((p) => !p);
+      }
+    }
+    document.addEventListener("keydown", handleKeydown);
+    return () => document.removeEventListener("keydown", handleKeydown);
+  }, []);
 
   const pathname = usePathname();
   const activePathRaw = current ?? pathname;
@@ -445,6 +458,9 @@ function AppShellInner({ children, current }: { children: ReactNode; current?: s
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-8">{children}</main>
       </div>
+
+      {/* Command palette */}
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
 
       {/* Notification slide-over */}
       {notifOpen && (
