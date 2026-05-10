@@ -108,7 +108,7 @@ export default async function OverviewPage() {
       key: "email",
       label: "Configure email",
       detail: "Send order confirmations and receipts to your customers.",
-      href: "/settings",
+      href: "/settings/email",
       icon: "mail",
       types: ["online", "retail", "hybrid"],
       done: d.has_email_configured ?? false,
