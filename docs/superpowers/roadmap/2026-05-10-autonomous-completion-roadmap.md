@@ -88,17 +88,17 @@ Updated as features ship.
 
 | # | Feature | Status |
 |---|---|---|
-| 1 | Q6 — PO supplier search | _pending_ |
-| 2 | Q8 — Inline shop creation | _pending_ |
-| 3 | Multi-carrier polish | _pending_ |
-| 4 | Q5 — Date-range picker | _pending_ |
-| 5 | Q4 — Inventory filters | _pending_ |
-| 6 | Q7 — Bulk reconciliation approve | _pending_ |
-| 7 | M1 — Integrations sub-tabs | _pending_ |
-| 8 | M2 — Insights merge | _pending_ |
-| 9 | M3 — Create UI standardisation | _pending_ |
-| 10 | M4 — Bulk actions toolbar | _pending_ |
-| 11 | L5 — Command palette | _pending_ |
+| 1 | Q6 — PO supplier search | ✅ shipped |
+| 2 | Q8 — Inline shop creation | ✅ shipped |
+| 3 | Multi-carrier polish | ✅ shipped |
+| 4 | Q5 — Date-range picker | ✅ shipped |
+| 5 | Q4 — Inventory filters | ✅ shipped |
+| 6 | Q7 — Bulk reconciliation approve | ✅ shipped |
+| 7 | M1 — Integrations sub-tabs | ✅ already in place (no-op) |
+| 8 | M2 — Insights merge | ✅ shipped |
+| 9 | M3 — Create UI standardisation | ✅ shipped (scoped to primitive + Suppliers exemplar) |
+| 10 | M4 — Bulk actions toolbar | ✅ shipped (scoped to primitive + Products archive) |
+| 11 | L5 — Command palette | ✅ shipped |
 | 12 | Magic-link auth | _pending_ |
 | 13 | Transfer orders | _pending_ |
 | 14 | Advanced RBAC | _pending_ |
