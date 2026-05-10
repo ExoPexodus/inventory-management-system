@@ -512,9 +512,16 @@ def test_discount_out_schema() -> None:
         times_used=0,
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
+        condition_quantity_scope="none",
+        condition_min_quantity=None,
+        condition_category_id=None,
+        condition_tag=None,
+        tiers=[],
     )
     dumped = d.model_dump(mode="json")
     assert dumped["code"] == "SUMMER20"
     assert dumped["discount_type"] == "percentage"
     assert dumped["value_bps"] == 2000
     assert dumped["times_used"] == 0
+    assert dumped["condition_quantity_scope"] == "none"
+    assert dumped["tiers"] == []

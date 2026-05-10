@@ -1461,6 +1461,14 @@ class Discount(Base):
     stackable: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     min_subtotal_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    condition_quantity_scope: Mapped[str] = mapped_column(
+        String(16), default="none", server_default="none", nullable=False
+    )
+    condition_min_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    condition_category_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
+    )
+    condition_tag: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     max_uses_total: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     max_uses_per_customer: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     starts_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1469,6 +1477,29 @@ class Discount(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class DiscountTier(Base):
+    """Tiered discount threshold — when tiers exist, the parent value_bps/value_cents is ignored."""
+
+    __tablename__ = "discount_tiers"
+    __table_args__ = (
+        UniqueConstraint("discount_id", "threshold_quantity", name="uq_discount_tiers_discount_threshold"),
+        Index("ix_discount_tiers_discount_id", "discount_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    discount_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("discounts.id", ondelete="CASCADE"), nullable=False
+    )
+    threshold_quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    value_bps: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    value_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class DiscountUse(Base):

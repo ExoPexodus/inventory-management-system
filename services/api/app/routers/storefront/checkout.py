@@ -15,6 +15,7 @@ from app.models import CartItem, Order, OrderLine, OrderPayment, Product
 from app.routers.storefront.auth import StorefrontChannelDep
 from app.services.customer_resolver import resolve_or_create_customer
 from app.services.discount_service import (
+    CartLine,
     DiscountNotEligibleError, DiscountNotFoundError, apply_discount,
 )
 from app.services.reservation_service import commit_reservation
@@ -101,9 +102,14 @@ def cart_summary(
     applied_code = None
     if discount_code:
         try:
+            lines = [
+                CartLine(product_id=ci.product_id, quantity=ci.quantity, unit_price_cents=ci.unit_price_cents)
+                for ci, _ in rows
+            ]
             result = apply_discount(
                 db, tenant_id=channel.tenant_id, channel_id=channel.id,
                 code=discount_code, cart_subtotal_cents=subtotal,
+                cart_lines=lines,
             )
             discount_cents = result["discount_amount_cents"]
             applied_code = discount_code
@@ -145,11 +151,16 @@ def apply_cart_discount(
     channel: StorefrontChannelDep,
     db: Annotated[Session, Depends(get_db)],
 ) -> DiscountApplyOut:
-    subtotal, _ = _cart_subtotal(db, channel.id, cart_token)
+    subtotal, cart_rows = _cart_subtotal(db, channel.id, cart_token)
+    lines = [
+        CartLine(product_id=ci.product_id, quantity=ci.quantity, unit_price_cents=ci.unit_price_cents)
+        for ci, _ in cart_rows
+    ]
     try:
         result = apply_discount(
             db, tenant_id=channel.tenant_id, channel_id=channel.id,
             code=body.code, cart_subtotal_cents=subtotal,
+            cart_lines=lines,
         )
     except DiscountNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
@@ -178,9 +189,14 @@ def submit_order(
     discount_cents = 0
     if body.discount_code:
         try:
+            order_lines = [
+                CartLine(product_id=ci.product_id, quantity=ci.quantity, unit_price_cents=ci.unit_price_cents)
+                for ci, _ in rows
+            ]
             dr = apply_discount(
                 db, tenant_id=channel.tenant_id, channel_id=channel.id,
                 code=body.discount_code, cart_subtotal_cents=subtotal,
+                cart_lines=order_lines,
             )
             discount_cents = dr["discount_amount_cents"]
         except (DiscountNotFoundError, DiscountNotEligibleError):

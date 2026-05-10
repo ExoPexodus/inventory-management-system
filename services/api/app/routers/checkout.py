@@ -20,6 +20,7 @@ from app.models import CartItem, Channel, CheckoutSession, Order, OrderLine, Ord
 from app.routers.storefront.auth import StorefrontChannelDep
 from app.services.customer_resolver import resolve_or_create_customer
 from app.services.discount_service import (
+    CartLine,
     DiscountNotEligibleError, DiscountNotFoundError,
     apply_discount, record_discount_use,
 )
@@ -208,12 +209,19 @@ def apply_discount_to_session(
     session = _get_session_or_404(db, session_token)
     channel = db.get(Channel, session.channel_id)
 
+    cart_rows = _load_cart(db, channel.id, session.cart_token)
+    cart_lines = [
+        CartLine(product_id=ci.product_id, quantity=ci.quantity, unit_price_cents=ci.unit_price_cents)
+        for ci, _ in cart_rows
+    ]
+
     try:
         result = apply_discount(
             db,
             tenant_id=channel.tenant_id,
             channel_id=channel.id,
             cart_subtotal_cents=session.subtotal_cents,
+            cart_lines=cart_lines,
             code=body.code.strip(),
         )
     except DiscountNotFoundError:
