@@ -18,6 +18,8 @@ import {
 } from "@/components/ui/primitives";
 import { formatMoney } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
+import { Typeahead } from "@/components/ui/Typeahead";
+import { DateRangePicker } from "@/components/ui/DateRangePicker";
 
 type MovementRow = {
   id: string;
@@ -86,6 +88,24 @@ function InventoryPageInner() {
   const [adjustOpen, setAdjustOpen] = useState(false);
 
   const [mtype, setMtype] = useState("");
+  const [mShopId, setMShopId] = useState("");
+  const [mProductId, setMProductId] = useState("");
+  const [mDateFrom, setMDateFrom] = useState("");
+  const [mDateTo, setMDateTo] = useState("");
+
+  // Products list for the typeahead
+  const [productList, setProductList] = useState<Array<{ id: string; sku: string; name: string }>>([]);
+
+  useEffect(() => {
+    void (async () => {
+      const r = await fetch("/api/ims/v1/admin/products");
+      if (r.ok) {
+        const data = await r.json() as Array<{ id: string; sku: string; name: string }>;
+        setProductList(data);
+      }
+    })();
+  }, []);
+
   const [mPage, setMPage] = useState(1);
   const [mCache, setMCache] = useState<Record<number, MovementRow[]>>({});
   const [mNext, setMNext] = useState<Record<number, string | null>>({});
@@ -102,6 +122,10 @@ function InventoryPageInner() {
       try {
         const sp = new URLSearchParams({ limit: String(MOV_PAGE) });
         if (mtype) sp.set("movement_type", mtype);
+        if (mShopId) sp.set("shop_id", mShopId);
+        if (mProductId) sp.set("product_id", mProductId);
+        if (mDateFrom) sp.set("date_from", mDateFrom);
+        if (mDateTo) sp.set("date_to", mDateTo);
         const cursor = targetPage <= 1 ? null : mNextRef.current[targetPage - 1] ?? null;
         if (targetPage > 1 && !cursor) {
           setMErr("Missing cursor for that page.");
@@ -122,6 +146,10 @@ function InventoryPageInner() {
             if (current[nextPage]) return current;
             const prefetchSp = new URLSearchParams({ limit: String(MOV_PAGE) });
             if (mtype) prefetchSp.set("movement_type", mtype);
+            if (mShopId) prefetchSp.set("shop_id", mShopId);
+            if (mProductId) prefetchSp.set("product_id", mProductId);
+            if (mDateFrom) prefetchSp.set("date_from", mDateFrom);
+            if (mDateTo) prefetchSp.set("date_to", mDateTo);
             prefetchSp.set("cursor", data.next_cursor!);
             fetch(`/api/ims/v1/admin/inventory/movements?${prefetchSp}`)
               .then((res) => (res.ok ? res.json() : null))
@@ -140,14 +168,14 @@ function InventoryPageInner() {
         setMLoading(false);
       }
     },
-    [mtype],
+    [mtype, mShopId, mProductId, mDateFrom, mDateTo],
   );
 
   useEffect(() => {
     setMPage(1);
     setMCache({});
     setMNext({});
-  }, [mtype]);
+  }, [mtype, mShopId, mProductId, mDateFrom, mDateTo]);
 
   useEffect(() => {
     if (mCache[mPage]) {
@@ -155,7 +183,7 @@ function InventoryPageInner() {
       return;
     }
     void fetchMovements(mPage);
-  }, [mPage, mCache, fetchMovements, mtype]);
+  }, [mPage, mCache, fetchMovements, mtype, mShopId, mProductId, mDateFrom, mDateTo]);
 
   useEffect(() => {
     const sp = new URLSearchParams({ limit: "6" });
@@ -359,17 +387,55 @@ function InventoryPageInner() {
               <h3 className="font-headline text-lg font-bold text-on-surface">Movement journal</h3>
               <p className="text-sm text-on-surface-variant">Ledger deltas with type semantics</p>
             </div>
-            <SelectInput
-              className="max-w-[12rem]"
-              value={mtype}
-              onChange={setMtype}
-              placeholder="All types"
-              options={[
-                { value: "", label: "All types" },
-                { value: "adjustment", label: "adjustment" },
-                { value: "sale", label: "sale" },
-              ]}
-            />
+          </div>
+          <div className="border-b border-outline-variant/10 bg-surface-container-low/40 px-6 py-4 space-y-3">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Type</label>
+                <SelectInput
+                  value={mtype}
+                  onChange={setMtype}
+                  placeholder="All types"
+                  options={[
+                    { value: "", label: "All types" },
+                    { value: "adjustment", label: "adjustment" },
+                    { value: "sale", label: "sale" },
+                  ]}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Shop</label>
+                <SelectInput
+                  value={mShopId}
+                  onChange={setMShopId}
+                  placeholder="All shops"
+                  options={[
+                    { value: "", label: "All shops" },
+                    ...shops.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Product</label>
+                <Typeahead
+                  value={mProductId}
+                  onChange={setMProductId}
+                  placeholder="All products"
+                  options={[
+                    { value: "", label: "All products" },
+                    ...productList.map((p) => ({ value: p.id, label: `${p.sku} — ${p.name}` })),
+                  ]}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Date range</label>
+              <DateRangePicker
+                from={mDateFrom}
+                to={mDateTo}
+                onChange={(f, t) => { setMDateFrom(f); setMDateTo(t); }}
+              />
+            </div>
           </div>
           {mErr ? (
             <div className="px-6 py-3">

@@ -770,6 +770,8 @@ def list_stock_movements(
     shop_id: UUID | None = None,
     product_id: UUID | None = None,
     movement_type: str | None = None,
+    date_from: str | None = Query(default=None, description="YYYY-MM-DD inclusive lower bound"),
+    date_to: str | None = Query(default=None, description="YYYY-MM-DD inclusive upper bound"),
     limit: int = Query(default=50, ge=1, le=200),
     cursor: str | None = None,
 ) -> StockMovementListResponse:
@@ -782,6 +784,20 @@ def list_stock_movements(
         stmt = stmt.where(StockMovement.product_id == product_id)
     if movement_type is not None and movement_type.strip():
         stmt = stmt.where(StockMovement.movement_type == movement_type.strip())
+    if date_from:
+        try:
+            from datetime import time as _time
+            d = datetime.strptime(date_from, "%Y-%m-%d").date()
+            stmt = stmt.where(StockMovement.created_at >= datetime.combine(d, _time.min))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_from must be YYYY-MM-DD")
+    if date_to:
+        try:
+            from datetime import time as _time
+            d = datetime.strptime(date_to, "%Y-%m-%d").date()
+            stmt = stmt.where(StockMovement.created_at <= datetime.combine(d, _time.max))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="date_to must be YYYY-MM-DD")
 
     if cursor:
         c_at, c_id = _movement_decode_cursor(cursor)
