@@ -54,5 +54,5 @@
 |---|---|---|
 | 6 | Admin product list pagination | ✅ shipped |
 | 5 | Hierarchical Category table | ✅ shipped |
-| 7 | Discount conditions (quantity + category/tag) | _pending_ |
+| 7 | Discount conditions (quantity + category/tag) | ✅ shipped |
 | 8 | Full-text product search | _pending_ |
