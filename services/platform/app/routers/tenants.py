@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import secrets
+import uuid as _uuid
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,7 +17,9 @@ from sqlalchemy.orm import Session
 from app.auth.deps import OperatorDep
 from app.db.session import get_db
 from app.models import Plan, PlatformTenant, Subscription
+from app.models.tables import TenantLimitOverride
 from app.services.audit_service import write_audit
+from app.services.feature_catalog import get_feature_catalog
 from app.services.tenant_config_push import push_tenant_currency_config
 from app.services.tenant_provision import provision_tenant
 
@@ -343,6 +346,244 @@ def patch_tenant_currency(
         push_status=push_status,
         push_error=push_error,
     )
+
+
+# ---------------------------------------------------------------------------
+# Overrides CRUD (per-tenant feature overrides)
+# ---------------------------------------------------------------------------
+
+
+class OverrideOut(BaseModel):
+    id: UUID
+    tenant_id: UUID
+    limit_key: str
+    value: Any
+    reason: str | None
+    created_at: datetime
+
+
+class OverridePut(BaseModel):
+    value: Any
+    reason: str | None = None
+
+
+class BulkOverrideBody(BaseModel):
+    filter: dict[str, str | None] = {}
+    feature_key: str
+    value: Any
+    reason: str | None = None
+
+
+class BulkOverrideResult(BaseModel):
+    count: int
+    affected_tenant_ids: list[str]
+
+
+def _override_value(o: TenantLimitOverride) -> Any:
+    """Return the effective value for an override, preferring value_json."""
+    if o.value_json is not None:
+        v = o.value_json
+        # If it came from the legacy backfill it's {"value": int}; unwrap that.
+        if isinstance(v, dict) and list(v.keys()) == ["value"]:
+            return v["value"]
+        return v
+    return o.limit_value
+
+
+def _to_override_out(o: TenantLimitOverride) -> OverrideOut:
+    return OverrideOut(
+        id=o.id,
+        tenant_id=o.tenant_id,
+        limit_key=o.limit_key,
+        value=_override_value(o),
+        reason=o.reason,
+        created_at=o.created_at,
+    )
+
+
+@router.get("/{tenant_id}/overrides", response_model=list[OverrideOut])
+def list_overrides(
+    tenant_id: UUID,
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[OverrideOut]:
+    tenant = db.get(PlatformTenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    rows = db.execute(
+        select(TenantLimitOverride).where(TenantLimitOverride.tenant_id == tenant_id)
+    ).scalars().all()
+    return [_to_override_out(o) for o in rows]
+
+
+@router.put("/{tenant_id}/overrides/{key}", response_model=OverrideOut)
+def put_override(
+    tenant_id: UUID,
+    key: str,
+    body: OverridePut,
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> OverrideOut:
+    """Upsert a feature override for a tenant. Validates key against the feature catalog."""
+    tenant = db.get(PlatformTenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    # Validate key against IMS catalog (best-effort)
+    catalog = get_feature_catalog()
+    if catalog and key not in catalog:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown feature key: {key!r}. Valid keys: {sorted(catalog.keys())}",
+        )
+
+    existing = db.execute(
+        select(TenantLimitOverride).where(
+            TenantLimitOverride.tenant_id == tenant_id,
+            TenantLimitOverride.limit_key == key,
+        )
+    ).scalar_one_or_none()
+
+    if existing is not None:
+        existing.value_json = body.value
+        existing.reason = body.reason
+        o = existing
+    else:
+        # Determine a safe integer sentinel for limit_value (required column)
+        int_val = int(body.value) if isinstance(body.value, (int, float)) else 0
+        o = TenantLimitOverride(
+            id=_uuid.uuid4(),
+            tenant_id=tenant_id,
+            limit_key=key,
+            limit_value=int_val,
+            value_json=body.value,
+            reason=body.reason,
+        )
+        db.add(o)
+
+    write_audit(
+        db, operator_id=ctx.operator_id, action="upsert_override",
+        resource_type="tenant", resource_id=str(tenant_id),
+        details={"key": key, "value": body.value},
+    )
+    db.commit()
+    db.refresh(o)
+    return _to_override_out(o)
+
+
+@router.delete("/{tenant_id}/overrides/{key}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_override(
+    tenant_id: UUID,
+    key: str,
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Remove a feature override for a tenant."""
+    tenant = db.get(PlatformTenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    existing = db.execute(
+        select(TenantLimitOverride).where(
+            TenantLimitOverride.tenant_id == tenant_id,
+            TenantLimitOverride.limit_key == key,
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Override not found")
+
+    write_audit(
+        db, operator_id=ctx.operator_id, action="delete_override",
+        resource_type="tenant", resource_id=str(tenant_id),
+        details={"key": key},
+    )
+    db.delete(existing)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Bulk overrides router (separate prefix)
+# ---------------------------------------------------------------------------
+
+bulk_router = APIRouter(prefix="/v1/platform/overrides", tags=["Platform Overrides"])
+
+
+@bulk_router.post("/bulk", response_model=BulkOverrideResult)
+def bulk_override(
+    body: BulkOverrideBody,
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> BulkOverrideResult:
+    """Apply a feature override to all tenants matching the filter.
+
+    Supported filter keys: plan_codename, region.
+    (business_type is deferred to v2 — it lives on IMS-side Tenant, not platform.)
+    """
+    # Validate feature key (best-effort)
+    catalog = get_feature_catalog()
+    if catalog and body.feature_key not in catalog:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown feature key: {body.feature_key!r}",
+        )
+
+    stmt = (
+        select(Subscription, PlatformTenant)
+        .join(PlatformTenant, PlatformTenant.id == Subscription.tenant_id)
+        .where(Subscription.cancelled_at.is_(None))
+    )
+
+    plan_codename = body.filter.get("plan_codename")
+    region = body.filter.get("region")
+
+    if plan_codename:
+        plan = db.execute(
+            select(Plan).where(Plan.codename == plan_codename)
+        ).scalar_one_or_none()
+        if plan is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Plan '{plan_codename}' not found",
+            )
+        stmt = stmt.where(Subscription.plan_id == plan.id)
+
+    if region:
+        stmt = stmt.where(PlatformTenant.region == region)
+
+    results = db.execute(stmt).all()
+    affected_ids: list[str] = []
+
+    for sub, tenant in results:
+        existing = db.execute(
+            select(TenantLimitOverride).where(
+                TenantLimitOverride.tenant_id == tenant.id,
+                TenantLimitOverride.limit_key == body.feature_key,
+            )
+        ).scalar_one_or_none()
+
+        int_val = int(body.value) if isinstance(body.value, (int, float)) else 0
+        if existing is not None:
+            existing.value_json = body.value
+            existing.reason = body.reason
+        else:
+            db.add(TenantLimitOverride(
+                id=_uuid.uuid4(),
+                tenant_id=tenant.id,
+                limit_key=body.feature_key,
+                limit_value=int_val,
+                value_json=body.value,
+                reason=body.reason,
+            ))
+        affected_ids.append(str(tenant.id))
+
+    write_audit(
+        db, operator_id=ctx.operator_id, action="bulk_override",
+        resource_type="override",
+        details={"feature_key": body.feature_key, "filter": body.filter, "count": len(affected_ids)},
+    )
+    db.commit()
+    return BulkOverrideResult(count=len(affected_ids), affected_tenant_ids=affected_ids)
 
 
 # ---------------------------------------------------------------------------

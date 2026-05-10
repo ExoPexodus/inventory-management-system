@@ -1,92 +1,40 @@
-"""Plan-codename -> feature-value mapping (config-as-code).
+"""Plan-feature resolver — reads from tenant's synced license cache.
 
-This is the LOCAL source of truth for "what does the 'pro' plan include?" until
-the platform service grows a UI for editing this. Then the body of
-``resolve_plan_value`` becomes the single seam to swap to a platform-synced
-source (read from TenantLicenseCache.raw_payload's plan_features sub-object).
+The source of truth for plan-feature values has moved to the platform DB
+(plan_features table). The platform service embeds the merged feature map
+(plan features + per-tenant overrides) in the LicenseResponse as
+`plan_features: dict[str, Any]`. The IMS license sync writes this into
+`TenantLicenseCache.plan_features`.
 
-Codenames must match what the platform service emits in
-TenantLicenseCache.plan_codename. See license_service.py.
+`resolve_plan_value` reads from that cache. If no cache row exists (e.g.
+tenant has never synced), it falls back to `resolve_default` from the
+feature catalog.
 """
 from __future__ import annotations
 
 from typing import Any
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 from app.billing.features import resolve_default
 
 
-# Per-plan overrides of catalog defaults. Anything not listed here falls back
-# to FEATURE_CATALOG's default. Use the smallest possible set to keep
-# review surface low; a missing entry means "use the default".
-PLAN_FEATURES: dict[str, dict[str, Any]] = {
-    # Trial = Pro for evaluation purposes
-    "trial": {
-        "max_channels": 5,
-        "shopify_connector": True,
-        "woocommerce_connector": True,
-        "headless_api": True,
-        "hosted_checkout": True,
-        "byo_stripe": True,
-        "byo_razorpay": True,
-        "byo_paypal": True,
-        "max_products": 1000,
-        "multi_currency_advanced": True,
-        "ai_product_generation": True,
-        "email_volume_per_month": 5000,
-    },
-    "free": {
-        "max_channels": 1,
-        # everything else uses defaults (most flags off)
-    },
-    "starter": {
-        "max_channels": 2,
-        "shopify_connector": True,
-        "woocommerce_connector": True,
-        "max_products": 500,
-        "byo_stripe": True,
-        "email_volume_per_month": 1000,
-    },
-    "pro": {
-        "max_channels": 5,
-        "shopify_connector": True,
-        "woocommerce_connector": True,
-        "headless_api": True,
-        "hosted_checkout": True,
-        "byo_stripe": True,
-        "byo_razorpay": True,
-        "byo_paypal": True,
-        "max_products": 5000,
-        "multi_currency_advanced": True,
-        "email_volume_per_month": 10000,
-    },
-    "business": {
-        "max_channels": 20,
-        "shopify_connector": True,
-        "woocommerce_connector": True,
-        "headless_api": True,
-        "hosted_checkout": True,
-        "byo_stripe": True,
-        "byo_razorpay": True,
-        "byo_paypal": True,
-        "max_products": 50000,
-        "multi_currency_advanced": True,
-        "ai_product_generation": True,
-        "email_volume_per_month": 100000,
-    },
-    # Legacy / unknown plans behave as catalog defaults (= mostly off, very limited)
-}
+def resolve_plan_value(db: Session, tenant_id: UUID, feature_key: str) -> Any:
+    """Resolve a feature value for a tenant from the synced license cache.
 
-
-def resolve_plan_value(plan_codename: str, feature_key: str) -> Any:
-    """Resolve a feature value for a plan codename, falling back to the catalog default.
-
-    This function is the single seam to replace when platform-side plan-feature
-    management ships. The replacement reads from a per-tenant synced source
-    (e.g. ``TenantLicenseCache.raw_payload``'s ``plan_features`` sub-object).
-    The function body is the swap point — call-site signatures may need to grow
-    a context parameter (e.g. ``LicenseContext`` or ``tenant_id``) at that time.
+    Falls back to the feature catalog default when no cache exists or the
+    feature key is absent from the cached plan_features map.
     """
-    plan = PLAN_FEATURES.get(plan_codename)
-    if plan is not None and feature_key in plan:
-        return plan[feature_key]
+    # Import here to avoid circular imports (models → billing → models)
+    from app.models.tables import TenantLicenseCache
+
+    cache = db.execute(
+        select(TenantLicenseCache).where(TenantLicenseCache.tenant_id == tenant_id)
+    ).scalar_one_or_none()
+
+    if cache is not None and cache.plan_features and feature_key in cache.plan_features:
+        return cache.plan_features[feature_key]
+
     return resolve_default(feature_key)

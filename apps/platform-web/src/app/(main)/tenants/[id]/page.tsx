@@ -232,6 +232,9 @@ export default function TenantDetailPage() {
         </a>
       </section>
 
+      {/* Feature overrides */}
+      {tenant && <OverridesSection tenantId={tenant.id} />}
+
       {/* Create subscription modal */}
       {showCreateSub ? (
         <Modal title="Create subscription" onClose={() => setShowCreateSub(false)}>
@@ -448,6 +451,168 @@ function DeploymentModeSection({
         </select>
       </label>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Feature overrides section
+// ---------------------------------------------------------------------------
+
+type OverrideRow = { id: string; limit_key: string; value: unknown; reason: string | null; created_at: string };
+type CatalogEntry = { key: string; value_type: string; description: string; default: unknown };
+
+function OverridesSection({ tenantId }: { tenantId: string }) {
+  const [overrides, setOverrides] = useState<OverrideRow[]>([]);
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [addKey, setAddKey] = useState("");
+  const [addValue, setAddValue] = useState<string>("");
+  const [addReason, setAddReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function loadData() {
+    const [oRes, cRes] = await Promise.all([
+      fetch(`/api/platform/v1/platform/tenants/${tenantId}/overrides`),
+      fetch("/api/ims/v1/internal/platform/plan-features"),
+    ]);
+    if (oRes.ok) setOverrides(await oRes.json());
+    if (cRes.ok) {
+      const cat = (await cRes.json()) as CatalogEntry[];
+      setCatalog(cat);
+      if (cat.length > 0 && !addKey) setAddKey(cat[0]?.key ?? "");
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => { void loadData(); }, [tenantId]);
+
+  const selectedDef = catalog.find((c) => c.key === addKey);
+
+  async function addOverride() {
+    if (!addKey) return;
+    setSaving(true);
+    setErr(null);
+    let parsedValue: unknown = addValue;
+    if (selectedDef?.value_type === "bool") {
+      parsedValue = addValue === "true";
+    } else if (selectedDef?.value_type === "numeric") {
+      parsedValue = parseInt(addValue) || 0;
+    }
+    try {
+      const r = await fetch(`/api/platform/v1/platform/tenants/${tenantId}/overrides/${addKey}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: parsedValue, reason: addReason || null }),
+      });
+      if (r.ok) {
+        setAddValue("");
+        setAddReason("");
+        void loadData();
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } finally { setSaving(false); }
+  }
+
+  async function removeOverride(key: string) {
+    await fetch(`/api/platform/v1/platform/tenants/${tenantId}/overrides/${key}`, { method: "DELETE" });
+    void loadData();
+  }
+
+  if (loading) return null;
+
+  return (
+    <section className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Feature overrides</h2>
+      </div>
+      <p className="mt-1 mb-4 text-xs text-on-surface-variant">
+        Per-tenant feature overrides take precedence over plan-level values.
+      </p>
+
+      {overrides.length > 0 ? (
+        <div className="mb-4 overflow-x-auto rounded-lg border border-outline-variant/10">
+          <table className="min-w-full text-left text-xs">
+            <thead>
+              <tr className="border-b border-outline-variant/10 bg-surface-container-low">
+                <th className="px-4 py-2 font-bold uppercase tracking-widest text-on-surface-variant">Feature key</th>
+                <th className="px-4 py-2 font-bold uppercase tracking-widest text-on-surface-variant">Value</th>
+                <th className="px-4 py-2 font-bold uppercase tracking-widest text-on-surface-variant">Reason</th>
+                <th className="px-4 py-2 font-bold uppercase tracking-widest text-on-surface-variant"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/10">
+              {overrides.map((o) => (
+                <tr key={o.id}>
+                  <td className="px-4 py-2 font-mono text-on-surface">{o.limit_key}</td>
+                  <td className="px-4 py-2 font-semibold text-primary">{String(o.value)}</td>
+                  <td className="px-4 py-2 text-on-surface-variant">{o.reason ?? "—"}</td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => void removeOverride(o.limit_key)}
+                      className="text-error hover:underline text-[11px]"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="mb-4 text-sm text-on-surface-variant">No overrides set.</p>
+      )}
+
+      {/* Add override form */}
+      <div className="space-y-2">
+        <p className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Add override</p>
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={addKey}
+            onChange={(e) => { setAddKey(e.target.value); setAddValue(""); }}
+            className="rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary"
+          >
+            {catalog.map((c) => <option key={c.key} value={c.key}>{c.key}</option>)}
+          </select>
+          {selectedDef?.value_type === "bool" ? (
+            <select
+              value={addValue}
+              onChange={(e) => setAddValue(e.target.value)}
+              className="rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary"
+            >
+              <option value="true">true</option>
+              <option value="false">false</option>
+            </select>
+          ) : (
+            <input
+              type="number"
+              placeholder="Value"
+              value={addValue}
+              onChange={(e) => setAddValue(e.target.value)}
+              className="w-24 rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary"
+            />
+          )}
+          <input
+            type="text"
+            placeholder="Reason (optional)"
+            value={addReason}
+            onChange={(e) => setAddReason(e.target.value)}
+            className="flex-1 min-w-[140px] rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 py-1.5 text-xs text-on-surface outline-none focus:border-primary"
+          />
+          <button
+            onClick={() => void addOverride()}
+            disabled={saving || !addKey}
+            className="ink-gradient rounded-lg px-3 py-1.5 text-xs font-semibold text-on-primary disabled:opacity-50"
+          >
+            {saving ? "Saving…" : "Add"}
+          </button>
+        </div>
+        {err && <p className="text-xs text-error">{err}</p>}
+      </div>
+    </section>
   );
 }
 

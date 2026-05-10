@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import time
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -43,6 +43,7 @@ class LicenseResponse(BaseModel):
     grace_period_days: int
     is_in_grace_period: bool
     download_token: str | None = None
+    plan_features: dict[str, Any] = {}
 
 
 def _verify_hmac(request: Request, tenant_id: UUID) -> None:

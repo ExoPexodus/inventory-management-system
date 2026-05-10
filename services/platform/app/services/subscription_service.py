@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.tables import (
     Addon,
     Plan,
+    PlanFeature,
     PlatformTenant,
     Subscription,
     SubscriptionAddon,
@@ -203,11 +204,29 @@ def build_license_state(db: Session, tenant_id: UUID) -> dict | None:
     ).all()
     active_addons = [a.codename for _, a in addon_rows]
 
-    # Limit overrides
+    # Plan features from plan_features table
+    plan_feature_rows = db.execute(
+        select(PlanFeature).where(PlanFeature.plan_id == sub.plan_id)
+    ).scalars().all()
+    plan_features: dict = {r.feature_key: r.value for r in plan_feature_rows}
+
+    # Limit overrides — prefer value_json over legacy int limit_value
     overrides = db.execute(
         select(TenantLimitOverride).where(TenantLimitOverride.tenant_id == tenant_id)
     ).scalars().all()
-    override_map = {o.limit_key: o.limit_value for o in overrides}
+
+    def _override_value(o: TenantLimitOverride):  # type: ignore[return]
+        if o.value_json is not None:
+            v = o.value_json
+            if isinstance(v, dict) and list(v.keys()) == ["value"]:
+                return v["value"]
+            return v
+        return o.limit_value
+
+    override_map = {o.limit_key: _override_value(o) for o in overrides}
+
+    # Merge overrides into plan_features
+    merged_features = {**plan_features, **override_map}
 
     # Grace period check
     now = datetime.now(UTC)
@@ -232,6 +251,7 @@ def build_license_state(db: Session, tenant_id: UUID) -> dict | None:
         "grace_period_days": sub.grace_period_days,
         "is_in_grace_period": is_in_grace,
         "download_token": tenant.download_token if tenant else None,
+        "plan_features": merged_features,
     }
 
 

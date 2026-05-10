@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     main_api_url: str = "http://localhost:8001"
     admin_api_token: str = "change-me-admin-token"
     storage_path: str = "./uploads"
+    # Shared secret used for HMAC-signed calls from platform → IMS.
+    # Must match IMS's platform_api_secret env var.
+    platform_api_secret: str = "platform-dev-only-change-me"
 
 
 settings = Settings()

@@ -21,6 +21,14 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Tenant, TenantLicenseCache
 
+# Lazily imported to avoid circular dependency (entitlements → plans → models → entitlements)
+def _invalidate_entitlement_cache(tenant_id: UUID) -> None:
+    try:
+        from app.billing.entitlements import invalidate_cache
+        invalidate_cache(tenant_id)
+    except Exception:
+        logger.warning("Failed to invalidate entitlement cache for %s", tenant_id, exc_info=True)
+
 logger = logging.getLogger(__name__)
 
 STALE_THRESHOLD_SECONDS = 600  # 10 minutes — after this, cache is considered stale
@@ -80,6 +88,10 @@ def _upsert_cache(db: Session, tenant_id: UUID, data: dict) -> TenantLicenseCach
     cache.last_synced_at = now
     cache.raw_payload = data
 
+    new_plan_features = data.get("plan_features") or {}
+    plan_features_changed = cache.plan_features != new_plan_features
+    cache.plan_features = new_plan_features
+
     # Parse optional datetime strings
     trial_ends = data.get("trial_ends_at")
     cache.trial_ends_at = datetime.fromisoformat(trial_ends) if trial_ends else None
@@ -94,6 +106,12 @@ def _upsert_cache(db: Session, tenant_id: UUID, data: dict) -> TenantLicenseCach
             tenant.download_token = download_token
 
     db.flush()
+
+    # Invalidate the Redis entitlement cache when plan_features changed so the
+    # next request gets fresh values without waiting for the TTL to expire.
+    if plan_features_changed:
+        _invalidate_entitlement_cache(tenant_id)
+
     return cache
 
 

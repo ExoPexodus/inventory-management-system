@@ -2,12 +2,11 @@
 
 import { useEffect, useState, FormEvent } from "react";
 
-type FeatureValue = {
+type CatalogEntry = {
   key: string;
   value_type: string;
   description: string;
   default: unknown;
-  values: Record<string, unknown>;
 };
 
 type Plan = {
@@ -45,32 +44,41 @@ function storageLabel(mb: number) {
 }
 
 // ---------------------------------------------------------------------------
-// Feature matrix section
+// Feature matrix section (read-only view from catalog)
 // ---------------------------------------------------------------------------
 
-function PlanFeaturesSection() {
-  const [features, setFeatures] = useState<FeatureValue[]>([]);
+function PlanFeaturesSection({ plans }: { plans: Plan[] }) {
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [planFeatures, setPlanFeatures] = useState<Record<string, Record<string, unknown>>>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [planNames, setPlanNames] = useState<string[]>([]);
 
   useEffect(() => {
     void (async () => {
       try {
         const r = await fetch("/api/ims/v1/internal/platform/plan-features");
         if (!r.ok) throw new Error(`Failed (${r.status})`);
-        const data = (await r.json()) as FeatureValue[];
-        setFeatures(data);
-        if (data.length > 0 && data[0]) {
-          setPlanNames(Object.keys(data[0].values));
-        }
+        const data = (await r.json()) as CatalogEntry[];
+        setCatalog(data);
+
+        // Fetch per-plan feature values
+        const featureMap: Record<string, Record<string, unknown>> = {};
+        await Promise.all(
+          plans.map(async (p) => {
+            const fr = await fetch(`/api/platform/v1/platform/plans/${p.id}/features`);
+            if (fr.ok) {
+              featureMap[p.codename] = (await fr.json()) as Record<string, unknown>;
+            }
+          })
+        );
+        setPlanFeatures(featureMap);
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Failed to load feature matrix");
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, [plans]);
 
   function formatValue(v: unknown, valueType: string): string {
     if (v === null || v === undefined) return "—";
@@ -90,11 +98,7 @@ function PlanFeaturesSection() {
       <div>
         <h2 className="text-base font-bold text-on-surface">Feature matrix</h2>
         <p className="text-sm text-on-surface-variant">
-          Read-only view of current plan-feature values (sourced from{" "}
-          <code className="rounded bg-surface-container px-1 py-0.5 text-xs">
-            services/api/app/billing/plans.py
-          </code>
-          ). Per-tenant overrides are managed via tenant detail pages.
+          Current plan-feature values (sourced from platform DB). Click &ldquo;Edit&rdquo; on a plan card to modify features.
         </p>
       </div>
       <div className="overflow-x-auto rounded-xl border border-outline-variant/10">
@@ -104,29 +108,29 @@ function PlanFeaturesSection() {
               <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">
                 Feature
               </th>
-              {planNames.map((p) => (
+              {plans.map((p) => (
                 <th
-                  key={p}
+                  key={p.codename}
                   className="px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant"
                 >
-                  {p}
+                  {p.codename}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-outline-variant/10">
-            {features.map((f) => (
+            {catalog.map((f) => (
               <tr key={f.key} className="hover:bg-surface-container-low/50">
                 <td className="px-4 py-3">
                   <p className="font-mono font-semibold text-on-surface">{f.key}</p>
                   <p className="mt-0.5 text-[11px] text-on-surface-variant">{f.description}</p>
                 </td>
-                {planNames.map((p) => {
-                  const val = f.values[p];
+                {plans.map((p) => {
+                  const val = planFeatures[p.codename]?.[f.key] ?? f.default;
                   const isDefault = val === f.default;
                   return (
                     <td
-                      key={p}
+                      key={p.codename}
                       className={`px-4 py-3 tabular-nums ${
                         f.value_type === "bool"
                           ? val
@@ -163,6 +167,8 @@ export default function PlansPage() {
   const [createPlan, setCreatePlan] = useState(false);
   const [editAddon, setEditAddon] = useState<Addon | null>(null);
   const [createAddon, setCreateAddon] = useState(false);
+  const [editFeatsPlan, setEditFeatsPlan] = useState<Plan | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Plan | null>(null);
 
   async function load() {
     setLoading(true);
@@ -177,12 +183,22 @@ export default function PlansPage() {
 
   useEffect(() => { void load(); }, []);
 
-  async function togglePlan(p: Plan) {
+  async function archivePlan(p: Plan) {
     await fetch(`/api/platform/v1/platform/plans/${p.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !p.is_active }),
+      body: JSON.stringify({ is_active: false }),
     });
+    void load();
+  }
+
+  async function deletePlan(p: Plan) {
+    const r = await fetch(`/api/platform/v1/platform/plans/${p.id}`, { method: "DELETE" });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({})) as { detail?: string };
+      alert(d.detail ?? `Failed (${r.status})`);
+    }
+    setConfirmDelete(null);
     void load();
   }
 
@@ -235,7 +251,7 @@ export default function PlansPage() {
                   <p className="font-mono text-[10px] text-on-surface-variant">{p.codename}</p>
                 </div>
                 {!p.is_active && (
-                  <span className="shrink-0 rounded bg-surface-container-highest px-2 py-0.5 text-[10px] font-bold uppercase text-on-surface-variant">Inactive</span>
+                  <span className="shrink-0 rounded bg-surface-container-highest px-2 py-0.5 text-[10px] font-bold uppercase text-on-surface-variant">Archived</span>
                 )}
               </div>
 
@@ -264,21 +280,38 @@ export default function PlansPage() {
                 </li>
               </ul>
 
-              <div className="mt-5 flex gap-2">
+              <div className="mt-5 flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => setEditPlan(p)}
-                  className="flex-1 rounded-lg border border-outline-variant/20 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container-high"
+                  className="rounded-lg border border-outline-variant/20 px-3 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container-high"
                 >
                   Edit
                 </button>
                 <button
                   type="button"
-                  onClick={() => togglePlan(p)}
-                  className="flex-1 rounded-lg border border-outline-variant/20 py-1.5 text-xs font-semibold text-on-surface transition hover:bg-surface-container-high"
+                  onClick={() => setEditFeatsPlan(p)}
+                  className="rounded-lg border border-primary/30 px-3 py-1.5 text-xs font-semibold text-primary transition hover:bg-primary/10"
                 >
-                  {p.is_active ? "Deactivate" : "Activate"}
+                  Features
                 </button>
+                {p.is_active ? (
+                  <button
+                    type="button"
+                    onClick={() => { if (confirm(`Archive ${p.display_name}? It will be hidden from new tenants.`)) void archivePlan(p); }}
+                    className="rounded-lg border border-outline-variant/20 px-3 py-1.5 text-xs font-semibold text-on-surface-variant transition hover:bg-surface-container-high"
+                  >
+                    Archive
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(p)}
+                    className="rounded-lg border border-error/30 px-3 py-1.5 text-xs font-semibold text-error transition hover:bg-error-container/30"
+                  >
+                    Delete
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -365,9 +398,161 @@ export default function PlansPage() {
           onSaved={() => { setCreateAddon(false); setEditAddon(null); void load(); }}
         />
       )}
+      {editFeatsPlan && (
+        <PlanFeaturesModal
+          plan={editFeatsPlan}
+          onClose={() => setEditFeatsPlan(null)}
+          onSaved={() => { setEditFeatsPlan(null); void load(); }}
+        />
+      )}
+      {confirmDelete && (
+        <Modal title={`Delete ${confirmDelete.display_name}?`} onClose={() => setConfirmDelete(null)}>
+          <p className="text-sm text-on-surface-variant mb-4">
+            This permanently removes the plan and all its feature entries. This cannot be undone.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => void deletePlan(confirmDelete)}
+              className="rounded-lg bg-error px-4 py-2 text-sm font-semibold text-on-error"
+            >
+              Delete permanently
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(null)}
+              className="rounded-lg border border-outline-variant/20 px-4 py-2 text-sm font-semibold text-on-surface-variant"
+            >
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
 
-      <PlanFeaturesSection />
+      <PlanFeaturesSection plans={plans} />
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Plan features editor modal
+// ---------------------------------------------------------------------------
+
+function PlanFeaturesModal({ plan, onClose, onSaved }: { plan: Plan; onClose: () => void; onSaved: () => void }) {
+  const [catalog, setCatalog] = useState<CatalogEntry[]>([]);
+  const [values, setValues] = useState<Record<string, unknown>>({});
+  const [applyToExisting, setApplyToExisting] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const [catRes, featRes] = await Promise.all([
+          fetch("/api/ims/v1/internal/platform/plan-features"),
+          fetch(`/api/platform/v1/platform/plans/${plan.id}/features`),
+        ]);
+        const catData = catRes.ok ? (await catRes.json()) as CatalogEntry[] : [];
+        const featData = featRes.ok ? (await featRes.json()) as Record<string, unknown> : {};
+        setCatalog(catData);
+        // Pre-populate with existing values; default to catalog default for missing keys
+        const initialValues: Record<string, unknown> = {};
+        for (const f of catData) {
+          initialValues[f.key] = f.key in featData ? featData[f.key] : f.default;
+        }
+        setValues(initialValues);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [plan.id]);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await fetch(
+        `/api/platform/v1/platform/plans/${plan.id}/features?apply_to_existing=${applyToExisting}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(values),
+        },
+      );
+      if (r.ok) {
+        onSaved();
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setErr(d.detail ?? `Failed (${r.status})`);
+      }
+    } catch { setErr("Network error."); }
+    finally { setSaving(false); }
+  }
+
+  function setValue(key: string, value: unknown) {
+    setValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  if (loading) {
+    return (
+      <Modal title={`Features — ${plan.display_name}`} onClose={onClose}>
+        <p className="text-sm text-on-surface-variant">Loading…</p>
+      </Modal>
+    );
+  }
+
+  return (
+    <Modal title={`Features — ${plan.display_name}`} onClose={onClose}>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <p className="text-xs text-on-surface-variant">
+          Configure feature-gating values for <strong>{plan.codename}</strong>.
+          Values here override catalog defaults for all tenants on this plan (unless overridden per-tenant).
+        </p>
+        <div className="max-h-[50vh] overflow-y-auto space-y-3 rounded-lg border border-outline-variant/10 p-4">
+          {catalog.map((f) => (
+            <div key={f.key} className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <p className="font-mono text-xs font-semibold text-on-surface">{f.key}</p>
+                <p className="text-[11px] text-on-surface-variant">{f.description}</p>
+              </div>
+              <div className="shrink-0">
+                {f.value_type === "bool" ? (
+                  <input
+                    type="checkbox"
+                    checked={!!values[f.key]}
+                    onChange={(e) => setValue(f.key, e.target.checked)}
+                    className="h-4 w-4 rounded accent-primary"
+                  />
+                ) : (
+                  <input
+                    type="number"
+                    className="w-24 rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 py-1 text-right text-sm text-on-surface outline-none focus:border-primary"
+                    value={typeof values[f.key] === "number" ? (values[f.key] as number) : ""}
+                    onChange={(e) => setValue(f.key, parseInt(e.target.value) || 0)}
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <label className="flex items-center gap-2 text-sm text-on-surface">
+          <input
+            type="checkbox"
+            checked={applyToExisting}
+            onChange={(e) => setApplyToExisting(e.target.checked)}
+            className="h-4 w-4 rounded accent-primary"
+          />
+          Apply to existing tenants immediately
+          <span className="text-xs text-on-surface-variant">(triggers license sync)</span>
+        </label>
+
+        {err && <p className="text-sm text-error">{err}</p>}
+        <ModalActions saving={saving} label="Save features" onClose={onClose} />
+      </form>
+    </Modal>
   );
 }
 

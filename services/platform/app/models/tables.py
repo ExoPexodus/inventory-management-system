@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import (
     Boolean,
@@ -146,6 +146,22 @@ class SubscriptionAddon(Base):
     removed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class PlanFeature(Base):
+    __tablename__ = "plan_features"
+    __table_args__ = (
+        UniqueConstraint("plan_id", "feature_key", name="uq_plan_features_plan_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("plans.id", ondelete="CASCADE"), nullable=False
+    )
+    feature_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    value: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class TenantLimitOverride(Base):
     __tablename__ = "tenant_limit_overrides"
     __table_args__ = (
@@ -158,6 +174,7 @@ class TenantLimitOverride(Base):
     )
     limit_key: Mapped[str] = mapped_column(String(64), nullable=False)
     limit_value: Mapped[int] = mapped_column(Integer, nullable=False)
+    value_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

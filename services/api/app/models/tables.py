@@ -965,6 +965,7 @@ class TenantLicenseCache(Base):
     is_in_grace_period: Mapped[bool] = mapped_column(Boolean, default=False)
     last_synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     raw_payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    plan_features: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

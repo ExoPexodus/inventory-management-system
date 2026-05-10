@@ -9,6 +9,7 @@ const NAV = [
   { href: "/dashboard",   label: "Dashboard",    icon: "space_dashboard" },
   { href: "/tenants",     label: "Tenants",       icon: "apartment" },
   { href: "/plans",       label: "Plans & Add-ons", icon: "sell" },
+  { href: "/overrides",   label: "Bulk Overrides", icon: "tune" },
   { href: "/payments",    label: "Payments",      icon: "payments" },
   { href: "/invoices",    label: "Invoices",      icon: "receipt_long" },
   { href: "/releases",    label: "App Releases",  icon: "phone_android" },

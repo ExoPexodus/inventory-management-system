@@ -2,20 +2,29 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import logging
+import time
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.auth.deps import OperatorDep
+from app.config import settings
 from app.db.session import get_db
-from app.models.tables import Addon, Plan
+from app.models.tables import Addon, Plan, PlanFeature, PlatformTenant, Subscription
 from app.services.audit_service import write_audit
+from app.services.feature_catalog import get_feature_catalog
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/platform", tags=["Platform Plans & Addons"])
 
@@ -152,6 +161,117 @@ def patch_plan(
 
 
 # ---------------------------------------------------------------------------
+# Plan features endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/plans/{plan_id}/features", response_model=dict[str, Any])
+def get_plan_features(
+    plan_id: UUID,
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> dict[str, Any]:
+    """Returns {feature_key: value} for the plan."""
+    plan = db.get(Plan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    rows = db.execute(
+        select(PlanFeature).where(PlanFeature.plan_id == plan_id)
+    ).scalars().all()
+    return {r.feature_key: r.value for r in rows}
+
+
+@router.put("/plans/{plan_id}/features", response_model=dict[str, Any])
+def put_plan_features(
+    plan_id: UUID,
+    body: dict[str, Any],
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+    apply_to_existing: bool = Query(default=False),
+) -> dict[str, Any]:
+    """Replace the plan's feature set. Validates keys against IMS catalog.
+
+    If apply_to_existing=True, triggers immediate license sync for each
+    tenant currently on this plan.
+    """
+    plan = db.get(Plan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    # Validate keys against IMS catalog (best-effort — accept if catalog unavailable)
+    catalog = get_feature_catalog()
+    if catalog:
+        unknown = [k for k in body if k not in catalog]
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown feature key(s): {unknown}. Valid keys: {sorted(catalog.keys())}",
+            )
+
+    # Delete all existing feature rows for this plan then re-insert
+    existing = db.execute(
+        select(PlanFeature).where(PlanFeature.plan_id == plan_id)
+    ).scalars().all()
+    for row in existing:
+        db.delete(row)
+    db.flush()
+
+    for feature_key, value in body.items():
+        db.add(PlanFeature(plan_id=plan_id, feature_key=feature_key, value=value))
+
+    write_audit(
+        db, operator_id=ctx.operator_id, action="update_plan_features",
+        resource_type="plan", resource_id=str(plan_id), details={"keys": list(body.keys())},
+    )
+    db.commit()
+
+    if apply_to_existing:
+        _cascade_sync_to_plan_tenants(db, plan_id)
+
+    return body
+
+
+# ---------------------------------------------------------------------------
+# Plan delete endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.delete("/plans/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_plan(
+    plan_id: UUID,
+    ctx: OperatorDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> None:
+    """Delete a plan. 409 if is_active=True or if any active subscriptions exist."""
+    plan = db.get(Plan, plan_id)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    if plan.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Plan must be archived (is_active=false) before deletion",
+        )
+
+    active_sub = db.execute(
+        select(Subscription).where(
+            Subscription.plan_id == plan_id,
+            Subscription.cancelled_at.is_(None),
+        )
+    ).scalar_one_or_none()
+    if active_sub is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Plan has active subscriptions — cancel or move all tenants first",
+        )
+
+    write_audit(db, operator_id=ctx.operator_id, action="delete_plan", resource_type="plan", resource_id=str(plan_id))
+    db.delete(plan)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
 # Addon endpoints
 # ---------------------------------------------------------------------------
 
@@ -209,6 +329,43 @@ def patch_addon(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _cascade_sync_to_plan_tenants(db: Session, plan_id: UUID) -> None:
+    """For every active subscription on this plan, trigger an IMS license sync.
+
+    Uses per-tenant api_base_url so it works in multi-instance deployments.
+    Errors per tenant are logged but do not abort the loop.
+    """
+    subs = db.execute(
+        select(Subscription, PlatformTenant)
+        .join(PlatformTenant, PlatformTenant.id == Subscription.tenant_id)
+        .where(
+            Subscription.plan_id == plan_id,
+            Subscription.cancelled_at.is_(None),
+        )
+    ).all()
+
+    secret = settings.platform_api_secret
+    for sub, tenant in subs:
+        try:
+            ts = str(int(time.time()))
+            msg = f"{ts}|{tenant.id}"
+            sig = hmac.new(secret.encode(), msg.encode(), hashlib.sha256).hexdigest()
+            url = f"{tenant.api_base_url}/v1/internal/license-sync-trigger"
+            resp = httpx.post(
+                url,
+                json={"tenant_id": str(tenant.id)},
+                headers={"X-Platform-Auth": sig, "X-Platform-Timestamp": ts},
+                timeout=10.0,
+            )
+            if resp.status_code not in (200, 202):
+                logger.warning(
+                    "License sync trigger failed for tenant %s: HTTP %s",
+                    tenant.id, resp.status_code,
+                )
+        except Exception:
+            logger.warning("License sync trigger error for tenant %s", tenant.id, exc_info=True)
 
 
 def _plan_out(p: Plan) -> PlanOut:

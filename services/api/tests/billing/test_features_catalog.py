@@ -30,54 +30,56 @@ def test_feature_value_types_are_supported() -> None:
             f"Unsupported value_type on {f.key}: {f.value_type}"
 
 
-def test_plan_map_lookup_falls_back_to_default() -> None:
+def test_resolve_plan_value_falls_back_to_default_when_no_cache() -> None:
+    """resolve_plan_value returns the catalog default when no cache row exists."""
+    from unittest.mock import MagicMock
+    from sqlalchemy import select
     from app.billing.features import resolve_default
     from app.billing.plans import resolve_plan_value
 
-    # An unknown plan codename should still resolve via the catalog default.
-    val = resolve_plan_value("plan-that-does-not-exist", "headless_api")
+    # Mock db that returns None for TenantLicenseCache lookup
+    mock_db = MagicMock()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+
+    import uuid
+    tenant_id = uuid.uuid4()
+    val = resolve_plan_value(mock_db, tenant_id, "headless_api")
     assert val == resolve_default("headless_api")
 
 
-def test_plan_map_pro_plan_includes_headless_api() -> None:
+def test_resolve_plan_value_reads_from_cache() -> None:
+    """resolve_plan_value returns the value from TenantLicenseCache.plan_features."""
+    from unittest.mock import MagicMock
     from app.billing.plans import resolve_plan_value
-    assert resolve_plan_value("pro", "headless_api") is True
+
+    import uuid
+    tenant_id = uuid.uuid4()
+
+    # Simulate a cache row with plan_features populated
+    mock_cache = MagicMock()
+    mock_cache.plan_features = {"headless_api": True, "max_channels": 5}
+
+    mock_db = MagicMock()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = mock_cache
+
+    assert resolve_plan_value(mock_db, tenant_id, "headless_api") is True
+    assert resolve_plan_value(mock_db, tenant_id, "max_channels") == 5
 
 
-def test_plan_map_free_plan_does_not_include_headless_api() -> None:
+def test_resolve_plan_value_falls_back_when_key_not_in_cache() -> None:
+    """resolve_plan_value falls back to catalog default for unknown keys in cache."""
+    from unittest.mock import MagicMock
+    from app.billing.features import resolve_default
     from app.billing.plans import resolve_plan_value
-    assert resolve_plan_value("free", "headless_api") is False
 
+    import uuid
+    tenant_id = uuid.uuid4()
 
-def test_plan_numeric_values_locked() -> None:
-    """Lock in commercial-tier numeric values.
+    mock_cache = MagicMock()
+    mock_cache.plan_features = {}  # empty — key not present
 
-    Bumping any of these is a deliberate pricing change. A test failure here
-    forces a conscious decision rather than letting drift ship silently.
-    """
-    from app.billing.plans import resolve_plan_value
-    assert resolve_plan_value("free", "max_channels") == 1
-    assert resolve_plan_value("starter", "max_channels") == 2
-    assert resolve_plan_value("pro", "max_channels") == 5
-    assert resolve_plan_value("business", "max_channels") == 20
-    assert resolve_plan_value("trial", "max_channels") == 5
+    mock_db = MagicMock()
+    mock_db.execute.return_value.scalar_one_or_none.return_value = mock_cache
 
-    assert resolve_plan_value("starter", "max_products") == 500
-    assert resolve_plan_value("pro", "max_products") == 5000
-    assert resolve_plan_value("business", "max_products") == 50000
-
-    assert resolve_plan_value("starter", "email_volume_per_month") == 1000
-    assert resolve_plan_value("pro", "email_volume_per_month") == 10000
-    assert resolve_plan_value("business", "email_volume_per_month") == 100000
-
-
-def test_starter_plan_does_not_include_headless_api() -> None:
-    """Confirms the starter plan resolves headless_api to False.
-
-    headless_api is absent from the starter plan dict, so this exercises the
-    fallback path to the catalog default (currently False). It locks the
-    behavior — if either the catalog default flips or someone adds an
-    explicit headless_api entry to the starter plan, this test catches it.
-    """
-    from app.billing.plans import resolve_plan_value
-    assert resolve_plan_value("starter", "headless_api") is False
+    val = resolve_plan_value(mock_db, tenant_id, "headless_api")
+    assert val == resolve_default("headless_api")

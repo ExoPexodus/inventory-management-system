@@ -17,6 +17,8 @@ from app.models import Tenant, TenantLicenseCache
 @pytest.fixture()
 def licensed_tenant(db, tenant: Tenant) -> Tenant:
     from datetime import UTC, datetime
+    # plan_features must match what the "pro" plan provides for the entitlement
+    # checks in these tests to pass (headless_api=True, max_channels=5).
     db.add(TenantLicenseCache(
         tenant_id=tenant.id,
         subscription_status="active",
@@ -25,6 +27,19 @@ def licensed_tenant(db, tenant: Tenant) -> Tenant:
         max_employees=20,
         storage_limit_mb=10000,
         last_synced_at=datetime.now(UTC),
+        plan_features={
+            "headless_api": True,
+            "max_channels": 5,
+            "shopify_connector": True,
+            "woocommerce_connector": True,
+            "hosted_checkout": True,
+            "byo_stripe": True,
+            "byo_razorpay": True,
+            "byo_paypal": True,
+            "max_products": 5000,
+            "multi_currency_advanced": True,
+            "email_volume_per_month": 10000,
+        },
     ))
     db.commit()
     return tenant

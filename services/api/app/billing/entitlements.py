@@ -152,7 +152,7 @@ def resolve_for_tenant(db: Session, tenant_id: UUID, plan_codename: str) -> Enti
 
     values: dict[str, Any] = {}
     for f in FEATURE_CATALOG:
-        values[f.key] = resolve_plan_value(plan_codename, f.key)
+        values[f.key] = resolve_plan_value(db, tenant_id, f.key)
 
     overrides = _load_overrides(db, tenant_id)
     values.update(overrides)

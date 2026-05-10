@@ -13,6 +13,7 @@ from app.routers import webhooks_shopify
 from app.routers import webhooks_shiprocket
 from app.routers import webhooks_woocommerce
 from app.routers import internal_platform_plan_features
+from app.routers import internal_license_sync
 from app.routers import (
     app_updates,
     admin,
@@ -155,3 +156,4 @@ app.include_router(webhooks_shopify.router)
 app.include_router(webhooks_shiprocket.router)
 app.include_router(webhooks_woocommerce.router)
 app.include_router(internal_platform_plan_features.router)
+app.include_router(internal_license_sync.router)

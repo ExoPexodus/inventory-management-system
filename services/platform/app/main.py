@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import auth, downloads, health, internal_sync, invoices, license, payments, plans, releases, subscriptions, tenant_api, tenants
+from app.routers.tenants import bulk_router as overrides_bulk_router
 
 app = FastAPI(
     title="IMS Platform Service",
@@ -20,6 +21,7 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(tenants.router)
+app.include_router(overrides_bulk_router)
 app.include_router(plans.router)
 app.include_router(subscriptions.router)
 app.include_router(payments.router)

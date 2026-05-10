@@ -1,7 +1,12 @@
-"""Internal platform endpoint: read plan-feature values.
+"""Internal platform endpoint: read feature catalog.
 
-Returns the current plan-codename -> feature-key -> value mapping
-so the platform-web UI can display it without reading plans.py directly.
+Returns the feature catalog (key → value_type, default, description) so the
+platform-web UI can render type-appropriate inputs for each feature key.
+
+Per-plan values are now managed in the platform DB via
+`GET /v1/platform/plans/{id}/features` (platform service). This endpoint
+only exposes the catalog schema — not per-plan values.
+
 Requires the X-Admin-Token header (or is open in dev when no token is configured).
 """
 from __future__ import annotations
@@ -12,12 +17,9 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from app.billing.features import FEATURE_CATALOG
-from app.billing.plans import PLAN_FEATURES, resolve_plan_value
 from app.config import settings
 
 router = APIRouter(prefix="/v1/internal/platform", tags=["Internal Platform"])
-
-PLAN_CODENAMES = sorted(set(list(PLAN_FEATURES.keys()) + ["legacy"]))
 
 
 def _require_admin_token(x_admin_token: str | None = Header(default=None)) -> None:
@@ -27,29 +29,30 @@ def _require_admin_token(x_admin_token: str | None = Header(default=None)) -> No
         raise HTTPException(status_code=401, detail="Invalid admin token")
 
 
-class FeatureValueOut(BaseModel):
+class FeatureCatalogOut(BaseModel):
     key: str
     value_type: str
     description: str
     default: Any
-    values: dict[str, Any]  # plan_codename -> value
 
 
 @router.get(
     "/plan-features",
-    response_model=list[FeatureValueOut],
+    response_model=list[FeatureCatalogOut],
     dependencies=[Depends(_require_admin_token)],
 )
-def get_plan_features() -> list[FeatureValueOut]:
-    """Return every feature with its resolved value per known plan."""
-    result = []
-    for f in FEATURE_CATALOG:
-        values = {plan: resolve_plan_value(plan, f.key) for plan in PLAN_CODENAMES}
-        result.append(FeatureValueOut(
+def get_plan_features() -> list[FeatureCatalogOut]:
+    """Return the feature catalog (schema only; no per-plan values).
+
+    Per-plan values are managed in the platform DB and fetched per-plan via
+    the platform service's GET /v1/platform/plans/{id}/features endpoint.
+    """
+    return [
+        FeatureCatalogOut(
             key=f.key,
             value_type=f.value_type.value,
             description=f.description,
             default=f.default,
-            values=values,
-        ))
-    return result
+        )
+        for f in FEATURE_CATALOG
+    ]

@@ -1,11 +1,27 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 
-from app.models import Tenant, TenantFeatureOverride
+from app.models import Tenant, TenantFeatureOverride, TenantLicenseCache
 from app.worker.queue import redis_conn
+
+# Pro plan features for cache seeding
+_PRO_FEATURES = {
+    "max_channels": 5,
+    "headless_api": True,
+    "shopify_connector": True,
+    "woocommerce_connector": True,
+    "hosted_checkout": True,
+    "byo_stripe": True,
+    "byo_razorpay": True,
+    "byo_paypal": True,
+    "max_products": 5000,
+    "multi_currency_advanced": True,
+    "email_volume_per_month": 10000,
+}
 
 
 def _cache_key(tenant_id, plan: str) -> str:
@@ -27,6 +43,19 @@ def clear_cache(tenant: Tenant):
 
 def test_resolved_value_is_cached_after_first_call(db, tenant: Tenant) -> None:
     from app.billing.entitlements import resolve_for_tenant
+
+    # Seed license cache with pro plan features so resolve_plan_value can read them
+    db.add(TenantLicenseCache(
+        tenant_id=tenant.id,
+        subscription_status="active",
+        plan_codename="pro",
+        max_shops=5,
+        max_employees=20,
+        storage_limit_mb=10000,
+        last_synced_at=datetime.now(UTC),
+        plan_features=_PRO_FEATURES,
+    ))
+    db.flush()
 
     resolve_for_tenant(db, tenant.id, "pro")
     raw = redis_conn().get(_cache_key(tenant.id, "pro"))
