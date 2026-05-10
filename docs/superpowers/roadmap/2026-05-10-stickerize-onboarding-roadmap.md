@@ -52,7 +52,7 @@
 ## Progress
 | # | Feature | Status |
 |---|---|---|
-| 6 | Admin product list pagination | _pending_ |
+| 6 | Admin product list pagination | ✅ shipped |
 | 5 | Hierarchical Category table | _pending_ |
 | 7 | Discount conditions (quantity + category/tag) | _pending_ |
 | 8 | Full-text product search | _pending_ |
