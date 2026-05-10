@@ -18,7 +18,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -351,6 +351,7 @@ class Product(Base):
     og_image_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     tax_class: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     # null resolved as 'standard' at calculation time
+    search_vector: Mapped[Optional[Any]] = mapped_column(TSVECTOR, nullable=True)
 
     product_group: Mapped[Optional["ProductGroup"]] = relationship(back_populates="products")
     images: Mapped[list["ProductImage"]] = relationship(

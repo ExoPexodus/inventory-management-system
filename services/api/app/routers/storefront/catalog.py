@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.db.session import get_db
 from app.models import Category, Product, ProductCategory, ProductImage
 from app.routers.storefront.auth import StorefrontChannelDep
+from app.services.product_search import make_tsquery
 
 router = APIRouter(prefix="/v1/storefront", tags=["Storefront Catalog"])
 
@@ -211,9 +212,13 @@ def list_products(
         Product.tenant_id == channel.tenant_id,
         Product.status == "active",
     ]
+    ts_query: str | None = None
     if q and q.strip():
-        like = f"%{q.strip()}%"
-        base_where.append(or_(Product.name.ilike(like), Product.sku.ilike(like)))
+        ts_query = make_tsquery(q)
+        if ts_query:
+            base_where.append(
+                Product.search_vector.op("@@")(func.to_tsquery("simple", ts_query))
+            )
     if product_type:
         base_where.append(Product.product_type == product_type)
 
@@ -266,7 +271,14 @@ def list_products(
         select(func.count(Product.id)).where(*base_where)
     ).scalar_one()
 
-    order_clause = sort_col.asc() if direction == "asc" else sort_col.desc()
+    # When a text search is active and the caller hasn't asked for a specific sort,
+    # order by relevance (ts_rank DESC) instead of the default created_at.
+    if ts_query and not sort_by:
+        order_clause = func.ts_rank(
+            Product.search_vector, func.to_tsquery("simple", ts_query)
+        ).desc()
+    else:
+        order_clause = sort_col.asc() if direction == "asc" else sort_col.desc()
 
     rows = db.execute(
         select(Product, _first_image_subq.label("first_image_url"))

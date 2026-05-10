@@ -20,6 +20,7 @@ from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.services.audit_service import write_audit
 from app.services.localisation import effective_timezone
+from app.services.product_search import make_tsquery
 from app.models import (
     Category,
     Channel,
@@ -1371,9 +1372,13 @@ def admin_list_products(
     tenant_id = _require_operator_tenant(ctx)
 
     base_where = [Product.tenant_id == tenant_id]
+    ts_query: str | None = None
     if q and q.strip():
-        like = f"%{q.strip()}%"
-        base_where.append(or_(Product.name.ilike(like), Product.sku.ilike(like)))
+        ts_query = make_tsquery(q)
+        if ts_query:
+            base_where.append(
+                Product.search_vector.op("@@")(func.to_tsquery("simple", ts_query))
+            )
     if status_filter:
         base_where.append(Product.status == status_filter)
     if category_slug and category_slug.strip():
@@ -1399,11 +1404,19 @@ def admin_list_products(
 
     total = db.execute(select(func.count(Product.id)).where(*base_where)).scalar_one()
 
+    # When a text search is active, rank by relevance; otherwise alphabetical by name.
+    if ts_query:
+        admin_order = func.ts_rank(
+            Product.search_vector, func.to_tsquery("simple", ts_query)
+        ).desc()
+    else:
+        admin_order = Product.name.asc()
+
     rows = db.execute(
         select(Product)
         .options(selectinload(Product.product_group))
         .where(*base_where)
-        .order_by(Product.name.asc())
+        .order_by(admin_order)
         .offset((page - 1) * per_page)
         .limit(per_page)
     ).scalars().all()
