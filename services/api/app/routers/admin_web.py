@@ -21,9 +21,11 @@ from app.db.admin_deps_db import get_db_admin
 from app.services.audit_service import write_audit
 from app.services.localisation import effective_timezone
 from app.models import (
+    Category,
     Channel,
     Order,
     Product,
+    ProductCategory,
     ProductGroup,
     PurchaseOrder,
     Role,
@@ -1245,7 +1247,7 @@ class CreateProductBody(BaseModel):
     sku: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=255)
     unit_price_cents: int = Field(ge=0)
-    category: str | None = Field(default=None, max_length=128)
+    category_ids: list[UUID] | None = None
     product_group_id: UUID | None = None
     variant_label: str | None = Field(default=None, max_length=128)
     barcode: str | None = Field(default=None, max_length=128)
@@ -1279,7 +1281,7 @@ class CreateProductResponse(BaseModel):
     sku: str
     name: str
     unit_price_cents: int
-    category: str | None
+    category_slugs: list[str] = []
     product_group_id: UUID | None = None
     group_title: str | None = None
     variant_label: str | None = None
@@ -1328,7 +1330,7 @@ class ProductListItem(BaseModel):
     sku: str
     name: str
     status: str
-    category: str | None
+    category_slugs: list[str] = []
     unit_price_cents: int
     reorder_point: int
     variant_label: str | None = None
@@ -1361,7 +1363,7 @@ def admin_list_products(
     db: Annotated[Session, Depends(get_db_admin)],
     q: str | None = None,
     status_filter: str | None = Query(None, alias="status"),
-    category: str | None = None,
+    category_slug: str | None = None,
     tags: list[str] | None = Query(default=None, alias="tags[]"),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=50, ge=1, le=200),
@@ -1374,8 +1376,22 @@ def admin_list_products(
         base_where.append(or_(Product.name.ilike(like), Product.sku.ilike(like)))
     if status_filter:
         base_where.append(Product.status == status_filter)
-    if category and category.strip():
-        base_where.append(Product.category == category.strip())
+    if category_slug and category_slug.strip():
+        # Flat slug filter: only exact match on the category slug (no descendants)
+        cat_row = db.execute(
+            select(Category.id).where(
+                Category.tenant_id == tenant_id,
+                Category.slug == category_slug.strip(),
+            )
+        ).scalar_one_or_none()
+        if cat_row is None:
+            return ProductListResponse(items=[], total=0, page=page, per_page=per_page)
+        cat_subq = (
+            select(ProductCategory.product_id)
+            .where(ProductCategory.category_id == cat_row)
+            .scalar_subquery()
+        )
+        base_where.append(Product.id.in_(cat_subq))
     if tags:
         tag_clauses = [Product.tags.op("?")(t) for t in tags if t]
         if tag_clauses:
@@ -1392,9 +1408,26 @@ def admin_list_products(
         .limit(per_page)
     ).scalars().all()
 
+    # Batch-load category slugs for all products on this page (avoids N+1)
+    product_ids = [r.id for r in rows]
+    cat_slugs_map: dict[UUID, list[str]] = {r.id: [] for r in rows}
+    if product_ids:
+        slug_rows = db.execute(
+            select(ProductCategory.product_id, Category.slug)
+            .join(Category, Category.id == ProductCategory.category_id)
+            .where(
+                ProductCategory.product_id.in_(product_ids),
+                ProductCategory.tenant_id == tenant_id,
+            )
+        ).all()
+        for prod_id, slug in slug_rows:
+            if prod_id in cat_slugs_map:
+                cat_slugs_map[prod_id].append(slug)
+
     items = [
         ProductListItem(
-            id=r.id, sku=r.sku, name=r.name, status=r.status, category=r.category,
+            id=r.id, sku=r.sku, name=r.name, status=r.status,
+            category_slugs=cat_slugs_map.get(r.id, []),
             unit_price_cents=r.unit_price_cents, reorder_point=r.reorder_point,
             variant_label=r.variant_label,
             group_title=r.product_group.title if r.product_group else None,
@@ -1423,7 +1456,6 @@ def admin_create_product(
         sku=body.sku.strip(),
         name=body.name.strip(),
         unit_price_cents=body.unit_price_cents,
-        category=body.category.strip() if body.category else None,
         variant_label=body.variant_label.strip() if body.variant_label else None,
         barcode=body.barcode.strip() if body.barcode else None,
         cost_price_cents=body.cost_price_cents,
@@ -1454,6 +1486,28 @@ def admin_create_product(
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="sku_conflict") from None
+
+    # Assign category memberships if provided
+    category_slugs: list[str] = []
+    if body.category_ids:
+        cats = db.execute(
+            select(Category).where(
+                Category.id.in_(body.category_ids),
+                Category.tenant_id == tenant_id,
+            )
+        ).scalars().all()
+        found_ids = {c.id for c in cats}
+        missing_ids = [str(cid) for cid in body.category_ids if cid not in found_ids]
+        if missing_ids:
+            db.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Category IDs not found in tenant: {missing_ids}",
+            )
+        for cat in cats:
+            db.add(ProductCategory(tenant_id=tenant_id, product_id=prod.id, category_id=cat.id))
+            category_slugs.append(cat.slug)
+
     write_audit(
         db,
         tenant_id=tenant_id,
@@ -1471,7 +1525,7 @@ def admin_create_product(
         sku=prod.sku,
         name=prod.name,
         unit_price_cents=prod.unit_price_cents,
-        category=prod.category,
+        category_slugs=category_slugs,
         product_group_id=prod.product_group_id,
         group_title=group.title if group else None,
         variant_label=prod.variant_label,
@@ -1570,7 +1624,7 @@ class PatchProductBody(BaseModel):
     variant_label: str | None = Field(default=None, max_length=128)
     name: str | None = Field(default=None, min_length=1, max_length=255)
     status: str | None = None
-    category: str | None = Field(default=None, max_length=128)
+    category_ids: list[UUID] | None = None
     unit_price_cents: int | None = Field(default=None, ge=0)
     reorder_point: int | None = Field(default=None, ge=0)
     barcode: str | None = Field(default=None, max_length=128)
@@ -1629,10 +1683,6 @@ def admin_patch_product(
             )
         prod.status = patch["status"]
 
-    if "category" in patch:
-        cat = patch["category"]
-        prod.category = cat.strip() if isinstance(cat, str) and cat.strip() else None
-
     if "unit_price_cents" in patch and patch["unit_price_cents"] is not None:
         prod.unit_price_cents = patch["unit_price_cents"]
 
@@ -1677,6 +1727,36 @@ def admin_patch_product(
             prod.product_group_id = g.id
             group_title = g.title
 
+    # Replace category memberships if provided
+    new_category_slugs: list[str] | None = None
+    if "category_ids" in patch and patch["category_ids"] is not None:
+        new_cat_ids = patch["category_ids"]
+        # Validate all belong to tenant
+        cats = db.execute(
+            select(Category).where(
+                Category.id.in_(new_cat_ids),
+                Category.tenant_id == tenant_id,
+            )
+        ).scalars().all()
+        found_ids = {c.id for c in cats}
+        missing_ids = [str(cid) for cid in new_cat_ids if cid not in found_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Category IDs not found in tenant: {missing_ids}",
+            )
+        # Delete existing
+        db.execute(
+            ProductCategory.__table__.delete().where(
+                ProductCategory.product_id == prod.id,
+                ProductCategory.tenant_id == tenant_id,
+            )
+        )
+        # Insert new
+        for cat in cats:
+            db.add(ProductCategory(tenant_id=tenant_id, product_id=prod.id, category_id=cat.id))
+        new_category_slugs = [c.slug for c in cats]
+
     write_audit(
         db,
         tenant_id=tenant_id,
@@ -1693,13 +1773,25 @@ def admin_patch_product(
         g_out = db.get(ProductGroup, prod.product_group_id)
         group_title = g_out.title if g_out else None
 
+    # Load current category slugs if not just replaced
+    if new_category_slugs is None:
+        slug_rows = db.execute(
+            select(Category.slug)
+            .join(ProductCategory, ProductCategory.category_id == Category.id)
+            .where(
+                ProductCategory.product_id == prod.id,
+                ProductCategory.tenant_id == tenant_id,
+            )
+        ).scalars().all()
+        new_category_slugs = list(slug_rows)
+
     return CreateProductResponse(
         id=prod.id,
         tenant_id=prod.tenant_id,
         sku=prod.sku,
         name=prod.name,
         unit_price_cents=prod.unit_price_cents,
-        category=prod.category,
+        category_slugs=new_category_slugs,
         product_group_id=prod.product_group_id,
         group_title=group_title,
         variant_label=prod.variant_label,

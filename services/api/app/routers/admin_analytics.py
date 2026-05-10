@@ -14,8 +14,10 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import (
+    Category,
     PaymentAllocation,
     Product,
+    ProductCategory,
     PurchaseOrder,
     Shop,
     StockMovement,
@@ -229,14 +231,16 @@ def analytics_summary(
     prev = _prev_gross_cents(db, tenant_id, days, shop_id)
     delta_pct = round((gross_cents - prev) / prev * 100, 1) if prev > 0 else 0.0
 
-    # Top category by revenue
-    cat_col = func.coalesce(Product.category, "Uncategorized").label("cat")
+    # Top category by revenue (using new categories table; NULL products → "Uncategorized")
+    cat_name_col = func.coalesce(Category.name, "Uncategorized").label("cat")
     cat_stmt = (
-        select(cat_col, func.sum(TransactionLine.quantity * TransactionLine.unit_price_cents).label("g"))
+        select(cat_name_col, func.sum(TransactionLine.quantity * TransactionLine.unit_price_cents).label("g"))
         .join(Transaction, Transaction.id == TransactionLine.transaction_id)
         .join(Product, Product.id == TransactionLine.product_id)
+        .outerjoin(ProductCategory, ProductCategory.product_id == Product.id)
+        .outerjoin(Category, Category.id == ProductCategory.category_id)
         .where(*filters)
-        .group_by(cat_col)
+        .group_by(cat_name_col)
         .order_by(func.sum(TransactionLine.quantity * TransactionLine.unit_price_cents).desc())
         .limit(1)
     )
@@ -291,17 +295,19 @@ def category_revenue(
     filters, _start = _tx_filters(tenant_id, days, shop_id)
     period_start, period_end = _period_meta(days)
 
-    cat_col = func.coalesce(Product.category, "Uncategorized").label("category")
+    cat_name_col = func.coalesce(Category.name, "Uncategorized").label("category")
     stmt = (
         select(
-            cat_col,
+            cat_name_col,
             func.sum(TransactionLine.quantity * TransactionLine.unit_price_cents).label("gross"),
             func.count(func.distinct(TransactionLine.transaction_id)).label("tx_count"),
         )
         .join(Transaction, Transaction.id == TransactionLine.transaction_id)
         .join(Product, Product.id == TransactionLine.product_id)
+        .outerjoin(ProductCategory, ProductCategory.product_id == Product.id)
+        .outerjoin(Category, Category.id == ProductCategory.category_id)
         .where(*filters)
-        .group_by(cat_col)
+        .group_by(cat_name_col)
         .order_by(func.sum(TransactionLine.quantity * TransactionLine.unit_price_cents).desc())
     )
     rows = db.execute(stmt).all()
@@ -336,14 +342,13 @@ def top_products(
             Product.id.label("product_id"),
             Product.name.label("product_name"),
             Product.sku.label("sku"),
-            Product.category.label("category"),
             func.sum(TransactionLine.quantity).label("qty_sold"),
             func.sum(TransactionLine.quantity * TransactionLine.unit_price_cents).label("gross"),
         )
         .join(Transaction, Transaction.id == TransactionLine.transaction_id)
         .join(Product, Product.id == TransactionLine.product_id)
         .where(*filters)
-        .group_by(Product.id, Product.name, Product.sku, Product.category)
+        .group_by(Product.id, Product.name, Product.sku)
         .order_by(func.sum(TransactionLine.quantity * TransactionLine.unit_price_cents).desc())
         .limit(limit)
     )
@@ -353,7 +358,7 @@ def top_products(
             product_id=r.product_id,
             product_name=r.product_name,
             sku=r.sku,
-            category=r.category,
+            category=None,
             qty_sold=int(r.qty_sold),
             gross_cents=int(r.gross),
         )

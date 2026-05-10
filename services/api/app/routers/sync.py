@@ -167,7 +167,7 @@ def sync_pull(
                 id=p.id,
                 sku=p.sku,
                 name=p.name,
-                category=p.category,
+                category=None,  # legacy field: use product_categories join table
                 unit_price_cents=p.unit_price_cents,
                 active=p.active,
                 effective_tax_rate_bps=bps,

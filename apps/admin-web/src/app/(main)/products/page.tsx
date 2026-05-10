@@ -39,12 +39,20 @@ type Variant = {
   created_at: string;
 };
 
+type Category = {
+  id: string;
+  slug: string;
+  name: string;
+  parent_id: string | null;
+  sort_order: number;
+};
+
 type Product = {
   id: string;
   sku: string;
   name: string;
   status: string;
-  category: string | null;
+  category_slugs: string[];
   unit_price_cents: number;
   reorder_point: number;
   variant_label?: string | null;
@@ -71,10 +79,12 @@ export default function ProductsPage() {
   const [rows, setRows] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("");
-  const [category, setCategory] = useState("");
+  const [categorySlug, setCategorySlug] = useState("");
+  const [allCategories, setAllCategories] = useState<Category[]>([]);
   const [editProduct, setEditProduct] = useState<Product | null>(null);
   const [pricesProduct, setPricesProduct] = useState<{ id: string; name: string } | null>(null);
   const [variantsProduct, setVariantsProduct] = useState<{ id: string; name: string } | null>(null);
+  const [categoriesProduct, setCategoriesProduct] = useState<{ id: string; name: string } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkReorderPt, setBulkReorderPt] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -88,7 +98,7 @@ export default function ProductsPage() {
     const sp = new URLSearchParams();
     if (q.trim()) sp.set("q", q.trim());
     if (status) sp.set("status", status);
-    if (category.trim()) sp.set("category", category.trim());
+    if (categorySlug.trim()) sp.set("category_slug", categorySlug.trim());
     sp.set("page", String(page));
     sp.set("per_page", String(PER_PAGE));
     const r = await fetch(`/api/ims/v1/admin/products?${sp.toString()}`);
@@ -103,23 +113,45 @@ export default function ProductsPage() {
     setLoading(false);
   }
 
+  async function fetchCategories() {
+    try {
+      const r = await fetch("/api/ims/v1/admin/categories");
+      if (r.ok) setAllCategories((await r.json()) as Category[]);
+    } catch {
+      // non-fatal — filter will just be empty
+    }
+  }
+
+  // Load categories once on mount
+  useEffect(() => {
+    void fetchCategories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Reset to page 1 whenever a filter changes
   useEffect(() => {
     setPage(1);
-  }, [q, status, category]);
+  }, [q, status, categorySlug]);
 
   useEffect(() => {
     void fetchProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, status, category, page]);
+  }, [q, status, categorySlug, page]);
 
-  const categories = useMemo(() => {
+  const categoryOptions = useMemo(() => {
+    // Prefer the full categories list fetched from the API; fall back to slugs seen in current page
+    if (allCategories.length > 0) {
+      return allCategories
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((c) => ({ value: c.slug, label: c.name }));
+    }
     const s = new Set<string>();
     for (const r of rows) {
-      if (r.category) s.add(r.category);
+      for (const slug of r.category_slugs) s.add(slug);
     }
-    return [...s].sort();
-  }, [rows]);
+    return [...s].sort().map((slug) => ({ value: slug, label: slug }));
+  }, [allCategories, rows]);
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -206,12 +238,12 @@ export default function ProductsPage() {
         />
         <SelectInput
           className="min-w-[11rem]"
-          value={category}
-          onChange={setCategory}
+          value={categorySlug}
+          onChange={setCategorySlug}
           placeholder="All categories"
           options={[
             { value: "", label: "All categories" },
-            ...categories.map((c) => ({ value: c, label: c })),
+            ...categoryOptions,
           ]}
         />
       </div>
@@ -304,7 +336,9 @@ export default function ProductsPage() {
                     </div>
                   </td>
                   <td className="px-6 py-3 font-mono text-xs text-on-surface">{row.sku}</td>
-                  <td className="px-6 py-3 text-on-surface-variant">{row.category ?? "—"}</td>
+                  <td className="px-6 py-3 text-on-surface-variant">
+                    {row.category_slugs.length > 0 ? row.category_slugs.join(", ") : "—"}
+                  </td>
                   <td className="px-6 py-3">
                     <Badge tone={statusTone(row.status)}>{row.status}</Badge>
                   </td>
@@ -343,6 +377,15 @@ export default function ProductsPage() {
                         title="Variants"
                       >
                         <span className="material-symbols-outlined text-xl">tune</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCategoriesProduct({ id: row.id, name: row.name })}
+                        className="inline-flex rounded-lg p-2 text-on-surface-variant hover:bg-surface-container"
+                        aria-label="Manage categories"
+                        title="Categories"
+                      >
+                        <span className="material-symbols-outlined text-xl">account_tree</span>
                       </button>
                       <button
                         type="button"
@@ -419,6 +462,13 @@ export default function ProductsPage() {
           productId={variantsProduct.id}
           productName={variantsProduct.name}
           onClose={() => setVariantsProduct(null)}
+        />
+      )}
+      {categoriesProduct && (
+        <CategoriesModal
+          productId={categoriesProduct.id}
+          productName={categoriesProduct.name}
+          onClose={() => setCategoriesProduct(null)}
         />
       )}
     </div>
@@ -581,7 +631,6 @@ function EditProductDialog({
   onSaved: () => void;
 }) {
   const [name, setName] = useState(product.name);
-  const [cat, setCat] = useState(product.category ?? "");
   const [prodStatus, setProdStatus] = useState(product.status);
   const [priceUsd, setPriceUsd] = useState((product.unit_price_cents / 100).toFixed(2));
   const [reorderPt, setReorderPt] = useState(String(product.reorder_point ?? 0));
@@ -629,7 +678,6 @@ function EditProductDialog({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: name.trim(),
-        category: cat.trim() || null,
         status: prodStatus,
         unit_price_cents: priceCents,
         reorder_point: rp,
@@ -668,23 +716,17 @@ function EditProductDialog({
             Name
             <TextInput required className="mt-1" value={name} onChange={(e) => setName(e.target.value)} />
           </label>
-          <div className="grid grid-cols-2 gap-4">
-            <label className="block text-sm font-medium text-on-surface">
-              Category
-              <TextInput className="mt-1" value={cat} onChange={(e) => setCat(e.target.value)} placeholder="e.g. Beverages" />
-            </label>
-            <label className="block text-sm font-medium text-on-surface">
-              Unit price (USD)
-              <TextInput
-                type="number"
-                min="0"
-                step="0.01"
-                className="mt-1"
-                value={priceUsd}
-                onChange={(e) => setPriceUsd(e.target.value)}
-              />
-            </label>
-          </div>
+          <label className="block text-sm font-medium text-on-surface">
+            Unit price (USD)
+            <TextInput
+              type="number"
+              min="0"
+              step="0.01"
+              className="mt-1"
+              value={priceUsd}
+              onChange={(e) => setPriceUsd(e.target.value)}
+            />
+          </label>
           <div className="grid grid-cols-2 gap-4">
             <label className="block text-sm font-medium text-on-surface">
               Status
@@ -1241,6 +1283,190 @@ function VariantsModal({
               </tbody>
             </table>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── CategoriesModal ──────────────────────────────────────────────────────────
+
+type FlatCategory = {
+  id: string;
+  slug: string;
+  name: string;
+  parent_id: string | null;
+  sort_order: number;
+};
+
+type FlatCategoryNode = FlatCategory & { depth: number };
+
+function flattenForDisplay(cats: FlatCategory[]): FlatCategoryNode[] {
+  const map = new Map<string, FlatCategory & { children: FlatCategory[] }>();
+  for (const c of cats) map.set(c.id, { ...c, children: [] });
+  const roots: (FlatCategory & { children: FlatCategory[] })[] = [];
+  for (const node of map.values()) {
+    if (node.parent_id && map.has(node.parent_id)) {
+      map.get(node.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  function sortArr(arr: FlatCategory[]) {
+    arr.sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+  }
+  const result: FlatCategoryNode[] = [];
+  function walk(node: FlatCategory & { children: FlatCategory[] }, depth: number) {
+    result.push({ ...node, depth });
+    sortArr(node.children);
+    for (const child of node.children) {
+      walk(map.get(child.id) as FlatCategory & { children: FlatCategory[] }, depth + 1);
+    }
+  }
+  sortArr(roots);
+  for (const r of roots) walk(map.get(r.id) as FlatCategory & { children: FlatCategory[] }, 0);
+  return result;
+}
+
+function CategoriesModal({
+  productId,
+  productName,
+  onClose,
+}: {
+  productId: string;
+  productName: string;
+  onClose: () => void;
+}) {
+  const [allCats, setAllCats] = useState<FlatCategory[]>([]);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const [catsRes, memberRes] = await Promise.all([
+        fetch("/api/ims/v1/admin/categories"),
+        fetch(`/api/ims/v1/admin/products/${productId}/categories`),
+      ]);
+      if (!catsRes.ok) throw new Error(`Failed to load categories (${catsRes.status})`);
+      if (!memberRes.ok) throw new Error(`Failed to load memberships (${memberRes.status})`);
+      const cats = (await catsRes.json()) as FlatCategory[];
+      const memberships = (await memberRes.json()) as { category_ids: string[] };
+      setAllCats(cats);
+      setChecked(new Set(memberships.category_ids));
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Failed to load data.");
+    } finally {
+      setLoading(false);
+    }
+  }, [productId]);
+
+  useEffect(() => { void load(); }, [load]);
+
+  function toggle(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/products/${productId}/categories`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ category_ids: [...checked] }),
+      });
+      if (r.ok) {
+        onClose();
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setErr(d.detail ?? `Save failed (${r.status})`);
+      }
+    } catch {
+      setErr("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const displayCats = flattenForDisplay(allCats);
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-2xl bg-surface-container-lowest shadow-2xl">
+        <div className="flex items-center justify-between rounded-t-2xl bg-gradient-to-r from-primary to-secondary px-6 py-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-on-primary/70">
+              Category memberships
+            </p>
+            <p className="mt-0.5 font-headline text-lg font-bold text-on-primary">
+              {productName}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="text-on-primary/70 hover:text-on-primary">
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-1">
+          {loading ? (
+            <p className="text-sm text-on-surface-variant">Loading…</p>
+          ) : displayCats.length === 0 ? (
+            <p className="text-sm text-on-surface-variant">
+              No categories exist yet. Create some in the{" "}
+              <a href="/categories" className="text-primary hover:underline">
+                Categories
+              </a>{" "}
+              page first.
+            </p>
+          ) : (
+            displayCats.map((cat) => (
+              <label
+                key={cat.id}
+                className="flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 hover:bg-surface-container-low"
+                style={{ paddingLeft: `${12 + cat.depth * 20}px` }}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked.has(cat.id)}
+                  onChange={() => toggle(cat.id)}
+                  className="rounded border-outline-variant/40 accent-primary"
+                />
+                <div>
+                  <p className="text-sm font-medium text-on-surface">{cat.name}</p>
+                  <p className="text-[11px] text-on-surface-variant">{cat.slug}</p>
+                </div>
+              </label>
+            ))
+          )}
+        </div>
+
+        {err && (
+          <div className="px-6 pb-2">
+            <p className="text-sm text-error">{err}</p>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between border-t border-outline-variant/10 px-6 py-4">
+          <p className="text-xs text-on-surface-variant">
+            {checked.size} {checked.size === 1 ? "category" : "categories"} selected
+          </p>
+          <div className="flex gap-2">
+            <PrimaryButton type="button" onClick={() => void handleSave()} disabled={saving || loading}>
+              {saving ? "Saving…" : "Save"}
+            </PrimaryButton>
+            <SecondaryButton type="button" onClick={onClose}>
+              Cancel
+            </SecondaryButton>
+          </div>
         </div>
       </div>
     </div>

@@ -13,6 +13,7 @@ import type {
   OTPVerifyResult,
   PaymentIntentResult,
   ProductList,
+  StorefrontCategory,
   StorefrontProduct,
   SubmitOrderPayload,
   SubmittedOrder,
@@ -80,12 +81,14 @@ export class StorefrontClient {
     status?: string;
     page?: number;
     per_page?: number;
+    categorySlug?: string;
   }): Promise<ProductList> {
     const qs = new URLSearchParams();
     if (params?.q) qs.set("q", params.q);
     if (params?.status) qs.set("status", params.status);
     if (params?.page !== undefined) qs.set("page", String(params.page));
     if (params?.per_page !== undefined) qs.set("per_page", String(params.per_page));
+    if (params?.categorySlug) qs.set("category_slug", params.categorySlug);
     const res = await fetch(
       `${this.url("/products")}${qs.toString() ? `?${qs}` : ""}`,
       { headers: this.headers() }
@@ -98,6 +101,13 @@ export class StorefrontClient {
       headers: this.headers(),
     });
     return handleResponse<StorefrontProduct>(res);
+  }
+
+  async listCategories(): Promise<StorefrontCategory[]> {
+    const res = await fetch(this.url("/categories"), {
+      headers: this.headers(),
+    });
+    return handleResponse<StorefrontCategory[]>(res);
   }
 
   // ── Cart ─────────────────────────────────────────────────────────────────

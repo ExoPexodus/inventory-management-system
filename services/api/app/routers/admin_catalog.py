@@ -23,7 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.db.admin_deps_db import get_db_admin
-from app.models import Product, ProductImage
+from app.models import Category, Product, ProductCategory, ProductImage
 
 router = APIRouter(prefix="/v1/admin/catalog", tags=["Admin Catalog"])
 
@@ -74,7 +74,7 @@ class ProductDetailOut(BaseModel):
     og_image_url: str | None
     image_url: str | None
     images: list[ProductImageOut]
-    category: str | None
+    category_slugs: list[str] = []
     product_group_id: UUID | None
     cost_price_cents: int | None
     mrp_cents: int | None
@@ -116,9 +116,22 @@ def get_product_detail(
     product_id: UUID,
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
-) -> Product:
+) -> ProductDetailOut:
     tenant_id = _require_tenant(ctx)
-    return _get_product_or_404(db, product_id, tenant_id)
+    product = _get_product_or_404(db, product_id, tenant_id)
+    slugs = list(
+        db.execute(
+            select(Category.slug)
+            .join(ProductCategory, ProductCategory.category_id == Category.id)
+            .where(ProductCategory.product_id == product_id, Category.tenant_id == tenant_id)
+            .order_by(Category.sort_order, Category.name)
+        ).scalars().all()
+    )
+    return ProductDetailOut.model_validate({
+        **{c.name: getattr(product, c.name) for c in Product.__table__.columns},
+        "images": product.images,
+        "category_slugs": slugs,
+    })
 
 
 @router.get(

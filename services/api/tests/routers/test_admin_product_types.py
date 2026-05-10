@@ -115,7 +115,7 @@ def test_list_products_includes_product_type(db, tenant: Tenant, auth_headers) -
 
     resp = client.get("/v1/admin/products", headers=auth_headers)
     assert resp.status_code == 200
-    types = {p["product_type"] for p in resp.json()}
+    types = {p["product_type"] for p in resp.json()["items"]}
     assert "physical" in types
     assert "digital" in types
 

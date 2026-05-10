@@ -10,10 +10,21 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.db.session import get_db
-from app.models import Product, ProductImage
+from app.models import Category, Product, ProductCategory, ProductImage
 from app.routers.storefront.auth import StorefrontChannelDep
 
 router = APIRouter(prefix="/v1/storefront", tags=["Storefront Catalog"])
+
+
+class StorefrontCategoryOut(BaseModel):
+    id: UUID
+    slug: str
+    name: str
+    parent_id: UUID | None
+    description: str | None
+    sort_order: int
+
+    model_config = {"from_attributes": True}
 
 
 class StorefrontImageOut(BaseModel):
@@ -137,6 +148,20 @@ def _to_out_detail(product: Product, currency: str) -> StorefrontProductOut:
     )
 
 
+@router.get("/categories", response_model=list[StorefrontCategoryOut])
+def list_categories(
+    channel: StorefrontChannelDep,
+    db: Annotated[Session, Depends(get_db)],
+) -> list[StorefrontCategoryOut]:
+    """Return all categories for the channel's tenant, ordered by sort_order then name."""
+    rows = db.execute(
+        select(Category)
+        .where(Category.tenant_id == channel.tenant_id)
+        .order_by(Category.sort_order.asc(), Category.name.asc())
+    ).scalars().all()
+    return [StorefrontCategoryOut.model_validate(r) for r in rows]
+
+
 # Sort columns whitelist — maps the public sort_by values to ORM columns.
 # Anything outside this set falls back to `created_at`.
 _SORTABLE_COLUMNS: dict[str, "object"] = {
@@ -145,6 +170,26 @@ _SORTABLE_COLUMNS: dict[str, "object"] = {
     "name": Product.name,
     "discount_price_cents": Product.discount_price_cents,
 }
+
+
+def _collect_descendant_ids(
+    all_cats: list[Category], root_id: UUID
+) -> set[UUID]:
+    """Return root_id and all descendant category IDs via BFS."""
+    # Build parent_id -> [child ids] map
+    children: dict[UUID | None, list[UUID]] = {}
+    for cat in all_cats:
+        children.setdefault(cat.parent_id, []).append(cat.id)
+
+    result: set[UUID] = set()
+    queue = [root_id]
+    while queue:
+        current = queue.pop()
+        result.add(current)
+        for child_id in children.get(current, []):
+            if child_id not in result:
+                queue.append(child_id)
+    return result
 
 
 @router.get("/products", response_model=ProductListOut)
@@ -158,6 +203,7 @@ def list_products(
     max_price_cents: int | None = Query(default=None, ge=0),
     sort_by: str | None = Query(default=None),
     sort_order: str | None = Query(default=None),
+    category_slug: str | None = None,
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
 ) -> ProductListOut:
@@ -170,6 +216,24 @@ def list_products(
         base_where.append(or_(Product.name.ilike(like), Product.sku.ilike(like)))
     if product_type:
         base_where.append(Product.product_type == product_type)
+
+    # Category slug filter — finds the category, collects all descendant IDs,
+    # then filters products via the product_categories join.
+    if category_slug and category_slug.strip():
+        all_cats = db.execute(
+            select(Category).where(Category.tenant_id == channel.tenant_id)
+        ).scalars().all()
+        matched = next((c for c in all_cats if c.slug == category_slug.strip()), None)
+        if matched is None:
+            # Slug doesn't match any category — return empty result set
+            return ProductListOut(items=[], total=0, page=page, per_page=per_page)
+        descendant_ids = _collect_descendant_ids(all_cats, matched.id)
+        cat_product_subq = (
+            select(ProductCategory.product_id)
+            .where(ProductCategory.category_id.in_(descendant_ids))
+            .scalar_subquery()
+        )
+        base_where.append(Product.id.in_(cat_product_subq))
 
     # Tag filter — OR match using PostgreSQL JSONB `?` operator per tag.
     # Product.tags is JSONB storing a list of string slugs.

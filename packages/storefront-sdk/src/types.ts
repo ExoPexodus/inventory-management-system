@@ -46,6 +46,15 @@ export interface ProductList {
   per_page: number;
 }
 
+export interface StorefrontCategory {
+  id: string;
+  slug: string;
+  name: string;
+  parent_id: string | null;
+  description: string | null;
+  sort_order: number;
+}
+
 // ---------------------------------------------------------------------------
 // Cart
 // ---------------------------------------------------------------------------

@@ -142,7 +142,7 @@ def _export_inventory(db: Session, tenant_id) -> StreamingResponse:
         rows.append([
             p.sku,
             p.name,
-            p.category or "",
+            "",  # category column left blank (use /categories endpoint)
             p.unit_price_cents,
             p.reorder_point,
             qty,

@@ -347,7 +347,6 @@ async def import_products_csv(
         validated.append({
             "sku": sku,
             "name": name,
-            "category": (row.get("category") or "").strip() or None,
             "unit_price_cents": price_cents,
             "reorder_point": reorder_pt,
         })
@@ -371,8 +370,6 @@ async def import_products_csv(
         if r["sku"] in existing_skus:
             prod = existing_skus[r["sku"]]
             prod.name = r["name"]
-            if r["category"] is not None:
-                prod.category = r["category"]
             prod.unit_price_cents = r["unit_price_cents"]
             prod.reorder_point = r["reorder_point"]
             updated += 1
@@ -381,7 +378,6 @@ async def import_products_csv(
                 tenant_id=tenant_id,
                 sku=r["sku"],
                 name=r["name"],
-                category=r["category"],
                 unit_price_cents=r["unit_price_cents"],
                 reorder_point=r["reorder_point"],
                 status="active",

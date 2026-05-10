@@ -21,6 +21,7 @@ from app.routers import (
     admin_billing,
     admin_business_type,
     admin_catalog,
+    admin_categories,
     admin_channels,
     admin_customers,
     admin_discounts,
@@ -96,6 +97,8 @@ app.include_router(admin.router)
 app.include_router(admin_web.router)
 app.include_router(admin_woocommerce.router)
 app.include_router(admin_catalog.router)
+app.include_router(admin_categories.router)
+app.include_router(admin_categories.products_router)
 app.include_router(admin_channels.router)
 app.include_router(admin_inventory_pools.router)
 app.include_router(admin_customers.router)

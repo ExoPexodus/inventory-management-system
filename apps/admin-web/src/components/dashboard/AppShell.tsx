@@ -74,6 +74,7 @@ const ROOT_ROUTES = new Set([
   "analytics",
   "suppliers",
   "products",
+  "categories",
   "purchase-orders",
   "shifts",
   "reconciliation",
@@ -126,6 +127,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     label: "Catalog",
     items: [
       { href: "/products",        label: "Products",        icon: "category",       permission: "catalog:read",     allowedTypes: ALL_TYPES },
+      { href: "/categories",      label: "Categories",      icon: "account_tree",   permission: "catalog:read",     allowedTypes: ALL_TYPES },
       { href: "/purchase-orders", label: "Purchase Orders", icon: "shopping_bag",   permission: "procurement:read", allowedTypes: ALL_TYPES },
       { href: "/suppliers",       label: "Suppliers",       icon: "local_shipping", permission: "procurement:read", allowedTypes: ALL_TYPES },
     ],

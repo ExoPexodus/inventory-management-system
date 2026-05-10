@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     SmallInteger,
@@ -312,7 +313,6 @@ class Product(Base):
     )
     sku: Mapped[str] = mapped_column(String(64), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    category: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="active", server_default="active")
     description: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     image_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
@@ -358,6 +358,11 @@ class Product(Base):
         order_by="ProductImage.sort_order",
         cascade="all, delete-orphan",
     )
+    categories: Mapped[list["Category"]] = relationship(
+        secondary="product_categories",
+        back_populates="products",
+        viewonly=True,
+    )
 
 
 class ProductImage(Base):
@@ -378,6 +383,62 @@ class ProductImage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     product: Mapped["Product"] = relationship(back_populates="images")
+
+
+class Category(Base):
+    """Hierarchical product category. Forms a tree via parent_id self-FK."""
+
+    __tablename__ = "categories"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "slug", name="uq_categories_tenant_slug"),
+        Index("ix_categories_tenant_id", "tenant_id"),
+        Index("ix_categories_parent_id", "parent_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    parent_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
+    )
+    slug: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    products: Mapped[list["Product"]] = relationship(
+        secondary="product_categories",
+        back_populates="categories",
+        viewonly=True,
+    )
+
+
+class ProductCategory(Base):
+    """Join table linking products to categories (many-to-many)."""
+
+    __tablename__ = "product_categories"
+    __table_args__ = (
+        UniqueConstraint("product_id", "category_id", name="uq_product_categories_product_category"),
+        Index("ix_product_categories_product_id", "product_id"),
+        Index("ix_product_categories_category_id", "category_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    category_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("categories.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class ProductVariant(Base):
