@@ -175,6 +175,77 @@ Or by business priority — if you're trying to demo to enterprise prospects, **
 
 ---
 
+## Catalog scale & UX (added 2026-05-10 after Stickerize feasibility check)
+
+Surfaced when assessing whether IMS handles the Stickerize sticker store (800+ products, 30+ tag categories, possible subcategories). The flat-tag pattern works today thanks to the server-side filtering shipped earlier in this session, but four gaps were identified.
+
+### 5. Hierarchical Category table
+
+**What:** A real `Category` table with `parent_id` self-reference plus a `product_categories` join table, so a product can belong to multiple categories AND categories can nest (`Anime → Shounen → Demon Slayer`).
+
+**Today:** `Product.category` is a flat `String(128)` field; `Product.tags` is a flat JSONB list. Subcategories work only via convention (e.g. `cat:anime/shounen`).
+
+**Why it matters:** Drill-down browse experiences (breadcrumbs, sub-category cards on a parent category page) need a real hierarchy. For Stickerize specifically: only matters if their nav has nested categories. If their navigation is flat, the existing tag system is fine indefinitely.
+
+**Scope sketch:**
+1. New `categories` table (id, tenant_id, parent_id, slug, name, sort_order)
+2. Junction table `product_categories` (product_id, category_id)
+3. Admin UI: tree-view for managing the hierarchy (drag-and-drop, optional)
+4. Storefront API: extend `/v1/storefront/products` with `category_slug` param + new endpoint `/v1/storefront/categories` returning the tree
+5. Migration helper: copy existing `Product.category` strings into the new table per tenant
+6. Keep `tags` as-is — categories and tags are different concepts (browsing vs marketing labels)
+
+**Effort:** 3-4 days
+
+---
+
+### 6. Admin product list pagination
+
+**What:** Add `limit` / `offset` + server-side filtering to `GET /v1/admin/products`.
+
+**Today:** Returns ALL products in one response (no pagination). At 800 products that's ~600 KB on every admin `/products` page load. Performance is OK but inefficient and won't scale past a few thousand products.
+
+**Scope:**
+1. Backend: extend `admin_list_products` with `limit` (default 50, max 200), `offset`, plus tag filter to mirror storefront
+2. Frontend: add pagination controls to `/products`; convert client-side filter to URL params (`q` already does this from the polish week)
+3. Add total-count header so the UI can show "1,234 products"
+
+**Effort:** ½ day. This is a Q-tier fix.
+
+---
+
+### 7. Quantity-based & category-based discounts
+
+**What:** Extend the discount engine so a discount can be conditional on:
+- Quantity in cart (e.g. `min_quantity = 5` → "buy 5+ get 10% off")
+- Category / tag membership (e.g. "20% off all stickers tagged 'clearance'")
+
+**Today:** Discounts support per-order rules (min subtotal) but not quantity tiers or category scoping. Code-based + automatic + percentage / fixed / free-shipping all work.
+
+**Scope sketch:**
+1. New columns or related table for discount conditions
+2. Update the discount evaluator to check conditions against cart contents
+3. Admin UI: add condition fields to the discount form
+4. Storefront: discount preview must show which line items qualified
+
+**Effort:** 2-3 days
+
+---
+
+### 8. Full-text product search (later, when growing past a few thousand)
+
+**What:** Replace the current `name ILIKE '%q%' OR sku ILIKE '%q%'` with PostgreSQL `tsvector` indexing for fuzzy / relevance-ranked search across name + description + tags.
+
+**Today:** Basic LIKE works fine for 800 products. Will start showing latency at 10K+.
+
+**Scope:** Add a `tsvector` GIN index on `Product`, populate it via trigger, modify search query to use `to_tsquery`. Admin search + storefront search both upgrade.
+
+**Effort:** 1-2 days
+
+**When:** Defer until a tenant actually has 5,000+ products. No need to build this now.
+
+---
+
 ## Other items mentioned but not in this list
 
 These were noted earlier in this session but are smaller / niche and don't need a dedicated session:
