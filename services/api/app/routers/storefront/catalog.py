@@ -137,12 +137,27 @@ def _to_out_detail(product: Product, currency: str) -> StorefrontProductOut:
     )
 
 
+# Sort columns whitelist — maps the public sort_by values to ORM columns.
+# Anything outside this set falls back to `created_at`.
+_SORTABLE_COLUMNS: dict[str, "object"] = {
+    "created_at": Product.created_at,
+    "unit_price_cents": Product.unit_price_cents,
+    "name": Product.name,
+    "discount_price_cents": Product.discount_price_cents,
+}
+
+
 @router.get("/products", response_model=ProductListOut)
 def list_products(
     channel: StorefrontChannelDep,
     db: Annotated[Session, Depends(get_db)],
     q: str | None = None,
     product_type: str | None = None,
+    tags: list[str] | None = Query(default=None, alias="tags[]"),
+    min_price_cents: int | None = Query(default=None, ge=0),
+    max_price_cents: int | None = Query(default=None, ge=0),
+    sort_by: str | None = Query(default=None),
+    sort_order: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
 ) -> ProductListOut:
@@ -156,14 +171,43 @@ def list_products(
     if product_type:
         base_where.append(Product.product_type == product_type)
 
+    # Tag filter — OR match using PostgreSQL JSONB `?` operator per tag.
+    # Product.tags is JSONB storing a list of string slugs.
+    if tags:
+        tag_clauses = [Product.tags.op("?")(t) for t in tags if t]
+        if tag_clauses:
+            base_where.append(or_(*tag_clauses))
+
+    # Price range — inclusive bounds on unit_price_cents (the display price).
+    if min_price_cents is not None:
+        base_where.append(Product.unit_price_cents >= min_price_cents)
+    if max_price_cents is not None:
+        base_where.append(Product.unit_price_cents <= max_price_cents)
+
+    # Sorting — validated against whitelist; default = created_at desc.
+    sort_col_key = sort_by if sort_by in _SORTABLE_COLUMNS else "created_at"
+    sort_col = _SORTABLE_COLUMNS[sort_col_key]
+    # Default direction: desc for created_at, asc otherwise.
+    if sort_order in ("asc", "desc"):
+        direction = sort_order
+    else:
+        direction = "desc" if sort_col_key == "created_at" else "asc"
+
+    # When sorting by discount_price_cents, exclude products without a discount.
+    # The intent is "show me only discounted products, cheapest first".
+    if sort_col_key == "discount_price_cents":
+        base_where.append(Product.discount_price_cents.isnot(None))
+
     total = db.execute(
         select(func.count(Product.id)).where(*base_where)
     ).scalar_one()
 
+    order_clause = sort_col.asc() if direction == "asc" else sort_col.desc()
+
     rows = db.execute(
         select(Product, _first_image_subq.label("first_image_url"))
         .where(*base_where)
-        .order_by(Product.name)
+        .order_by(order_clause)
         .offset((page - 1) * per_page)
         .limit(per_page)
     ).all()

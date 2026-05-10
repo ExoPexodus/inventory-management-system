@@ -229,3 +229,128 @@ def test_detail_no_gallery_images_is_empty_list(db, tenant: Tenant, storefront) 
         assert body["image_url"] is None
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+def test_list_products_filter_by_tags(db, tenant: Tenant, storefront) -> None:
+    """tags[] returns only products whose JSONB tags contain any of the given values."""
+    from app.db.session import get_db
+    # Set distinct tags on the two products
+    storefront["products"][0].tags = ["anime-stickers", "featured"]
+    storefront["products"][1].tags = ["car-decals"]
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        # Filter to anime-stickers — should only include product 0
+        resp = client.get("/v1/storefront/products?tags%5B%5D=anime-stickers",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total"] == 1
+        assert len(body["items"]) == 1
+        assert body["items"][0]["sku"] == "SKU-A"
+
+        # Filter to multiple tags — OR match should include both
+        resp = client.get("/v1/storefront/products?tags%5B%5D=anime-stickers&tags%5B%5D=car-decals",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total"] == 2
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_list_products_filter_by_price_range(db, tenant: Tenant, storefront) -> None:
+    """min_price_cents and max_price_cents filter on unit_price_cents inclusive."""
+    from app.db.session import get_db
+    # Products are 1999 and 2999
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        # Above 2500 — only product 2 (2999)
+        resp = client.get("/v1/storefront/products?min_price_cents=2500",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total"] == 1
+        assert body["items"][0]["unit_price_cents"] == 2999
+
+        # 2000-2999 — only product 2 (1999 excluded by min, 2999 included)
+        resp = client.get("/v1/storefront/products?min_price_cents=2000&max_price_cents=2999",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total"] == 1
+        assert body["items"][0]["unit_price_cents"] == 2999
+
+        # Below 2500 — only product 1 (1999)
+        resp = client.get("/v1/storefront/products?max_price_cents=2500",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["total"] == 1
+        assert body["items"][0]["unit_price_cents"] == 1999
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_list_products_sort_by_unit_price(db, tenant: Tenant, storefront) -> None:
+    """sort_by=unit_price_cents&sort_order=asc returns cheapest first."""
+    from app.db.session import get_db
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/storefront/products?sort_by=unit_price_cents&sort_order=asc",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        prices = [p["unit_price_cents"] for p in body["items"]]
+        assert prices == sorted(prices)
+
+        resp = client.get("/v1/storefront/products?sort_by=unit_price_cents&sort_order=desc",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        prices = [p["unit_price_cents"] for p in body["items"]]
+        assert prices == sorted(prices, reverse=True)
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_list_products_sort_by_discount_excludes_null(db, tenant: Tenant, storefront) -> None:
+    """sort_by=discount_price_cents excludes products without a discount."""
+    from app.db.session import get_db
+    # Set discount only on product 0
+    storefront["products"][0].discount_price_cents = 1500
+    storefront["products"][1].discount_price_cents = None
+    db.commit()
+
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/storefront/products?sort_by=discount_price_cents&sort_order=asc",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # Only product 0 should be returned
+        assert body["total"] == 1
+        assert body["items"][0]["discount_price_cents"] == 1500
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
+def test_list_products_invalid_sort_by_falls_back_to_default(db, tenant: Tenant, storefront) -> None:
+    """An unknown sort_by value silently falls back to created_at instead of erroring."""
+    from app.db.session import get_db
+    app.dependency_overrides[get_db] = lambda: db
+    try:
+        client = TestClient(app)
+        resp = client.get("/v1/storefront/products?sort_by=nonexistent_column",
+                          headers={"X-Channel-Id": str(storefront["channel"].id)})
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        # Both active products returned, no error
+        assert body["total"] == 2
+    finally:
+        app.dependency_overrides.pop(get_db, None)
