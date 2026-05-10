@@ -78,6 +78,7 @@ const ROOT_ROUTES = new Set([
   "reconciliation",
   "audit",
   "reports",
+  "insights",
   "integrations",
   "settings",
   "billing",
@@ -139,9 +140,8 @@ const NAV_GROUPS: NavGroupDef[] = [
   {
     label: "Insights",
     items: [
-      { href: "/analytics", label: "Analytics", icon: "analytics",   permission: "analytics:read", allowedTypes: ALL_TYPES },
-      { href: "/reports",   label: "Reports",   icon: "description", permission: "reports:read",   allowedTypes: ALL_TYPES },
-      { href: "/audit",     label: "Audit Log", icon: "policy",      permission: "audit:read",     allowedTypes: ALL_TYPES },
+      { href: "/insights", label: "Insights",  icon: "insights",    permission: "analytics:read", allowedTypes: ALL_TYPES },
+      { href: "/audit",    label: "Audit Log", icon: "policy",      permission: "audit:read",     allowedTypes: ALL_TYPES },
     ],
   },
   {

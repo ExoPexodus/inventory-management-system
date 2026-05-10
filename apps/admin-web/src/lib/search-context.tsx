@@ -18,7 +18,7 @@ const PAGE_SEARCH_CONFIG: Record<string, PageSearchConfig> = {
 const ROOT_ROUTES = new Set([
   "overview", "inventory", "staff", "team", "orders", "analytics",
   "suppliers", "products", "purchase-orders", "shifts", "reconciliation",
-  "audit", "reports", "integrations", "settings", "billing", "apps",
+  "audit", "reports", "insights", "integrations", "settings", "billing", "apps",
   "entries", "shops", "login", "channels", "ecommerce-orders", "discounts",
   "ecommerce", "inventory-pools", "tax", "customers",
 ]);
