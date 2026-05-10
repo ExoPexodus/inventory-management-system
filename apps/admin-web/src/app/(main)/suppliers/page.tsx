@@ -14,6 +14,7 @@ import {
   SelectInput,
   TextInput,
 } from "@/components/ui/primitives";
+import { CreateModal } from "@/components/ui/CreateModal";
 
 type Supplier = {
   id: string;
@@ -93,6 +94,8 @@ export default function SuppliersPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [createErr, setCreateErr] = useState<string | null>(null);
   const [editSupplier, setEditSupplier] = useState<Supplier | null>(null);
 
   async function refresh() {
@@ -126,27 +129,36 @@ export default function SuppliersPage() {
   async function onAddSupplier(e: FormEvent) {
     e.preventDefault();
     setMsg(null);
-    const r = await fetch("/api/ims/v1/admin/suppliers", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: name.trim(),
-        status: "active",
-        contact_email: email.trim() || null,
-        contact_phone: phone.trim() || null,
-        notes: notes.trim() || null,
-      }),
-    });
-    if (r.ok) {
-      setName("");
-      setEmail("");
-      setPhone("");
-      setNotes("");
-      setShowForm(false);
-      setMsg("Supplier added");
-      await refresh();
-    } else {
-      setMsg(`Create failed (${r.status})`);
+    setCreateErr(null);
+    setSaving(true);
+    try {
+      const r = await fetch("/api/ims/v1/admin/suppliers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: name.trim(),
+          status: "active",
+          contact_email: email.trim() || null,
+          contact_phone: phone.trim() || null,
+          notes: notes.trim() || null,
+        }),
+      });
+      if (r.ok) {
+        setName("");
+        setEmail("");
+        setPhone("");
+        setNotes("");
+        setShowForm(false);
+        setMsg("Supplier added");
+        await refresh();
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setCreateErr(d.detail ?? `Create failed (${r.status})`);
+      }
+    } catch {
+      setCreateErr("Network error. Please try again.");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -159,7 +171,7 @@ export default function SuppliersPage() {
         action={
           <button
             type="button"
-            onClick={() => setShowForm((v) => !v)}
+            onClick={() => setShowForm(true)}
             className="ink-gradient inline-flex items-center gap-2 rounded-lg px-6 py-2.5 text-sm font-semibold text-on-primary shadow-sm transition hover:opacity-90"
           >
             <span className="material-symbols-outlined text-lg">add</span>
@@ -168,38 +180,36 @@ export default function SuppliersPage() {
         }
       />
 
-      {showForm ? (
-        <form
-          onSubmit={onAddSupplier}
-          className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-6 shadow-sm"
-        >
-          <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">New supplier</p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-medium text-on-surface">
-              Name
-              <TextInput required className="mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" />
-            </label>
-            <label className="block text-sm font-medium text-on-surface">
-              Email
-              <TextInput type="email" className="mt-1" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ap@supplier.com" />
-            </label>
-            <label className="block text-sm font-medium text-on-surface">
-              Phone
-              <TextInput className="mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555 000 0000" />
-            </label>
-            <label className="block text-sm font-medium text-on-surface sm:col-span-2">
-              Notes
-              <TextInput className="mt-1" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Payment terms, special instructions…" />
-            </label>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <PrimaryButton type="submit">Save supplier</PrimaryButton>
-            <SecondaryButton type="button" onClick={() => setShowForm(false)}>
-              Cancel
-            </SecondaryButton>
-          </div>
-        </form>
-      ) : null}
+      <CreateModal
+        open={showForm}
+        onClose={() => setShowForm(false)}
+        title="New supplier"
+        description="Add a vendor and keep contact data fresh."
+        submitLabel="Create supplier"
+        onSubmit={onAddSupplier}
+        saving={saving}
+        error={createErr}
+        submitDisabled={!name.trim()}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-on-surface">
+            Name
+            <TextInput required className="mt-1" value={name} onChange={(e) => setName(e.target.value)} placeholder="Vendor legal name" />
+          </label>
+          <label className="block text-sm font-medium text-on-surface">
+            Email
+            <TextInput type="email" className="mt-1" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ap@supplier.com" />
+          </label>
+          <label className="block text-sm font-medium text-on-surface">
+            Phone
+            <TextInput className="mt-1" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 555 000 0000" />
+          </label>
+          <label className="block text-sm font-medium text-on-surface sm:col-span-2">
+            Notes
+            <TextInput className="mt-1" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Payment terms, special instructions…" />
+          </label>
+        </div>
+      </CreateModal>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-outline-variant/10 bg-surface-container-lowest p-6 shadow-sm">
