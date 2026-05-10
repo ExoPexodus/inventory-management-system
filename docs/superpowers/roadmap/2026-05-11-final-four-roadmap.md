@@ -76,7 +76,7 @@ Shipped BEFORE the plan UI as a separate small PR. Three bugs:
 ## Progress
 | # | Feature | Status |
 |---|---|---|
-| 1 | Transfer Orders | _pending_ |
+| 1 | Transfer Orders | ✅ shipped |
 | 2 | Advanced RBAC | _pending_ |
 | 3a | Tenant-creation gap fixes | _pending_ |
 | 3b | Platform plan-feature UI | _pending_ |
