@@ -159,6 +159,21 @@ export interface OTPVerifyResult {
 }
 
 // ---------------------------------------------------------------------------
+// Auth (magic link)
+// ---------------------------------------------------------------------------
+
+export interface MagicLinkRequestResponse {
+  sent: boolean;
+  message: string;
+}
+
+export interface MagicLinkVerifyResponse {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+// ---------------------------------------------------------------------------
 // Customer portal
 // ---------------------------------------------------------------------------
 

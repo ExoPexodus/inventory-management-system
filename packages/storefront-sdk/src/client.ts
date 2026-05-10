@@ -7,6 +7,8 @@ import type {
   CustomerOrder,
   CustomerProfile,
   DiscountApplyResult,
+  MagicLinkRequestResponse,
+  MagicLinkVerifyResponse,
   OTPRequestResult,
   OTPVerifyResult,
   PaymentIntentResult,
@@ -222,6 +224,28 @@ export class StorefrontClient {
       body: JSON.stringify({ email, code }),
     });
     const result = await handleResponse<OTPVerifyResult>(res);
+    this.setCustomerToken(result.access_token);
+    return result;
+  }
+
+  // ── Customer auth (magic link) ────────────────────────────────────────────
+
+  async requestMagicLink(email: string, redirectUrl: string): Promise<MagicLinkRequestResponse> {
+    const res = await fetch(this.url("/auth/magic-link/request"), {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ email, redirect_url: redirectUrl }),
+    });
+    return handleResponse<MagicLinkRequestResponse>(res);
+  }
+
+  async verifyMagicLink(token: string): Promise<MagicLinkVerifyResponse> {
+    const res = await fetch(this.url("/auth/magic-link/verify"), {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify({ token }),
+    });
+    const result = await handleResponse<MagicLinkVerifyResponse>(res);
     this.setCustomerToken(result.access_token);
     return result;
   }
