@@ -51,6 +51,12 @@ const SETTINGS_CARDS = [
     title: "Transfer Orders",
     description: "Auto-approve thresholds and self-approval rules for inter-shop transfers",
   },
+  {
+    href: "/settings/rma",
+    icon: "keyboard_return",
+    title: "Refund Requests",
+    description: "Refund window, auto-approve thresholds, and default restock behaviour",
+  },
 ];
 
 export default function SettingsIndexPage() {

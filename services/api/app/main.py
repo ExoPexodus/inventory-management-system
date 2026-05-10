@@ -8,6 +8,7 @@ from app.routers.storefront import cart as storefront_cart
 from app.routers.storefront import checkout as storefront_checkout
 from app.routers.storefront import customer_auth as storefront_customer_auth
 from app.routers.storefront import customer_portal as storefront_customer_portal
+from app.routers.storefront import rma as storefront_rma
 from app.routers import checkout
 from app.routers import webhooks_shopify
 from app.routers import webhooks_shiprocket
@@ -29,6 +30,7 @@ from app.routers import (
     admin_email,
     admin_entitlements,
     admin_media,
+    admin_rma,
     admin_transfer_orders,
     admin_webhooks,
     admin_fx_rates,
@@ -59,6 +61,7 @@ from app.routers import (
     admin_woocommerce,
     audit,
     auth,
+    cashier_rma,
     device_shifts,
     devices,
     health,
@@ -104,6 +107,7 @@ app.include_router(admin_categories.products_router)
 app.include_router(admin_channels.router)
 app.include_router(admin_inventory_pools.router)
 app.include_router(admin_transfer_orders.router)
+app.include_router(admin_rma.router)
 app.include_router(admin_customers.router)
 app.include_router(admin_discounts.router)
 app.include_router(admin_entitlements.router)
@@ -151,6 +155,8 @@ app.include_router(storefront_cart.router)
 app.include_router(storefront_checkout.router)
 app.include_router(storefront_customer_auth.router)
 app.include_router(storefront_customer_portal.router)
+app.include_router(storefront_rma.router)
+app.include_router(cashier_rma.router)
 app.include_router(checkout.router)
 app.include_router(webhooks_shopify.router)
 app.include_router(webhooks_shiprocket.router)

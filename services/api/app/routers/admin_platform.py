@@ -362,3 +362,80 @@ def patch_transfer_settings(
         transfer_auto_approve_under_cents=tenant.transfer_auto_approve_under_cents,
         transfer_allow_self_approval=tenant.transfer_allow_self_approval,
     )
+
+
+# ---------------------------------------------------------------------------
+# RMA settings
+# ---------------------------------------------------------------------------
+
+
+class RMASettingsOut(BaseModel):
+    default_restock_on_refund: bool
+    refund_window_days: int
+    rma_auto_approve_under_cents: int | None
+
+
+class PatchRMASettingsBody(BaseModel):
+    default_restock_on_refund: bool | None = None
+    refund_window_days: int | None = Field(default=None, ge=0, le=365)
+    rma_auto_approve_under_cents: int | None = Field(default=None, ge=0)
+
+
+@router.get(
+    "/tenant-settings/rma",
+    response_model=RMASettingsOut,
+    dependencies=[require_permission("settings:read")],
+)
+def get_rma_settings(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> RMASettingsOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return RMASettingsOut(
+        default_restock_on_refund=tenant.default_restock_on_refund,
+        refund_window_days=tenant.refund_window_days,
+        rma_auto_approve_under_cents=tenant.rma_auto_approve_under_cents,
+    )
+
+
+@router.patch(
+    "/tenant-settings/rma",
+    response_model=RMASettingsOut,
+    dependencies=[require_permission("settings:write")],
+)
+def patch_rma_settings(
+    body: PatchRMASettingsBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> RMASettingsOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    sent = body.model_fields_set
+    if "default_restock_on_refund" in sent and body.default_restock_on_refund is not None:
+        tenant.default_restock_on_refund = body.default_restock_on_refund
+    if "refund_window_days" in sent and body.refund_window_days is not None:
+        tenant.refund_window_days = body.refund_window_days
+    if "rma_auto_approve_under_cents" in sent:
+        tenant.rma_auto_approve_under_cents = body.rma_auto_approve_under_cents
+
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="update_rma_settings",
+        resource_type="tenant",
+        resource_id=str(tenant_id),
+    )
+    db.commit()
+    db.refresh(tenant)
+    return RMASettingsOut(
+        default_restock_on_refund=tenant.default_restock_on_refund,
+        refund_window_days=tenant.refund_window_days,
+        rma_auto_approve_under_cents=tenant.rma_auto_approve_under_cents,
+    )

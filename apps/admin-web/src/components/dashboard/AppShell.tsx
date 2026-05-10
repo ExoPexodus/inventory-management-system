@@ -95,6 +95,7 @@ const ROOT_ROUTES = new Set([
   "inventory-pools",
   "tax",
   "transfer-orders",
+  "rma",
 ]);
 
 type NavItemDef = NavItem & {
@@ -117,11 +118,12 @@ const NAV_GROUPS: NavGroupDef[] = [
   {
     label: "Sell",
     items: [
-      { href: "/orders",          label: "Orders",         icon: "receipt_long", permission: "sales:read",      allowedTypes: ["retail", "hybrid"] },
-      { href: "/ecommerce-orders",label: "E-comm Orders",  icon: "orders",       permission: "orders:manage",   allowedTypes: ["online", "hybrid"] },
-      { href: "/channels",        label: "Channels",       icon: "storefront",   permission: "channels:manage", allowedTypes: ["online", "hybrid"] },
-      { href: "/discounts",       label: "Discounts",      icon: "local_offer",  permission: "discounts:read",  allowedTypes: ALL_TYPES },
-      { href: "/tax",             label: "Tax",            icon: "receipt",      permission: "tax:manage",      allowedTypes: ALL_TYPES },
+      { href: "/orders",          label: "Orders",         icon: "receipt_long",    permission: "sales:read",      allowedTypes: ["retail", "hybrid"] },
+      { href: "/ecommerce-orders",label: "E-comm Orders",  icon: "orders",          permission: "orders:manage",   allowedTypes: ["online", "hybrid"] },
+      { href: "/rma",             label: "Refunds",        icon: "keyboard_return", permission: "rma:read",        allowedTypes: ALL_TYPES },
+      { href: "/channels",        label: "Channels",       icon: "storefront",      permission: "channels:manage", allowedTypes: ["online", "hybrid"] },
+      { href: "/discounts",       label: "Discounts",      icon: "local_offer",     permission: "discounts:read",  allowedTypes: ALL_TYPES },
+      { href: "/tax",             label: "Tax",            icon: "receipt",         permission: "tax:manage",      allowedTypes: ALL_TYPES },
     ],
   },
   {

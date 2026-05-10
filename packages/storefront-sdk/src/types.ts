@@ -208,3 +208,50 @@ export interface CustomerOrder {
   placed_at: string;
   lines: CustomerOrderLine[];
 }
+
+// ---------------------------------------------------------------------------
+// RMA / Refund Requests
+// ---------------------------------------------------------------------------
+
+export type RefundReasonCode = "damaged" | "wrong_item" | "doesnt_fit" | "changed_mind" | "other";
+export type RefundType = "refund_only" | "return_refund" | "exchange";
+
+export interface RefundRequestLineInput {
+  order_line_id: string;
+  quantity_requested: number;
+  exchange_for_product_id?: string;
+}
+
+export interface RefundRequestInput {
+  order_id: string;
+  refund_type: RefundType;
+  reason_code: RefundReasonCode;
+  reason_note?: string;
+  lines: RefundRequestLineInput[];
+}
+
+export interface RefundRequestLine {
+  id: string;
+  product_id: string | null;
+  product_name: string;
+  product_sku: string | null;
+  quantity_requested: number;
+  quantity_approved: number;
+  unit_price_cents: number;
+  line_refund_cents: number;
+}
+
+export interface RefundRequest {
+  id: string;
+  order_id: string | null;
+  refund_type: RefundType;
+  status: string;
+  reason_code: RefundReasonCode;
+  reason_note: string | null;
+  total_refund_cents: number;
+  currency_code: string;
+  lines: RefundRequestLine[];
+  created_at: string;
+  approved_at: string | null;
+  refunded_at: string | null;
+}

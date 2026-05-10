@@ -159,6 +159,12 @@ class Tenant(Base):
     transfer_allow_self_approval: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False
     )
+    # RMA settings
+    default_restock_on_refund: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    refund_window_days: Mapped[int] = mapped_column(Integer, default=30, server_default="30", nullable=False)
+    rma_auto_approve_under_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     shops: Mapped[list[Shop]] = relationship(back_populates="tenant")
@@ -1232,6 +1238,121 @@ class OrderRefund(Base):
         UUID(as_uuid=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RefundRequest(Base):
+    """A merchant-RMA / customer-initiated return + refund request."""
+    __tablename__ = "refund_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
+    sale_transaction_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="SET NULL"), nullable=True
+    )
+    channel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("channels.id", ondelete="SET NULL"), nullable=True
+    )
+    customer_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("customers.id", ondelete="SET NULL"), nullable=True
+    )
+    customer_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    customer_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    refund_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="requested")
+    reason_code: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    refund_shipping: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    return_shipping_required: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    return_shipping_awb: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    approved_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    total_refund_cents: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    currency_code: Mapped[str] = mapped_column(String(3), nullable=False, server_default="USD")
+    provider_refund_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    cash_returned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    cash_returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    auto_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    lines: Mapped[list["RefundRequestLine"]] = relationship(
+        back_populates="refund_request", cascade="all, delete-orphan"
+    )
+    events: Mapped[list["RefundRequestEvent"]] = relationship(
+        back_populates="refund_request", cascade="all, delete-orphan",
+        order_by="RefundRequestEvent.created_at"
+    )
+
+
+class RefundRequestLine(Base):
+    """One product line within a RefundRequest."""
+    __tablename__ = "refund_request_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    refund_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("refund_requests.id", ondelete="CASCADE"), nullable=False
+    )
+    order_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("order_lines.id", ondelete="SET NULL"), nullable=True
+    )
+    transaction_line_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("transaction_lines.id", ondelete="SET NULL"), nullable=True
+    )
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+    )
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False, server_default="")
+    product_sku: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    quantity_requested: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity_approved: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    unit_price_cents: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    restock_on_approval: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    line_refund_cents: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    exchange_for_product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    refund_request: Mapped["RefundRequest"] = relationship(back_populates="lines")
+
+
+class RefundRequestEvent(Base):
+    """Immutable audit / timeline event for a RefundRequest."""
+    __tablename__ = "refund_request_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+    )
+    refund_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("refund_requests.id", ondelete="CASCADE"), nullable=False
+    )
+    event_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    from_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    to_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    actor_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    actor_kind: Mapped[str] = mapped_column(String(16), nullable=False, server_default="system")
+    event_metadata: Mapped[Optional[Any]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    refund_request: Mapped["RefundRequest"] = relationship(back_populates="events")
 
 
 class ShipmentEvent(Base):

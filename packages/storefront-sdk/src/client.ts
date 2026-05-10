@@ -13,6 +13,8 @@ import type {
   OTPVerifyResult,
   PaymentIntentResult,
   ProductList,
+  RefundRequest,
+  RefundRequestInput,
   StorefrontCategory,
   StorefrontProduct,
   SubmitOrderPayload,
@@ -281,5 +283,55 @@ export class StorefrontClient {
       { headers: this.headers() }
     );
     return handleResponse<CustomerOrder[]>(res);
+  }
+
+  // ── RMA / Refund Requests ──────────────────────────────────────────────
+
+  private _requireCustomerToken(): void {
+    if (!this.customerToken) {
+      throw new Error(
+        "customerToken is required for refund request operations. " +
+        "Call setCustomerToken(token) after OTP verification."
+      );
+    }
+  }
+
+  /** Submit a new refund / return request for an order. Requires customer auth. */
+  async requestRefund(input: RefundRequestInput): Promise<RefundRequest> {
+    this._requireCustomerToken();
+    const res = await fetch(this.url("/refund-requests"), {
+      method: "POST",
+      headers: this.headers(),
+      body: JSON.stringify(input),
+    });
+    return handleResponse<RefundRequest>(res);
+  }
+
+  /** List all refund requests for the authenticated customer. Requires customer auth. */
+  async listRefundRequests(): Promise<RefundRequest[]> {
+    this._requireCustomerToken();
+    const res = await fetch(this.url("/refund-requests"), {
+      headers: this.headers(),
+    });
+    return handleResponse<RefundRequest[]>(res);
+  }
+
+  /** Get a single refund request by ID. Requires customer auth. */
+  async getRefundRequest(id: string): Promise<RefundRequest> {
+    this._requireCustomerToken();
+    const res = await fetch(this.url(`/refund-requests/${encodeURIComponent(id)}`), {
+      headers: this.headers(),
+    });
+    return handleResponse<RefundRequest>(res);
+  }
+
+  /** Cancel a pending refund request (only valid in "requested" status). Requires customer auth. */
+  async cancelRefundRequest(id: string): Promise<RefundRequest> {
+    this._requireCustomerToken();
+    const res = await fetch(this.url(`/refund-requests/${encodeURIComponent(id)}/cancel`), {
+      method: "POST",
+      headers: this.headers(),
+    });
+    return handleResponse<RefundRequest>(res);
   }
 }
