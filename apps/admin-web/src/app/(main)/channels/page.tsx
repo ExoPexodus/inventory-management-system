@@ -404,6 +404,7 @@ function ShippingTab({ channels }: { channels: Channel[] }) {
     pickup_location: string | null; email: string | null;
   } | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<"shiprocket" | null>(null);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -419,13 +420,20 @@ function ShippingTab({ channels }: { channels: Channel[] }) {
     setConfigLoading(true);
     try {
       const r = await fetch(`/api/ims/v1/admin/channels/${channelId}/shipping/config`);
-      if (r.ok) setConfig((await r.json()) as typeof config);
+      if (r.ok) {
+        const cfg = (await r.json()) as typeof config;
+        setConfig(cfg);
+        if (cfg?.configured && cfg?.provider === "shiprocket") {
+          setActiveProvider("shiprocket");
+        }
+      }
     } catch { /* ignore */ }
     finally { setConfigLoading(false); }
   }, []);
 
   function selectChannel(id: string) {
     setSelectedChannelId(id);
+    setActiveProvider(null);
     setMsg(null); setErr(null);
     void loadConfig(id);
   }
@@ -499,9 +507,49 @@ function ShippingTab({ channels }: { channels: Channel[] }) {
             <p className="mt-4 text-sm text-on-surface-variant">Not configured yet.</p>
           )
         )}
+
+        {selectedChannelId && (
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <button
+              type="button"
+              onClick={() => setActiveProvider("shiprocket")}
+              className={`flex flex-col items-center justify-center rounded-xl border-2 px-4 py-5 text-sm font-semibold transition ${
+                activeProvider === "shiprocket"
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-outline-variant/20 bg-surface-container-lowest text-on-surface hover:border-primary/30 hover:bg-primary/5"
+              }`}
+            >
+              <span className="material-symbols-outlined text-2xl mb-1">local_shipping</span>
+              Shiprocket
+              {config?.configured && config?.provider === "shiprocket" && (
+                <span className="mt-1 text-[10px] font-bold uppercase tracking-widest text-primary">Active</span>
+              )}
+            </button>
+            {(["Delhivery", "DTDC", "Bluedart"] as const).map((name) => (
+              <button
+                key={name}
+                type="button"
+                disabled
+                className="flex flex-col items-center justify-center rounded-xl border-2 border-outline-variant/10 bg-surface-container-lowest/50 px-4 py-5 text-sm font-semibold text-on-surface-variant/60 cursor-not-allowed"
+              >
+                <span className="material-symbols-outlined text-2xl mb-1 opacity-50">local_shipping</span>
+                {name}
+                <span className="mt-1 rounded-full bg-secondary/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-on-secondary-container">
+                  Coming soon
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </Panel>
 
-      {selectedChannelId && (
+      {selectedChannelId && !activeProvider && (
+        <Panel title="Choose a carrier" subtitle="Select a shipping carrier above to configure it for this channel.">
+          <p className="text-sm text-on-surface-variant">No carrier selected.</p>
+        </Panel>
+      )}
+
+      {activeProvider === "shiprocket" && (
         <Panel
           title="Connect Shiprocket"
           subtitle="Credentials are verified and stored encrypted. Pickup location must match exactly in your Shiprocket account."
