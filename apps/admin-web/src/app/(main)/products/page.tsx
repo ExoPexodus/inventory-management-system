@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/primitives";
 import { formatMoney } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
+import { BulkActionsBar } from "@/components/ui/BulkActionsBar";
 
 type ProductPrice = {
   id: string;
@@ -77,6 +78,7 @@ export default function ProductsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkReorderPt, setBulkReorderPt] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   async function fetchProducts() {
     setLoading(true);
@@ -134,6 +136,27 @@ export default function ProductsPage() {
     }
   }
 
+  async function applyBulkArchive() {
+    if (selected.size === 0) return;
+    if (!confirm(`Archive ${selected.size} product${selected.size === 1 ? "" : "s"}? They can be unarchived later from each product's edit dialog.`)) return;
+    setArchiving(true);
+    try {
+      const r = await fetch("/api/ims/v1/admin/products/bulk-archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_ids: Array.from(selected) }),
+      });
+      if (r.ok) {
+        setSelected(new Set());
+        void fetchProducts();
+      } else {
+        alert("Archive failed.");
+      }
+    } finally {
+      setArchiving(false);
+    }
+  }
+
   return (
     <div className="space-y-8">
       <PageHeader
@@ -176,6 +199,38 @@ export default function ProductsPage() {
           ]}
         />
       </div>
+
+      <BulkActionsBar
+        selectedCount={selected.size}
+        onClear={() => setSelected(new Set())}
+      >
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min="0"
+            value={bulkReorderPt}
+            onChange={(e) => setBulkReorderPt(e.target.value)}
+            placeholder="Reorder pt"
+            className="w-28 rounded-lg border border-outline-variant/30 bg-surface-container-low px-2 py-1.5 text-sm text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+          />
+          <button
+            type="button"
+            onClick={() => void applyBulkReorder()}
+            disabled={bulkSaving || !bulkReorderPt.trim()}
+            className="rounded-lg border border-outline-variant/30 px-3 py-1.5 text-xs font-semibold text-on-surface hover:bg-surface-container-low disabled:opacity-50"
+          >
+            {bulkSaving ? "Applying…" : "Set reorder point"}
+          </button>
+        </div>
+        <button
+          type="button"
+          onClick={() => void applyBulkArchive()}
+          disabled={archiving}
+          className="rounded-lg border border-error/30 bg-error/5 px-3 py-1.5 text-xs font-semibold text-error hover:bg-error/10 disabled:opacity-50"
+        >
+          {archiving ? "Archiving…" : "Archive"}
+        </button>
+      </BulkActionsBar>
 
       <Panel title="Products" subtitle={`${rows.length} rows`} noPad>
         <div className="overflow-x-auto">
@@ -290,29 +345,6 @@ export default function ProductsPage() {
           </table>
         </div>
       </Panel>
-
-      {/* Bulk reorder toolbar */}
-      {selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2">
-          <div className="flex items-center gap-3 rounded-2xl border border-outline-variant/20 bg-surface-container-lowest px-5 py-3 shadow-2xl">
-            <span className="text-sm font-medium text-on-surface">{selected.size} item{selected.size !== 1 ? "s" : ""} selected</span>
-            <div className="h-5 w-px bg-outline-variant/30" />
-            <span className="text-sm text-on-surface-variant">Set reorder point:</span>
-            <input
-              type="number"
-              min="0"
-              value={bulkReorderPt}
-              onChange={(e) => setBulkReorderPt(e.target.value)}
-              placeholder="e.g. 10"
-              className="w-20 rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-1.5 text-sm text-on-surface outline-none focus:border-primary"
-            />
-            <PrimaryButton type="button" disabled={bulkSaving || !bulkReorderPt} onClick={() => void applyBulkReorder()}>
-              {bulkSaving ? "Saving…" : "Apply"}
-            </PrimaryButton>
-            <SecondaryButton type="button" onClick={() => setSelected(new Set())}>Clear</SecondaryButton>
-          </div>
-        </div>
-      )}
 
       <div className="rounded-xl border border-outline-variant/10 bg-surface-container-low p-6 shadow-sm">
         <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Need a new SKU?</p>

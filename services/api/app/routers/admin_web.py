@@ -1745,6 +1745,30 @@ def bulk_set_reorder_point(
     return BulkReorderPointResponse(updated_count=result.rowcount)
 
 
+class BulkArchiveBody(BaseModel):
+    product_ids: list[UUID] = Field(min_length=1, max_length=200)
+
+
+class BulkArchiveResponse(BaseModel):
+    archived_count: int
+
+
+@router.post("/products/bulk-archive", response_model=BulkArchiveResponse, dependencies=[require_permission("catalog:write")])
+def bulk_archive_products(
+    body: BulkArchiveBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> BulkArchiveResponse:
+    tenant_id = _require_operator_tenant(ctx)
+    result = db.execute(
+        Product.__table__.update()
+        .where(Product.id.in_(body.product_ids), Product.tenant_id == tenant_id)
+        .values(status="archived")
+    )
+    db.commit()
+    return BulkArchiveResponse(archived_count=result.rowcount)
+
+
 # ---------------------------------------------------------------------------
 # Stock adjustments
 # ---------------------------------------------------------------------------
