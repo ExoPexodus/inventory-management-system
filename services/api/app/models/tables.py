@@ -155,6 +155,10 @@ class Tenant(Base):
     byo_storage_secret_key: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     byo_storage_public_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     byo_storage_region: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    transfer_auto_approve_under_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    transfer_allow_self_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     shops: Mapped[list[Shop]] = relationship(back_populates="tenant")
@@ -672,8 +676,22 @@ class TransferOrder(Base):
     created_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+    approved_by_user_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    received_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    lines: Mapped[list["TransferOrderLine"]] = relationship(
+        back_populates="transfer", cascade="all, delete-orphan"
+    )
 
 
 class TransferOrderLine(Base):
@@ -689,6 +707,10 @@ class TransferOrderLine(Base):
     quantity_requested: Mapped[int] = mapped_column(Integer, nullable=False)
     quantity_shipped: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     quantity_received: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    unit_cost_at_transfer_cents: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    line_notes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+
+    transfer: Mapped["TransferOrder"] = relationship(back_populates="lines")
 
 
 class ShopProductTax(Base):

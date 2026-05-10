@@ -41,6 +41,7 @@ type StockRow = {
   name: string;
   unit_price_cents: number;
   quantity: number;
+  committed_to_transfers?: number;
   group_title?: string | null;
   variant_label?: string | null;
 };
@@ -366,7 +367,14 @@ function InventoryPageInner() {
                       ) : null}
                     </td>
                     <td className="px-6 py-3 text-on-surface-variant">{s.group_title ?? "—"}</td>
-                    <td className={`px-6 py-3 text-right tabular-nums ${qtyClass(s.quantity)}`}>{s.quantity}</td>
+                    <td className={`px-6 py-3 text-right tabular-nums ${qtyClass(s.quantity)}`}>
+                      {s.quantity}
+                      {(s.committed_to_transfers ?? 0) > 0 && (
+                        <span className="ml-1 text-xs font-normal text-secondary" title="Pending outbound transfers">
+                          ({s.committed_to_transfers} committed)
+                        </span>
+                      )}
+                    </td>
                     <td className="px-6 py-3 text-right tabular-nums text-on-surface">{formatMoney(s.unit_price_cents, currency)}</td>
                     <td className="px-6 py-3">
                       <Badge tone={stockBadge(s.quantity)}>{s.quantity <= 5 ? "critical" : s.quantity <= 10 ? "low" : "ok"}</Badge>

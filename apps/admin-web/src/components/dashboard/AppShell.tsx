@@ -94,6 +94,7 @@ const ROOT_ROUTES = new Set([
   "ecommerce",
   "inventory-pools",
   "tax",
+  "transfer-orders",
 ]);
 
 type NavItemDef = NavItem & {
@@ -137,6 +138,7 @@ const NAV_GROUPS: NavGroupDef[] = [
     items: [
       { href: "/inventory",       label: "Inventory",       icon: "inventory_2",     permission: "inventory:read",         allowedTypes: ALL_TYPES },
       { href: "/inventory-pools", label: "Inventory Pools", icon: "layers",          permission: "inventory_pools:manage", allowedTypes: ["online", "hybrid"] },
+      { href: "/transfer-orders", label: "Transfer Orders", icon: "compare_arrows",  permission: "operations:read",        allowedTypes: ["retail", "hybrid"] },
       { href: "/reconciliation",  label: "Reconciliation",  icon: "account_balance", permission: "operations:read",        allowedTypes: ["retail", "hybrid"] },
     ],
   },

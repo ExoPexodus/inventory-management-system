@@ -45,6 +45,12 @@ const SETTINGS_CARDS = [
     title: "Business Type",
     description: "Switch between online, retail, or hybrid mode",
   },
+  {
+    href: "/settings/transfers",
+    icon: "compare_arrows",
+    title: "Transfer Orders",
+    description: "Auto-approve thresholds and self-approval rules for inter-shop transfers",
+  },
 ];
 
 export default function SettingsIndexPage() {

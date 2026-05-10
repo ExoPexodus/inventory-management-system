@@ -15,3 +15,12 @@ def current_quantity(db: Session, shop_id: UUID, product_id: UUID) -> int:
         )
     )
     return int(db.execute(q).scalar_one())
+
+
+def get_committed_to_transfers(db: Session, shop_id: UUID, product_id: UUID) -> int:
+    """Return quantity committed to outbound transfers (approved/in_transit) for a shop+product.
+
+    This delegates to the transfer_orders service to avoid circular imports.
+    """
+    from app.services.transfer_orders import get_committed_to_transfers as _committed  # noqa: PLC0415
+    return _committed(db, shop_id=shop_id, product_id=product_id)

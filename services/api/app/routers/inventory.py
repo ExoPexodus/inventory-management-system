@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep
 from app.db.admin_deps_db import get_db_admin
 from app.models import Product, ProductGroup, Shop
-from app.services.stock import current_quantity
+from app.services.stock import current_quantity, get_committed_to_transfers
 
 router = APIRouter(prefix="/v1/inventory", tags=["Inventory"])
 
@@ -20,6 +20,7 @@ class ProductInventoryOut(BaseModel):
     name: str
     unit_price_cents: int
     quantity: int
+    committed_to_transfers: int = 0
     product_group_id: UUID | None = None
     group_title: str | None = None
     variant_label: str | None = None
@@ -53,6 +54,7 @@ def shop_inventory(
             name=p.name,
             unit_price_cents=p.unit_price_cents,
             quantity=current_quantity(db, shop_id, p.id),
+            committed_to_transfers=get_committed_to_transfers(db, shop_id, p.id),
             product_group_id=p.product_group_id,
             group_title=titles.get(p.product_group_id) if p.product_group_id else None,
             variant_label=p.variant_label,

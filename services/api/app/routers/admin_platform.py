@@ -291,3 +291,74 @@ def patch_localisation_settings(
         timezone=tenant.timezone,
         financial_year_start_month=tenant.financial_year_start_month,
     )
+
+
+# ---------------------------------------------------------------------------
+# Transfer order settings
+# ---------------------------------------------------------------------------
+
+
+class TransferSettingsOut(BaseModel):
+    transfer_auto_approve_under_cents: int | None
+    transfer_allow_self_approval: bool
+
+
+class PatchTransferSettingsBody(BaseModel):
+    transfer_auto_approve_under_cents: int | None = Field(default=None, ge=0)
+    transfer_allow_self_approval: bool | None = None
+
+
+@router.get(
+    "/tenant-settings/transfers",
+    response_model=TransferSettingsOut,
+    dependencies=[require_permission("settings:read")],
+)
+def get_transfer_settings(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> TransferSettingsOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+    return TransferSettingsOut(
+        transfer_auto_approve_under_cents=tenant.transfer_auto_approve_under_cents,
+        transfer_allow_self_approval=tenant.transfer_allow_self_approval,
+    )
+
+
+@router.patch(
+    "/tenant-settings/transfers",
+    response_model=TransferSettingsOut,
+    dependencies=[require_permission("settings:write")],
+)
+def patch_transfer_settings(
+    body: PatchTransferSettingsBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> TransferSettingsOut:
+    tenant_id = _require_tenant(ctx)
+    tenant = db.get(Tenant, tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant not found")
+
+    sent = body.model_fields_set
+    if "transfer_auto_approve_under_cents" in sent:
+        tenant.transfer_auto_approve_under_cents = body.transfer_auto_approve_under_cents
+    if "transfer_allow_self_approval" in sent and body.transfer_allow_self_approval is not None:
+        tenant.transfer_allow_self_approval = body.transfer_allow_self_approval
+
+    write_audit(
+        db,
+        tenant_id=tenant_id,
+        operator_id=ctx.operator_id,
+        action="update_transfer_settings",
+        resource_type="tenant",
+        resource_id=str(tenant_id),
+    )
+    db.commit()
+    db.refresh(tenant)
+    return TransferSettingsOut(
+        transfer_auto_approve_under_cents=tenant.transfer_auto_approve_under_cents,
+        transfer_allow_self_approval=tenant.transfer_allow_self_approval,
+    )

@@ -28,6 +28,7 @@ from app.routers import (
     admin_email,
     admin_entitlements,
     admin_media,
+    admin_transfer_orders,
     admin_webhooks,
     admin_fx_rates,
     admin_inventory,
@@ -101,6 +102,7 @@ app.include_router(admin_categories.router)
 app.include_router(admin_categories.products_router)
 app.include_router(admin_channels.router)
 app.include_router(admin_inventory_pools.router)
+app.include_router(admin_transfer_orders.router)
 app.include_router(admin_customers.router)
 app.include_router(admin_discounts.router)
 app.include_router(admin_entitlements.router)
