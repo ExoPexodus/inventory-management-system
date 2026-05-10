@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import OperatorDep
 from app.db.session import get_db
-from app.models import PlatformTenant
+from app.models import Plan, PlatformTenant, Subscription
 from app.services.audit_service import write_audit
 from app.services.tenant_config_push import push_tenant_currency_config
 from app.services.tenant_provision import provision_tenant
@@ -40,6 +40,17 @@ class TenantCreate(BaseModel):
     deployment_mode: str = Field(default="cloud", pattern="^(cloud|on_prem)$")
     initial_admin_email: str
     initial_admin_password: str = Field(min_length=8)
+    # Storage configuration
+    storage_mode: str = Field(default="platform", pattern="^(platform|byo)$")
+    byo_storage_endpoint: str | None = None
+    byo_storage_bucket: str | None = None
+    byo_storage_access_key: str | None = None
+    byo_storage_secret_key: str | None = None
+    byo_storage_public_url: str | None = None
+    byo_storage_region: str | None = "auto"
+    # Billing configuration
+    plan_codename: str = "starter"
+    trial_days: int = Field(default=14, ge=0, le=90)
 
 
 class TenantPatch(BaseModel):
@@ -160,11 +171,60 @@ def create_tenant(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tenant slug already exists")
 
+    # Validate plan and create initial Subscription
+    plan = db.execute(
+        select(Plan).where(Plan.codename == body.plan_codename, Plan.is_active == True)  # noqa: E712
+    ).scalar_one_or_none()
+    if plan is None:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Plan '{body.plan_codename}' not found or inactive",
+        )
+
+    now = datetime.now(UTC)
+    trial_end = now + timedelta(days=body.trial_days) if body.trial_days > 0 else None
+    sub = Subscription(
+        tenant_id=tenant.id,
+        plan_id=plan.id,
+        status="trial" if trial_end else "active",
+        billing_cycle="monthly",
+        trial_ends_at=trial_end,
+        current_period_start=now,
+        current_period_end=trial_end or (now + timedelta(days=30)),
+    )
+    db.add(sub)
+    db.flush()
+
+    initial_license = {
+        "subscription_status": sub.status,
+        "plan_codename": plan.codename,
+        "billing_cycle": sub.billing_cycle,
+        "max_shops": plan.max_shops,
+        "max_employees": plan.max_employees,
+        "storage_limit_mb": plan.storage_limit_mb,
+        "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
+        "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
+        "grace_period_days": sub.grace_period_days,
+    }
+
     write_audit(db, operator_id=ctx.operator_id, action="create_tenant", resource_type="tenant", resource_id=str(tenant.id))
 
     # Provision the tenant in the main API (creates tenant + owner role + initial admin).
     # Roll back if the API call fails so no orphan platform tenant is created.
-    result = provision_tenant(tenant, body.initial_admin_email, body.initial_admin_password)
+    result = provision_tenant(
+        tenant,
+        body.initial_admin_email,
+        body.initial_admin_password,
+        storage_mode=body.storage_mode,
+        byo_storage_endpoint=body.byo_storage_endpoint,
+        byo_storage_bucket=body.byo_storage_bucket,
+        byo_storage_access_key=body.byo_storage_access_key,
+        byo_storage_secret_key=body.byo_storage_secret_key,
+        byo_storage_public_url=body.byo_storage_public_url,
+        byo_storage_region=body.byo_storage_region,
+        initial_license=initial_license,
+    )
     if not result.ok:
         db.rollback()
         raise HTTPException(

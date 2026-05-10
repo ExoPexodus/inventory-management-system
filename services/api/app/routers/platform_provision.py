@@ -32,6 +32,18 @@ def _require_admin_token(x_admin_token: str = Header(...)) -> None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid admin token")
 
 
+class InitialLicensePayload(BaseModel):
+    subscription_status: str
+    plan_codename: str
+    billing_cycle: str | None = None
+    max_shops: int = 1
+    max_employees: int = 5
+    storage_limit_mb: int = 500
+    trial_ends_at: str | None = None
+    current_period_end: str | None = None
+    grace_period_days: int = 7
+
+
 class ProvisionTenantBody(BaseModel):
     tenant_id: _uuid.UUID
     name: str = Field(min_length=1, max_length=255)
@@ -46,6 +58,8 @@ class ProvisionTenantBody(BaseModel):
     byo_storage_secret_key: str | None = None
     byo_storage_public_url: str | None = None
     byo_storage_region: str | None = Field(default="auto")
+    # License seed — populated at provision time so new tenants have a cache row immediately
+    initial_license: InitialLicensePayload | None = None
 
 
 class ProvisionTenantOut(BaseModel):
@@ -153,6 +167,10 @@ def provision_tenant(
         db.flush()
         operator_id = op.id
         operator_status = "created"
+
+    if body.initial_license is not None and tenant_status == "created":
+        from app.services.license_service import _upsert_cache
+        _upsert_cache(db, tenant_id, body.initial_license.model_dump())
 
     db.commit()
     return ProvisionTenantOut(
