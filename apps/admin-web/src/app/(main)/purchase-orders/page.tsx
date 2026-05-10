@@ -15,6 +15,7 @@ import {
   TextInput,
 } from "@/components/ui/primitives";
 import { DateInput } from "@/components/ui/DateInput";
+import { Typeahead } from "@/components/ui/Typeahead";
 import { formatMoney } from "@/lib/format";
 import { useCurrency } from "@/lib/currency-context";
 
@@ -231,11 +232,11 @@ export default function PurchaseOrdersPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium text-on-surface">
               Supplier
-              <SelectInput
+              <Typeahead
                 className="mt-1"
                 value={supplierId}
                 onChange={setSupplierId}
-                placeholder="Select supplier"
+                placeholder="Search suppliers..."
                 options={suppliers.map((s) => ({ value: s.id, label: s.name }))}
               />
             </label>
