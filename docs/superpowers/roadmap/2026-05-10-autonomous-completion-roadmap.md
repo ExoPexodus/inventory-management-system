@@ -99,7 +99,7 @@ Updated as features ship.
 | 9 | M3 — Create UI standardisation | ✅ shipped (scoped to primitive + Suppliers exemplar) |
 | 10 | M4 — Bulk actions toolbar | ✅ shipped (scoped to primitive + Products archive) |
 | 11 | L5 — Command palette | ✅ shipped |
-| 12 | Magic-link auth | _pending_ |
+| 12 | Magic-link auth | ✅ shipped |
 | 13 | Transfer orders | _pending_ |
 | 14 | Advanced RBAC | _pending_ |
 | 15 | Platform-side plan-feature UI | _pending_ |
