@@ -80,4 +80,4 @@ Shipped BEFORE the plan UI as a separate small PR. Three bugs:
 | 2 | Advanced RBAC | ✅ shipped |
 | 3a | Tenant-creation gap fixes | ✅ shipped |
 | 3b | Platform plan-feature UI | ✅ shipped |
-| 4 | RMA Flow | _pending_ |
+| 4 | RMA Flow | ✅ shipped (cashier Flutter screen deferred) |
