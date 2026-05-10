@@ -66,6 +66,55 @@ export default function ReconciliationPage() {
   // Approve
   const [approveSaving, setApproveSaving] = useState<string | null>(null);
 
+  // Bulk approve
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkApproving, setBulkApproving] = useState(false);
+  const [bulkMsg, setBulkMsg] = useState<string | null>(null);
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllZeroVariance() {
+    const eligible = rows
+      .filter((r) => r.rec_status === "pending_review")
+      .map((r) => r.id);
+    setSelectedIds(new Set(eligible));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkApprove() {
+    setBulkApproving(true);
+    setBulkMsg(null);
+    try {
+      const r = await fetch("/api/ims/v1/admin/reconciliation/bulk-approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shift_ids: Array.from(selectedIds) }),
+      });
+      if (r.ok) {
+        const data = await r.json() as { approved: number; skipped: Array<{ id: string; reason: string }> };
+        setBulkMsg(`Approved ${data.approved} shift${data.approved === 1 ? "" : "s"}.${data.skipped.length > 0 ? ` ${data.skipped.length} skipped.` : ""}`);
+        clearSelection();
+        void load();
+      } else {
+        setBulkMsg("Bulk approve failed.");
+      }
+    } catch {
+      setBulkMsg("Network error.");
+    } finally {
+      setBulkApproving(false);
+    }
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     const sp = new URLSearchParams();
@@ -182,12 +231,56 @@ export default function ReconciliationPage() {
         )}
       </div>
 
+      {/* Bulk action bar */}
+      {(selectedIds.size > 0 || rows.some((r) => r.rec_status === "pending_review")) && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-outline-variant/10 bg-surface-container-low px-4 py-3">
+          <div className="flex items-center gap-3">
+            <p className="text-sm font-semibold text-on-surface">
+              {selectedIds.size > 0
+                ? `${selectedIds.size} selected`
+                : `${rows.filter((r) => r.rec_status === "pending_review").length} zero-variance shifts available`}
+            </p>
+            {selectedIds.size === 0 ? (
+              <button
+                type="button"
+                onClick={selectAllZeroVariance}
+                className="text-xs font-semibold text-primary hover:underline"
+              >
+                Select all zero-variance
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="text-xs font-semibold text-on-surface-variant hover:underline"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          {selectedIds.size > 0 && (
+            <button
+              type="button"
+              onClick={() => void handleBulkApprove()}
+              disabled={bulkApproving}
+              className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-on-primary hover:opacity-90 disabled:opacity-50"
+            >
+              {bulkApproving ? "Approving…" : `Approve ${selectedIds.size} selected`}
+            </button>
+          )}
+        </div>
+      )}
+      {bulkMsg && (
+        <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-on-surface">{bulkMsg}</p>
+      )}
+
       {/* Table */}
       <Panel title="Periods" subtitle={`${rows.length} closed shifts`} noPad>
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead>
               <tr className="border-b border-outline-variant/10">
+                <th className="w-10 px-4 py-3" />
                 <th className="w-8 px-4 py-3" />
                 <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Period</th>
                 <th className="px-6 py-3 text-right text-[10px] font-bold uppercase tracking-widest text-on-surface-variant">Expected</th>
@@ -199,10 +292,10 @@ export default function ReconciliationPage() {
             </thead>
             <tbody className="divide-y divide-outline-variant/10">
               {loading ? (
-                <LoadingRow colSpan={7} label="Loading reconciliation…" />
+                <LoadingRow colSpan={8} label="Loading reconciliation…" />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-0">
+                  <td colSpan={8} className="p-0">
                     <EmptyState title="No closed shifts yet" detail="Close a shift from the Shifts page to see reconciliation data." />
                   </td>
                 </tr>
@@ -217,6 +310,16 @@ export default function ReconciliationPage() {
                         className={`group cursor-pointer transition-colors hover:bg-surface-container-low/50 ${isExpanded ? "bg-surface-container-low/30" : ""}`}
                         onClick={() => setExpanded(isExpanded ? null : r.id)}
                       >
+                        <td className="px-4 py-4" onClick={(e) => e.stopPropagation()}>
+                          {r.rec_status === "pending_review" ? (
+                            <input
+                              type="checkbox"
+                              checked={selectedIds.has(r.id)}
+                              onChange={() => toggleSelect(r.id)}
+                              className="h-4 w-4 rounded accent-primary"
+                            />
+                          ) : null}
+                        </td>
                         <td className="px-4 py-4">
                           <span className="material-symbols-outlined text-base text-on-surface-variant transition-transform"
                             style={{ display: "inline-block", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>
@@ -267,6 +370,7 @@ export default function ReconciliationPage() {
                       </tr>
                       {isExpanded && (
                         <tr key={`${r.id}-detail`} className="bg-surface-container-low/20">
+                          <td />
                           <td />
                           <td colSpan={6} className="px-6 py-4">
                             <div className="rounded-lg border border-outline-variant/10 bg-surface-container-lowest p-4">

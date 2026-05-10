@@ -226,3 +226,60 @@ def approve_reconciliation(
         resolution_note=resolution_note,
         reviewed_by=str(shift.reviewed_by_user_id) if shift.reviewed_by_user_id else None,
     )
+
+
+class BulkApproveBody(BaseModel):
+    shift_ids: list[UUID] = Field(min_length=1, max_length=200)
+
+
+class BulkApproveSkipped(BaseModel):
+    id: UUID
+    reason: str
+
+
+class BulkApproveOut(BaseModel):
+    approved: int
+    skipped: list[BulkApproveSkipped]
+
+
+@router.post("/bulk-approve", response_model=BulkApproveOut, dependencies=[require_permission("operations:write")])
+def bulk_approve_reconciliation(
+    body: BulkApproveBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> BulkApproveOut:
+    """Approve multiple zero-variance closed shifts in one transaction.
+
+    Skips shifts that are: not in this tenant, not in 'closed' status, or have non-zero discrepancy.
+    """
+    from datetime import UTC, datetime
+    tenant_id = _require_operator_tenant(ctx)
+
+    skipped: list[BulkApproveSkipped] = []
+    approved_count = 0
+    now = datetime.now(UTC)
+
+    for shift_id in body.shift_ids:
+        shift = db.get(ShiftClosing, shift_id)
+        if shift is None or shift.tenant_id != tenant_id:
+            skipped.append(BulkApproveSkipped(id=shift_id, reason="not found"))
+            continue
+        if shift.status != "closed":
+            skipped.append(BulkApproveSkipped(id=shift_id, reason=f"status is {shift.status}, not closed"))
+            continue
+        if shift.discrepancy_cents != 0:
+            skipped.append(BulkApproveSkipped(id=shift_id, reason="has variance — use resolve, not approve"))
+            continue
+        shift.reviewed_by_user_id = ctx.operator_id
+        shift.reviewed_at = now
+        approved_count += 1
+
+    if approved_count > 0:
+        write_audit(
+            db, tenant_id=tenant_id, operator_id=ctx.operator_id,
+            action="bulk_approve_reconciliation",
+            resource_type="shift",
+            resource_id=f"{approved_count} shifts",
+        )
+    db.commit()
+    return BulkApproveOut(approved=approved_count, skipped=skipped)
