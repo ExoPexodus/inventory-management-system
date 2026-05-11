@@ -19,7 +19,7 @@ class ProductRow {
     required this.name,
     required this.unitPriceCents,
     required this.quantity,
-    this.category,
+    this.categorySlugs = const [],
     this.effectiveTaxRateBps = 0,
     this.taxExempt = false,
     this.productGroupId,
@@ -33,7 +33,15 @@ class ProductRow {
   final String id;
   final String sku;
   final String name;
-  final String? category;
+
+  /// Category slugs this product belongs to (from product_categories join on the server).
+  /// Pre-2026-05-27 cashier builds used a single `category` string field; that field
+  /// is now always null on the wire — read this list instead.
+  final List<String> categorySlugs;
+
+  /// First category slug, or null. Convenience for chip filters that want one label.
+  String? get primaryCategory => categorySlugs.isEmpty ? null : categorySlugs.first;
+
   /// Basis points applicable at synced shop (0 when [taxExempt]).
   final int effectiveTaxRateBps;
   final bool taxExempt;
@@ -47,13 +55,17 @@ class ProductRow {
   final bool negativeInventoryAllowed;
 
   factory ProductRow.merged(Map<String, dynamic> product, int quantity) {
+    final rawSlugs = product['category_slugs'];
+    final slugs = rawSlugs is List
+        ? rawSlugs.whereType<String>().toList(growable: false)
+        : const <String>[];
     return ProductRow(
       id: product['id'] as String,
       sku: product['sku'] as String,
       name: product['name'] as String,
       unitPriceCents: product['unit_price_cents'] as int,
       quantity: quantity,
-      category: product['category'] as String?,
+      categorySlugs: slugs,
       effectiveTaxRateBps: (product['effective_tax_rate_bps'] as num?)?.toInt() ?? 0,
       taxExempt: product['tax_exempt'] as bool? ?? false,
       productGroupId: product['product_group_id'] as String?,

@@ -100,8 +100,10 @@ class _InventoryLookupScreenState extends State<InventoryLookupScreen> {
   List<String> _categories(List<ProductRow> all) {
     final s = <String>{};
     for (final p in all) {
-      final c = p.category?.trim();
-      if (c != null && c.isNotEmpty) s.add(c);
+      for (final c in p.categorySlugs) {
+        final t = c.trim();
+        if (t.isNotEmpty) s.add(t);
+      }
     }
     final out = s.toList()..sort();
     return out;
@@ -111,7 +113,7 @@ class _InventoryLookupScreenState extends State<InventoryLookupScreen> {
     var list = all;
     final cat = _category;
     if (cat != null) {
-      list = list.where((p) => p.category == cat).toList();
+      list = list.where((p) => p.categorySlugs.contains(cat)).toList();
     }
     final q = _search.text.trim().toLowerCase();
     if (q.isEmpty) return list;

@@ -8,7 +8,18 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.auth.deps import DeviceAuth, get_device_auth
 from app.db.session import get_db
-from app.models import Customer, Product, ProductGroup, Shop, ShopProductTax, Tenant, TenantLicenseCache, User
+from app.models import (
+    Category,
+    Customer,
+    Product,
+    ProductCategory,
+    ProductGroup,
+    Shop,
+    ShopProductTax,
+    Tenant,
+    TenantLicenseCache,
+    User,
+)
 from app.services.localisation import effective_timezone
 from app.services.stock import current_quantity
 from app.services.sync_push import process_push_batch
@@ -33,7 +44,11 @@ class ProductDTO(BaseModel):
     id: UUID
     sku: str
     name: str
+    # DEPRECATED: kept for backward compat with older cashier builds. Always None
+    # since migration 20260527000001 dropped Product.category. New cashier builds
+    # should read category_slugs instead.
     category: str | None = None
+    category_slugs: list[str] = []
     unit_price_cents: int
     active: bool
     effective_tax_rate_bps: int
@@ -150,6 +165,18 @@ def sync_pull(
         for g in db.execute(select(ProductGroup).where(ProductGroup.id.in_(group_ids))).scalars().all():
             group_title_by_id[g.id] = g.title
 
+    # Single-query category-slug-per-product lookup
+    category_slugs_by_pid: dict[UUID, list[str]] = {pid: [] for pid in pids}
+    if pids:
+        cat_rows = db.execute(
+            select(ProductCategory.product_id, Category.slug)
+            .join(Category, Category.id == ProductCategory.category_id)
+            .where(ProductCategory.product_id.in_(pids))
+            .order_by(Category.sort_order, Category.name)
+        ).all()
+        for pid, slug in cat_rows:
+            category_slugs_by_pid.setdefault(pid, []).append(slug)
+
     snaps: list[StockSnapshotDTO] = []
     product_dtos: list[ProductDTO] = []
     for p in products:
@@ -167,7 +194,8 @@ def sync_pull(
                 id=p.id,
                 sku=p.sku,
                 name=p.name,
-                category=None,  # legacy field: use product_categories join table
+                category=None,  # legacy field; new clients read category_slugs
+                category_slugs=category_slugs_by_pid.get(p.id, []),
                 unit_price_cents=p.unit_price_cents,
                 active=p.active,
                 effective_tax_rate_bps=bps,
