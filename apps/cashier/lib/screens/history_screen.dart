@@ -8,6 +8,7 @@ import '../services/session_store.dart' show SessionStore;
 import '../util/datetime_format.dart';
 import '../util/money_format.dart';
 import '../widgets/archive_section_header.dart';
+import 'refund_create_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
@@ -382,6 +383,21 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                 ),
                               );
                             }),
+                            if (st == 'posted')
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton.icon(
+                                  icon: const Icon(Icons.keyboard_return, size: 18),
+                                  label: const Text('Refund this sale'),
+                                  onPressed: () async {
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => RefundCreateScreen(transaction: t),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
                           ],
                         ),
                       ),

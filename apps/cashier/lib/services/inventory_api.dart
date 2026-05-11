@@ -261,6 +261,37 @@ class InventoryApi {
     return TransactionListPage.decode(decoded);
   }
 
+  Future<Map<String, dynamic>> createRefundRequest({
+    required String accessToken,
+    required String saleTransactionId,
+    required String reasonCode,
+    String? reasonNote,
+    String? customerEmail,
+    String? customerName,
+    required List<Map<String, dynamic>> lines,
+  }) async {
+    final payload = <String, dynamic>{
+      'sale_transaction_id': saleTransactionId,
+      'refund_type': 'refund_only',
+      'reason_code': reasonCode,
+      'lines': lines,
+    };
+    if (reasonNote != null && reasonNote.isNotEmpty) payload['reason_note'] = reasonNote;
+    if (customerEmail != null && customerEmail.isNotEmpty) payload['customer_email'] = customerEmail;
+    if (customerName != null && customerName.isNotEmpty) payload['customer_name'] = customerName;
+
+    final r = await http.post(
+      _uri('/v1/cashier/refund-requests'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $accessToken',
+      },
+      body: jsonEncode(payload),
+    );
+    if (r.statusCode >= 400) throw ApiException(r.statusCode, r.body);
+    return jsonDecode(r.body) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> shiftSummary({
     required String accessToken,
     required String shopId,
