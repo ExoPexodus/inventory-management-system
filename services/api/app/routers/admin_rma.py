@@ -469,22 +469,22 @@ def issue_return_awb(
 
     if req.status not in ("approved", "received"):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Return AWB can only be issued for approved or received requests",
         )
     if not req.return_shipping_required:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="This request does not require return shipping",
         )
     if req.return_shipping_awb:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Return AWB has already been issued for this request",
         )
     if req.order_id is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Return shipping is only supported for ecommerce orders, not POS sales",
         )
 
@@ -493,7 +493,7 @@ def issue_return_awb(
 
     if not provider_name:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="No shipping provider configured for this channel. Issue return shipping manually.",
         )
 
@@ -503,12 +503,12 @@ def issue_return_awb(
         provider = get_provider(provider_name)
     except Exception:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown shipping provider '{provider_name}'",
         )
     if not hasattr(provider, "create_reverse_shipment"):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Shipping provider '{provider_name}' does not support automated return AWB issuance",
         )
 

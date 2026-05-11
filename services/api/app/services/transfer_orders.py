@@ -37,15 +37,15 @@ def _snapshot_costs(db: Session, transfer: TransferOrder) -> None:
 def _validate_shops(db: Session, tenant_id: UUID, from_shop_id: UUID, to_shop_id: UUID) -> None:
     if from_shop_id == to_shop_id:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="from_shop_id and to_shop_id must be different",
         )
     from_shop = db.get(Shop, from_shop_id)
     to_shop = db.get(Shop, to_shop_id)
     if from_shop is None or from_shop.tenant_id != tenant_id:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="from_shop not found in this tenant")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="from_shop not found in this tenant")
     if to_shop is None or to_shop.tenant_id != tenant_id:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="to_shop not found in this tenant")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="to_shop not found in this tenant")
 
 
 def _validate_products(db: Session, tenant_id: UUID, product_ids: list[UUID]) -> None:
@@ -58,7 +58,7 @@ def _validate_products(db: Session, tenant_id: UUID, product_ids: list[UUID]) ->
     missing = set(product_ids) - found
     if missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Products not found in tenant: {sorted(str(p) for p in missing)}",
         )
 
@@ -81,7 +81,7 @@ def create_transfer(
     """Create a new draft transfer order."""
     if not lines:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Transfer must have at least one line",
         )
     _validate_shops(db, tenant_id, from_shop_id, to_shop_id)
@@ -91,7 +91,7 @@ def create_transfer(
     for line in lines:
         if line.get("quantity_requested", 0) <= 0:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="All line quantities must be greater than zero",
             )
 
@@ -134,7 +134,7 @@ def update_draft(
         )
     if not lines:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Transfer must have at least one line",
         )
 
@@ -144,7 +144,7 @@ def update_draft(
     for line in lines:
         if line.get("quantity_requested", 0) <= 0:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="All line quantities must be greater than zero",
             )
 
@@ -181,7 +181,7 @@ def submit_transfer(
         )
     if not transfer.lines:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Transfer must have at least one line before submitting",
         )
 
@@ -283,12 +283,12 @@ def ship_transfer(
         line = lines_by_id.get(line_id)
         if line is None:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Line {line_id} not found in this transfer",
             )
         if qty > line.quantity_requested:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"quantity_shipped ({qty}) exceeds quantity_requested ({line.quantity_requested}) for line {line_id}",
             )
         line.quantity_shipped = qty
@@ -318,12 +318,12 @@ def receive_transfer(
         line = lines_by_id.get(line_id)
         if line is None:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Line {line_id} not found in this transfer",
             )
         if qty > line.quantity_shipped:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"quantity_received ({qty}) exceeds quantity_shipped ({line.quantity_shipped}) for line {line_id}",
             )
         line.quantity_received = qty
@@ -403,3 +403,31 @@ def get_committed_to_transfers(db: Session, *, shop_id: UUID, product_id: UUID) 
     ).scalars().all()
 
     return sum(max(0, line.quantity_requested - line.quantity_shipped) for line in rows)
+
+
+def get_committed_to_transfers_batch(
+    db: Session, *, shop_id: UUID, product_ids: list[UUID],
+) -> dict[UUID, int]:
+    """Batch version of get_committed_to_transfers. Returns {product_id: committed_qty}
+    for every id in product_ids (default 0 when no pending lines)."""
+    if not product_ids:
+        return {}
+    from sqlalchemy import func as _func  # noqa: PLC0415
+
+    rows = db.execute(
+        select(
+            TransferOrderLine.product_id,
+            _func.coalesce(_func.sum(TransferOrderLine.quantity_requested - TransferOrderLine.quantity_shipped), 0),
+        )
+        .join(TransferOrder, TransferOrderLine.transfer_order_id == TransferOrder.id)
+        .where(
+            TransferOrder.from_shop_id == shop_id,
+            TransferOrderLine.product_id.in_(product_ids),
+            TransferOrder.status.in_(["approved", "in_transit"]),
+        )
+        .group_by(TransferOrderLine.product_id)
+    ).all()
+    out: dict[UUID, int] = {pid: 0 for pid in product_ids}
+    for pid, qty in rows:
+        out[pid] = max(0, int(qty))
+    return out

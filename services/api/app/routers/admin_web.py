@@ -1691,7 +1691,7 @@ def admin_patch_product(
     if "status" in patch and patch["status"] is not None:
         if patch["status"] not in _VALID_PRODUCT_STATUSES:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Invalid status '{patch['status']}'. Must be one of: {', '.join(sorted(_VALID_PRODUCT_STATUSES))}",
             )
         prod.status = patch["status"]
@@ -1922,7 +1922,7 @@ def create_stock_adjustment(
 
     if body.reason not in _VALID_REASONS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid reason '{body.reason}'. Must be one of: {', '.join(sorted(_VALID_REASONS))}",
         )
 

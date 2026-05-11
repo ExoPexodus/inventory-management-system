@@ -134,7 +134,7 @@ def create_role(
     unknown = set(body.permissions) - found_codenames
     if unknown:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown permission codenames: {sorted(unknown)}",
         )
 
@@ -182,7 +182,7 @@ def update_role(
         unknown = set(body.permissions) - found_codenames
         if unknown:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Unknown permission codenames: {sorted(unknown)}",
             )
         # Replace all permissions
@@ -383,14 +383,14 @@ def reassign_and_delete_role(
     missing = current_user_ids - assignment_user_ids
     if missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Missing reassignment for {len(missing)} user(s). All users holding this role must be reassigned.",
         )
     # No extra users allowed (they can't hold the role anyway, just reject)
     extra = assignment_user_ids - current_user_ids
     if extra:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Assignments include {len(extra)} user(s) not currently holding this role.",
         )
 
@@ -398,7 +398,7 @@ def reassign_and_delete_role(
     new_role_ids = {a.new_role_id for a in body.assignments}
     if role_id in new_role_ids:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Cannot reassign users to the role being deleted.",
         )
 
@@ -411,7 +411,7 @@ def reassign_and_delete_role(
         ).scalar_one()
         if found_roles_count != len(new_role_ids):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="One or more target roles do not exist within this tenant.",
             )
 

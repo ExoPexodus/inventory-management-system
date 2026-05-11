@@ -237,12 +237,12 @@ def patch_purchase_order(
         new_status = patch["status"]
         if new_status not in VALID_STATUSES:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Invalid status '{new_status}'",
             )
         if new_status not in ALLOWED_TRANSITIONS.get(po.status, set()):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"Cannot transition from '{po.status}' to '{new_status}'",
             )
 
@@ -271,7 +271,7 @@ def _receive_purchase_order(po: PurchaseOrder, tenant_id: UUID, operator_id: UUI
     ).scalar_one_or_none()
     if first_shop is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="No shops found for tenant; cannot record stock receipt",
         )
 
@@ -316,7 +316,7 @@ def delete_purchase_order(
     po = _get_po(db, po_id, tenant_id)
     if po.status != "draft":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Only draft purchase orders can be deleted",
         )
     write_audit(db, tenant_id=tenant_id, operator_id=ctx.operator_id, action="delete_purchase_order", resource_type="purchase_order", resource_id=str(po_id))
@@ -340,7 +340,7 @@ def add_po_line(
     po = _get_po(db, po_id, tenant_id)
     if po.status != "draft":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Lines can only be added to draft purchase orders",
         )
     prod = db.get(Product, body.product_id)
@@ -378,7 +378,7 @@ def patch_po_line(
     po = _get_po(db, po_id, tenant_id)
     if po.status != "draft":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Lines can only be modified on draft purchase orders",
         )
     line = db.get(PurchaseOrderLine, line_id)
@@ -407,7 +407,7 @@ def delete_po_line(
     po = _get_po(db, po_id, tenant_id)
     if po.status != "draft":
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Lines can only be removed from draft purchase orders",
         )
     line = db.get(PurchaseOrderLine, line_id)

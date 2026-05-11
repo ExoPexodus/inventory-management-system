@@ -267,7 +267,7 @@ def patch_localisation_settings(
 
     if body.timezone is not None and not validate_iana_timezone(body.timezone):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="invalid_timezone",
         )
 

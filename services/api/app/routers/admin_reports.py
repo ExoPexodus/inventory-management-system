@@ -64,7 +64,7 @@ def export_report(
 ) -> StreamingResponse:
     if report not in REPORT_IDS:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown report '{report}'. Must be one of: {', '.join(sorted(REPORT_IDS))}",
         )
     tenant_id = _require_tenant(ctx)

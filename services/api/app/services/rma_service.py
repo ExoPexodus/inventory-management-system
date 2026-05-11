@@ -96,12 +96,28 @@ def _write_event(
 
 
 def _send_status_email(db: Session, request: RefundRequest, template_name: str) -> None:
-    """Send an RMA email — non-blocking, never raises."""
+    """Send an RMA email — non-blocking, never raises.
+
+    Records an `email_sent` event on success and an `email_failed` event with
+    the error message on failure, so the merchant can see in the timeline
+    whether the customer was actually notified.
+    """
     try:
         from app.services.rma_email import send_rma_email
         send_rma_email(db, request=request, template_name=template_name)
-    except Exception:
-        logger.warning("Failed to send RMA email for request %s (template=%s)", request.id, template_name, exc_info=True)
+        _write_event(
+            db, request=request, event_type="email_sent", actor_kind="system",
+            metadata={"template": template_name},
+        )
+    except Exception as exc:
+        logger.warning(
+            "Failed to send RMA email for request %s (template=%s)",
+            request.id, template_name, exc_info=True,
+        )
+        _write_event(
+            db, request=request, event_type="email_failed", actor_kind="system",
+            metadata={"template": template_name, "error": str(exc)[:500]},
+        )
 
 
 def _compute_total(request: RefundRequest) -> int:
@@ -132,7 +148,7 @@ def _validate_window(order: Order | None, tenant: Tenant) -> None:
         cutoff = cutoff.replace(tzinfo=UTC)
     if _now() > cutoff:
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Refund window of {window_days} days has closed for this order",
         )
 
@@ -180,17 +196,17 @@ def create_refund_request(
 ) -> RefundRequest:
     if not lines:
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="At least one line is required",
         )
     if reason_code == "other" and not (reason_note or "").strip():
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="reason_note is required when reason_code is 'other'",
         )
     if refund_type not in ("refund_only", "return_refund", "exchange"):
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Invalid refund_type: {refund_type!r}",
         )
 
@@ -286,7 +302,7 @@ def approve_refund_request(
 ) -> RefundRequest:
     if request.status != "requested":
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot approve a request with status '{request.status}'",
         )
 
@@ -339,7 +355,7 @@ def reject_refund_request(
 ) -> RefundRequest:
     if request.status != "requested":
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot reject a request with status '{request.status}'",
         )
     from_status = request.status
@@ -366,7 +382,7 @@ def cancel_refund_request(
 ) -> RefundRequest:
     if request.status != "requested":
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot cancel a request with status '{request.status}'",
         )
     from_status = request.status
@@ -390,12 +406,12 @@ def mark_received(
 ) -> RefundRequest:
     if request.status != "approved":
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot mark received when status is '{request.status}'",
         )
     if request.refund_type != "return_refund":
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="mark_received is only valid for return_refund type",
         )
 
@@ -434,7 +450,7 @@ def execute_refund(
     """
     if request.status not in ("approved", "received"):
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot execute refund when status is '{request.status}'",
         )
 
@@ -537,7 +553,7 @@ def mark_cash_returned(
 ) -> RefundRequest:
     if request.status not in ("approved", "received"):
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot mark cash returned when status is '{request.status}'",
         )
     from_status = request.status
@@ -571,12 +587,12 @@ def mark_exchange_shipped(
     """
     if request.refund_type != "exchange":
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="mark_exchange_shipped is only valid for exchange-type requests",
         )
     if request.status != "approved":
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot mark exchange shipped from status '{request.status}'",
         )
     from_status = request.status
@@ -607,7 +623,7 @@ def close_refund_request(
 ) -> RefundRequest:
     if request.status not in ("refunded", "rejected", "exchange_shipped"):
         raise HTTPException(
-            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=http_status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Cannot close a request with status '{request.status}'",
         )
     from_status = request.status

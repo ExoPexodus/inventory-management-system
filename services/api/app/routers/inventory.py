@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 from app.auth.admin_deps import AdminAuthDep
 from app.db.admin_deps_db import get_db_admin
 from app.models import Product, ProductGroup, Shop
-from app.services.stock import current_quantity, get_committed_to_transfers
+from app.services.stock import (
+    current_quantities,
+    current_quantity,
+    get_committed_to_transfers_batch,
+)
 
 router = APIRouter(prefix="/v1/inventory", tags=["Inventory"])
 
@@ -42,19 +46,22 @@ def shop_inventory(
     prods = db.execute(
         select(Product).where(Product.tenant_id == shop.tenant_id, Product.active.is_(True))
     ).scalars().all()
+    pids = [p.id for p in prods]
     gids = {p.product_group_id for p in prods if p.product_group_id is not None}
     titles: dict[UUID, str] = {}
     if gids:
         for g in db.execute(select(ProductGroup).where(ProductGroup.id.in_(gids))).scalars().all():
             titles[g.id] = g.title
+    qty_map = current_quantities(db, shop_id, pids)
+    committed_map = get_committed_to_transfers_batch(db, shop_id, pids)
     return [
         ProductInventoryOut(
             product_id=p.id,
             sku=p.sku,
             name=p.name,
             unit_price_cents=p.unit_price_cents,
-            quantity=current_quantity(db, shop_id, p.id),
-            committed_to_transfers=get_committed_to_transfers(db, shop_id, p.id),
+            quantity=qty_map.get(p.id, 0),
+            committed_to_transfers=committed_map.get(p.id, 0),
             product_group_id=p.product_group_id,
             group_title=titles.get(p.product_group_id) if p.product_group_id else None,
             variant_label=p.variant_label,
