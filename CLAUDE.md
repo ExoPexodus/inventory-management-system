@@ -92,6 +92,36 @@ Auth dependencies: `services/api/app/auth/deps.py`, `app/auth/admin_deps.py`, `a
 ### Inventory Ledger
 Stock is **never a mutable field** — it is derived from `StockMovements` (immutable ledger rows). Direct stock updates must create movement records, not UPDATE quantities. Adjustments flow through `StockAdjustments` (pending → approved workflow).
 
+Movement types in active use: `sale`, `purchase_receipt`, `manual_adjustment`, `transfer_in`, `transfer_out`, `rma_return`. New flows that move stock MUST create paired or single movements rather than touching computed quantities. Batch reads use `current_quantities(db, shop_id, product_ids)` and `get_committed_to_transfers_batch()` from `services/api/app/services/stock.py` — single-product helpers exist but produce N+1 on multi-row listings.
+
+### Catalog Taxonomy
+
+Two parallel concepts, both per-tenant:
+- **Categories** — hierarchical via `categories` table (parent_id self-FK) joined to products via `product_categories`. Use for browse/breadcrumb navigation. Storefront category pages include descendants automatically. Admin tree manager at `/categories`.
+- **Tags** — flat JSONB list on `Product.tags`. Use for marketing labels, filters, and discount targeting.
+
+The legacy `Product.category` string column was dropped in migration `20260527000001`. Code looking up a product's categories should join `product_categories` or use `Product.category_slugs` on admin responses.
+
+### Full-Text Search
+`Product.search_vector` (PostgreSQL `tsvector`, GIN-indexed) is populated by trigger from product name (weight A), sku (B), joined category names + tags (C), and short_description + description (D). Both admin `/v1/admin/products` and storefront `/v1/storefront/products` use `make_tsquery()` (`app/services/product_search.py`) when `q` is set, with `ts_rank` ordering when no explicit `sort_by` is provided. The trigger handles non-array `tags` JSONB defensively. ILIKE remains the path for transaction search and other minor surfaces.
+
+### Transfer Orders
+Cross-shop inventory moves with approval workflow. Status flow: `draft → pending_approval → approved → in_transit → completed`, plus `rejected` and `cancelled` terminal states. Approval is gated by the new `transfers:approve` permission. Two tenant settings: `transfer_auto_approve_under_cents` (line-total below this auto-approves on submit) and `transfer_allow_self_approval` (default false). On approval, each `TransferOrderLine.unit_cost_at_transfer_cents` is snapshotted from the current `Product.cost_price_cents` so per-shop COGS stays accurate. Source stock is soft-deducted via `get_committed_to_transfers_batch()` while a transfer is approved or in-transit; on receive, paired `transfer_out`/`transfer_in` `StockMovement` rows are written with unique idempotency keys per line direction.
+
+### RMA Flow (Returns / Refunds / Exchanges)
+Three refund types — `refund_only`, `return_refund`, `exchange` — unified across e-commerce and POS. Storefront customers initiate via `POST /v1/storefront/refund-requests`; cashiers initiate against POS transactions via `POST /v1/cashier/refund-requests`; merchant approves in admin-web `/rma`. On approval the system calls Stripe/Razorpay refund APIs automatically (`payment_refund.py`); cash sales mark a manual "cash returned" step. Status flow: `requested → approved/rejected → received (return+refund) → refunded → closed`, plus `cancelled` and `exchange_shipped` for exchange-type. Tenant settings: `default_restock_on_refund`, `refund_window_days` (default 30), `rma_auto_approve_under_cents`. Every status transition writes a `RefundRequestEvent` audit row and (where applicable) fires an email — email send/failure is itself a timeline event. Shiprocket return-AWB issuance is wired through `ShiprocketProvider.create_reverse_shipment`. Permissions: `rma:read`, `rma:write`.
+
+### Plan & Entitlement Resolution
+Plan-feature mapping (`max_channels`, `shopify_connector`, etc.) lives in the platform service `plan_features` table — NOT in IMS code constants. The legacy `PLAN_FEATURES` dict in `services/api/app/billing/plans.py` was deleted. At license sync time, the platform's `/v1/platform/license/{tenant_id}` response includes a `plan_features` map which `_upsert_cache()` writes into `TenantLicenseCache.plan_features` (JSONB). The resolver `resolve_plan_value(db, tenant_id, feature_key)` reads from the cache first, falling back to `FEATURE_CATALOG` defaults in `app/billing/features.py`. Per-tenant overrides live in `tenant_limit_overrides` on the platform side and are merged into the response. Bulk cohort overrides: `POST /v1/platform/overrides/bulk`. The platform exposes the IMS feature catalog at `/v1/internal/platform/plan-features` (schema only) and accepts a cascade trigger at `/v1/internal/license-sync-trigger` (HMAC-authenticated) for immediate re-sync after a plan change.
+
+### Advanced RBAC
+Roles (`Role`) are tenant-scoped with system-role protection (`is_system=true` cannot be deleted). Role builder UI in admin-web at Team → Roles. Each role's permission set is editable; cache is invalidated automatically via `invalidate_role_cache(role_id)`. Three less-obvious endpoints worth knowing:
+- `POST /v1/admin/roles/{id}/clone` — duplicates a role with `{name}_copy` suffix
+- `GET /v1/admin/roles/{id}/assigned-users` — lists users for the reassignment flow
+- `POST /v1/admin/roles/{id}/reassign-and-delete` — atomic bulk reassign + delete (required when the role has users)
+
+Permission codenames are seeded via migrations using `INSERT INTO permissions ... ON CONFLICT DO NOTHING` paired with `INSERT INTO role_permissions ... WHERE role.name = 'owner'`. See `20260518000001_email_manage_permission.py` as the canonical template.
+
 ### Offline Sync (Cashier ↔ API)
 - Pull: `GET /v1/sync/pull` — delta bundle (products, stock snapshots, policies)
 - Push: `POST /v1/sync/push` — batch of events (`sale_completed`, `ledger_adjustment`) with idempotency keys
@@ -195,7 +225,8 @@ alembic upgrade head
 
 Migration files: `services/api/alembic/versions/`. Naming convention: `YYYYMMDDNNNNNN_description.py`. The API container runs `alembic upgrade head` automatically on start.
 
-Latest head as of writing: `20260525000001` (storage quota fields).
+Latest IMS head as of writing: `20260603000001` (RMA exchange tracking).
+Latest platform head as of writing: `20260601000001` (plan_features + override JSONB).
 
 ---
 
@@ -211,10 +242,16 @@ Latest head as of writing: `20260525000001` (storage quota fields).
 `packages/storefront-sdk/src/client.ts` — `StorefrontClient` class wraps all storefront endpoints:
 ```typescript
 const client = new StorefrontClient({ baseUrl, channelId });
-const products = await client.listProducts();
+const products = await client.listProducts({ q: "sticker", categorySlug: "anime" });
+const categories = await client.listCategories();
 const cart = await client.createCart();
 await client.addToCart(cart.cart_token, productId, 1);
 const session = await client.createCheckoutSession(cart.cart_token);
+
+// After customer auth (OTP or magic-link):
+client.setCustomerToken(jwt);
+await client.requestRefund({ order_id, refund_type: "refund_only", reason_code: "damaged", lines: [...] });
+const myRefunds = await client.listRefundRequests();
 ```
 
 ---
@@ -226,6 +263,8 @@ const session = await client.createCheckoutSession(cart.cart_token);
 | `docs/architecture.md` | Any backend change |
 | `docs/ecommerce-architecture.md` | Any e-commerce / storefront change |
 | `docs/storefront-api.md` | Building headless storefronts |
+| `docs/storefront-security.md` | Headless storefront onboarding, OTP limits, CORS allowlist |
 | `docs/sync-architecture.md` | Cashier sync, conflict semantics |
 | `docs/client-architecture.md` | Cashier or admin app changes |
 | `docs/adr-index.md` | Before making a new architectural decision |
+| `docs/superpowers/roadmap/` | Recent feature specs and the stickerize / final-four / followup rollouts |
