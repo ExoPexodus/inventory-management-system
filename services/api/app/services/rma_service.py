@@ -556,13 +556,56 @@ def mark_cash_returned(
     return request
 
 
+def mark_exchange_shipped(
+    db: Session,
+    *,
+    request: RefundRequest,
+    user_id: UUID | None,
+    tracking_number: str | None = None,
+    carrier_name: str | None = None,
+) -> RefundRequest:
+    """Merchant records replacement shipment for an exchange-type RMA.
+
+    Only valid for refund_type='exchange' in 'approved' status. Transitions to
+    'exchange_shipped'. A subsequent close_refund_request moves to 'closed'.
+    """
+    if request.refund_type != "exchange":
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="mark_exchange_shipped is only valid for exchange-type requests",
+        )
+    if request.status != "approved":
+        raise HTTPException(
+            status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Cannot mark exchange shipped from status '{request.status}'",
+        )
+    from_status = request.status
+    request.status = "exchange_shipped"
+    request.exchange_shipped_at = _now()
+    if tracking_number:
+        request.exchange_tracking_number = tracking_number.strip()
+    if carrier_name:
+        request.exchange_carrier_name = carrier_name.strip()
+
+    _write_event(
+        db, request=request, event_type="status_changed",
+        from_status=from_status, to_status="exchange_shipped",
+        actor_user_id=user_id, actor_kind="merchant",
+        metadata={
+            "tracking_number": request.exchange_tracking_number,
+            "carrier_name": request.exchange_carrier_name,
+        },
+    )
+    return request
+
+
 def close_refund_request(
     db: Session,
     *,
     request: RefundRequest,
     user_id: UUID | None = None,
 ) -> RefundRequest:
-    if request.status not in ("refunded", "rejected"):
+    if request.status not in ("refunded", "rejected", "exchange_shipped"):
         raise HTTPException(
             status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Cannot close a request with status '{request.status}'",

@@ -46,6 +46,9 @@ type RMADetail = {
   currency_code: string;
   provider_refund_ref: string | null;
   cash_returned: boolean;
+  exchange_shipped_at: string | null;
+  exchange_tracking_number: string | null;
+  exchange_carrier_name: string | null;
   rejected_reason: string | null;
   auto_approved: boolean;
   created_at: string;
@@ -56,6 +59,7 @@ type RMADetail = {
 };
 
 const STATUS_COLORS: Record<string, string> = {
+  exchange_shipped: "bg-blue-100 text-blue-800",
   requested: "bg-amber-100 text-amber-800",
   approved: "bg-blue-100 text-blue-800",
   rejected: "bg-red-100 text-red-800",
@@ -212,6 +216,16 @@ export default function RMADetailPage() {
             <p className="text-sm text-red-900">{rma.rejected_reason}</p>
           </div>
         )}
+        {rma.exchange_shipped_at && (
+          <div className="col-span-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-xs font-bold uppercase tracking-widest text-blue-700">Exchange Shipped</p>
+            <p className="text-sm text-blue-900">
+              Replacement dispatched on {new Date(rma.exchange_shipped_at).toLocaleString()}
+              {rma.exchange_carrier_name && ` via ${rma.exchange_carrier_name}`}
+              {rma.exchange_tracking_number && ` · tracking ${rma.exchange_tracking_number}`}
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Lines table */}
@@ -348,7 +362,7 @@ export default function RMADetailPage() {
               )}
             </>
           )}
-          {rma.status === "approved" && rma.refund_type !== "return_refund" && !rma.cash_returned && (
+          {rma.status === "approved" && rma.refund_type === "refund_only" && !rma.cash_returned && (
             <button
               type="button"
               disabled={actionLoading}
@@ -358,12 +372,24 @@ export default function RMADetailPage() {
               Mark Cash Returned
             </button>
           )}
-          {rma.status === "refunded" && (
-            <PrimaryButton type="button" disabled={actionLoading} onClick={() => void doAction("close")}>
-              Close Request
-            </PrimaryButton>
+          {rma.status === "approved" && rma.refund_type === "exchange" && (
+            <button
+              type="button"
+              disabled={actionLoading}
+              onClick={() => {
+                const tracking = window.prompt("Tracking number (optional):") || "";
+                const carrier = tracking ? (window.prompt("Carrier (optional):") || "") : "";
+                void doAction("mark-exchange-shipped", {
+                  tracking_number: tracking.trim() || null,
+                  carrier_name: carrier.trim() || null,
+                });
+              }}
+              className="rounded-full bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40"
+            >
+              Mark Exchange Shipped
+            </button>
           )}
-          {rma.status === "rejected" && (
+          {(rma.status === "refunded" || rma.status === "rejected" || rma.status === "exchange_shipped") && (
             <PrimaryButton type="button" disabled={actionLoading} onClick={() => void doAction("close")}>
               Close Request
             </PrimaryButton>

@@ -1284,6 +1284,11 @@ class RefundRequest(Base):
     provider_refund_ref: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     cash_returned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     cash_returned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Exchange-flow fulfillment tracking — merchant records when the replacement
+    # is shipped. exchange_shipped_at is the trigger for status: approved → exchange_shipped.
+    exchange_shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    exchange_tracking_number: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    exchange_carrier_name: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     auto_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

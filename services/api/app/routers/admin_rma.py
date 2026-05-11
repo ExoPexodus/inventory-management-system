@@ -106,6 +106,9 @@ class RefundRequestDetail(BaseModel):
     provider_refund_ref: str | None
     cash_returned: bool
     cash_returned_at: datetime | None
+    exchange_shipped_at: datetime | None = None
+    exchange_tracking_number: str | None = None
+    exchange_carrier_name: str | None = None
     auto_approved: bool
     created_at: datetime
     updated_at: datetime
@@ -382,6 +385,38 @@ def mark_cash_returned(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context required")
     req = _get_request(db, rma_id, ctx.tenant_id)
     req = svc.mark_cash_returned(db, request=req, user_id=ctx.user_id)
+    db.commit()
+    db.refresh(req)
+    return RefundRequestDetail.model_validate(req)
+
+
+class MarkExchangeShippedBody(BaseModel):
+    tracking_number: str | None = None
+    carrier_name: str | None = None
+
+
+@router.post("/{rma_id}/mark-exchange-shipped", response_model=RefundRequestDetail,
+             dependencies=[require_permission("rma:write")])
+def mark_exchange_shipped(
+    rma_id: UUID,
+    body: MarkExchangeShippedBody,
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+) -> RefundRequestDetail:
+    """Record that the replacement for an exchange-type RMA has shipped.
+
+    Optional tracking_number + carrier_name. Only valid for refund_type=exchange
+    in 'approved' state. Status transitions to 'exchange_shipped'; merchant
+    closes the request separately via the close endpoint.
+    """
+    if ctx.tenant_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context required")
+    req = _get_request(db, rma_id, ctx.tenant_id)
+    req = svc.mark_exchange_shipped(
+        db, request=req, user_id=ctx.user_id,
+        tracking_number=body.tracking_number,
+        carrier_name=body.carrier_name,
+    )
     db.commit()
     db.refresh(req)
     return RefundRequestDetail.model_validate(req)
