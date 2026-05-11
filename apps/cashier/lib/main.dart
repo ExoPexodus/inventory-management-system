@@ -34,9 +34,27 @@ void main() async {
         ChangeNotifierProvider(create: (_) => ShiftModel()),
         Provider<AuthenticatedApi>(create: (_) => AuthenticatedApi()),
       ],
-      child: const CashierBootstrap(),
+      child: const CashierApp(),
     ),
   );
+}
+
+/// Wraps the bootstrap state in a MaterialApp so the bootstrap's BuildContext
+/// is INSIDE the Navigator. This lets the OTA-update flow show an install
+/// dialog from `_CashierBootstrapState.context` (without it, the dialog
+/// silently fails because Navigator.of() walks above the MaterialApp and
+/// finds nothing).
+class CashierApp extends StatelessWidget {
+  const CashierApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Cashier',
+      theme: cashierTheme(),
+      home: const CashierBootstrap(),
+    );
+  }
 }
 
 class CashierBootstrap extends StatefulWidget {
@@ -116,38 +134,37 @@ class _CashierBootstrapState extends State<CashierBootstrap> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Cashier',
-      theme: cashierTheme(),
-      home: _loading
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : _session == null
-              ? OnboardingScreen(onSuccess: _check)
-              : !_session!.hasEmployeeSession
-                  ? EmployeeLoginScreen(
-                      session: _session!,
-                      onSuccess: _check,
-                    )
-                  : CashierShell(
-                      onSessionExpired: _check,
-                      onLoggedOut: () async {
-                        final cart = context.read<CartModel>();
-                        final catalog = context.read<CatalogModel>();
-                        final sync = context.read<SyncStateModel>();
-                        final feed = context.read<InventoryFeedModel>();
-                        final shift = context.read<ShiftModel>();
-                        await SessionStore.clear();
-                        await OutboxDb.clearAll();
-                        await OutboxCrypto.wipeKeyForNextUser();
-                        if (!mounted) return;
-                        cart.clear();
-                        catalog.clear();
-                        sync.resetForLogout();
-                        feed.resetForLogout();
-                        shift.clear();
-                        setState(() => _session = null);
-                      },
-                    ),
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_session == null) {
+      return OnboardingScreen(onSuccess: _check);
+    }
+    if (!_session!.hasEmployeeSession) {
+      return EmployeeLoginScreen(
+        session: _session!,
+        onSuccess: _check,
+      );
+    }
+    return CashierShell(
+      onSessionExpired: _check,
+      onLoggedOut: () async {
+        final cart = context.read<CartModel>();
+        final catalog = context.read<CatalogModel>();
+        final sync = context.read<SyncStateModel>();
+        final feed = context.read<InventoryFeedModel>();
+        final shift = context.read<ShiftModel>();
+        await SessionStore.clear();
+        await OutboxDb.clearAll();
+        await OutboxCrypto.wipeKeyForNextUser();
+        if (!mounted) return;
+        cart.clear();
+        catalog.clear();
+        sync.resetForLogout();
+        feed.resetForLogout();
+        shift.clear();
+        setState(() => _session = null);
+      },
     );
   }
 }
