@@ -5,7 +5,7 @@ import uuid
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -148,9 +148,19 @@ def cart_summary(
 def apply_cart_discount(
     cart_token: str,
     body: DiscountApplyIn,
+    request: Request,
     channel: StorefrontChannelDep,
     db: Annotated[Session, Depends(get_db)],
 ) -> DiscountApplyOut:
+    from app.services.storefront_rate_limits import (
+        check_discount_rate_limit, record_discount_attempt,
+    )
+
+    client_ip = (request.client.host if request.client else None) or "unknown"
+    # Block further attempts before the lookup — stops enumeration even if
+    # the attacker is rotating valid candidate codes.
+    check_discount_rate_limit(client_ip, channel.id)
+
     subtotal, cart_rows = _cart_subtotal(db, channel.id, cart_token)
     lines = [
         CartLine(product_id=ci.product_id, quantity=ci.quantity, unit_price_cents=ci.unit_price_cents)
@@ -163,10 +173,14 @@ def apply_cart_discount(
             cart_lines=lines,
         )
     except DiscountNotFoundError as exc:
+        record_discount_attempt(client_ip, channel.id, success=False)
         raise HTTPException(status_code=404, detail=str(exc))
     except DiscountNotEligibleError as exc:
+        # An eligible-but-wrong-cart attempt isn't enumeration — the code
+        # WAS valid. Don't count toward the lockout.
         raise HTTPException(status_code=422, detail=str(exc))
 
+    record_discount_attempt(client_ip, channel.id, success=True)
     return DiscountApplyOut(
         cart_token=cart_token, discount_code=body.code,
         discount_type=result["discount_type"],

@@ -5,7 +5,7 @@ import uuid
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,6 +16,7 @@ from app.routers.storefront.auth import StorefrontChannelDep
 from app.services.inventory_pool_service import pool_shops
 from app.services.product_type_service import is_inventory_tracked
 from app.services.reservation_service import release_reservation, reserve
+from app.services.storefront_rate_limits import check_cart_creation_rate
 
 router = APIRouter(prefix="/v1/storefront", tags=["Storefront Cart"])
 
@@ -82,9 +83,12 @@ def _get_shop_for_channel(db: Session, channel) -> UUID | None:
 
 @router.post("/cart", response_model=CartOut, status_code=status.HTTP_201_CREATED)
 def create_cart(
+    request: Request,
     channel: StorefrontChannelDep,
     db: Annotated[Session, Depends(get_db)],
 ) -> CartOut:
+    client_ip = (request.client.host if request.client else None) or "unknown"
+    check_cart_creation_rate(client_ip, channel.id)
     token = str(uuid.uuid4())
     return CartOut(
         cart_token=token, channel_id=channel.id,

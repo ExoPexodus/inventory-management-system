@@ -9,9 +9,12 @@ built on the IMS Storefront API.
 |------|----------|-----------|
 | Browser-based scraping from any origin | Medium | Per-channel CORS allowlist |
 | OTP/magic-link email abuse | High | Per-email rate limit (5/hr, 30/day) |
+| Discount code brute-force / enumeration | Medium | 5 failed attempts / 10 min per IP per channel → 429 |
+| Cart-create flood (DB spam) | Medium | 20/min and 200/hr per IP per channel → 429 |
 | Server-to-server price scraping | Low | Channel ID rotation (manual; future) |
 | Inventory exhaustion via fake carts | Low | Existing reservation TTL + sweep job |
 | Cart-token guessing | None | uuid4 — 122 bits entropy |
+| Response sniffing / framing | Low | X-Content-Type-Options, X-Frame-Options, Referrer-Policy on every response |
 
 ## Channel ID is public
 
@@ -88,13 +91,54 @@ burst cannot consume another channel's quota.
 If Redis is unavailable the limiter fails open (requests are allowed through)
 so a Redis outage never blocks legitimate logins.
 
+## Discount code brute-force protection
+
+The `POST /cart/{token}/discount` endpoint returns 404 for unknown codes and
+200 for valid ones — a distinguishable signal an attacker could use to
+enumerate codes. To prevent this:
+
+- Every 404 increments a per-`(channel, ip)` counter in Redis.
+- After **5 failed attempts in a 10-minute window** the endpoint returns
+  HTTP 429 for that IP, regardless of whether the next code attempted is
+  valid. Counter expires automatically.
+- A successful application clears the counter — a real customer who
+  mistyped their code a couple of times is not penalised after they get
+  it right.
+- 422 responses (code valid but not eligible for this cart) are NOT
+  counted — the attacker already learned the code is real.
+
+Fail-open on Redis errors.
+
+## Cart-creation rate limit
+
+A separate guard on `POST /cart` to bound DB spam from script abuse,
+beyond the general 120-request/min storefront ceiling:
+
+| Window | Limit |
+|--------|-------|
+| Per minute | 20 carts |
+| Per hour   | 200 carts |
+
+Keyed by `(channel_id, ip)`. Returns 429 with `Retry-After` when exceeded.
+Other storefront endpoints are unaffected.
+
+## Response security headers
+
+Every response (storefront and admin) carries:
+
+- `X-Content-Type-Options: nosniff` — browsers won't try to execute JSON as HTML
+- `X-Frame-Options: DENY` — pages can't be framed
+- `Referrer-Policy: strict-origin-when-cross-origin` — never leaks query strings
+- `Strict-Transport-Security: max-age=31536000; includeSubDomains` — only when the request was over HTTPS (auto-detected via `X-Forwarded-Proto` for proxied deployments)
+
+The `Server` header is suppressed at the uvicorn level (`--no-server-header`)
+so the API doesn't disclose its runtime version.
+
 ## What is NOT protected
 
 - **Server-side scraping:** A bot that never sends an `Origin` header bypasses
   the CORS allowlist. This is by design — server-to-server integrations need
   to call the API without a browser context.
-- **Repeated cart creation:** The existing IP-based rate limit (120 req/min)
-  and reservation TTL sweep job are the only defences here.
 - **Channel ID enumeration:** Channel IDs are UUIDs (random, not sequential),
   but they are effectively public. Don't treat them as secrets.
 

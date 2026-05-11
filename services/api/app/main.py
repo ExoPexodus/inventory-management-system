@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.middleware.storefront_rate_limit import StorefrontRateLimitMiddleware
 from app.middleware.storefront_origin_check import StorefrontOriginCheckMiddleware
 
@@ -93,6 +94,7 @@ app.add_middleware(
 )
 app.add_middleware(StorefrontOriginCheckMiddleware)
 app.add_middleware(StorefrontRateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 app.include_router(health.router)
 app.include_router(auth.router)
