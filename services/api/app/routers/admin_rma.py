@@ -427,10 +427,7 @@ def issue_return_awb(
     ctx: AdminAuthDep,
     db: Annotated[Session, Depends(get_db_admin)],
 ) -> RefundRequestDetail:
-    """Issue a return (reverse) shipment AWB via the channel's configured shipping provider.
-
-    Currently returns 501 for Shiprocket as reverse-shipment support is pending.
-    """
+    """Issue a return (reverse) shipment AWB via the channel's configured shipping provider."""
     if ctx.tenant_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context required")
     req = _get_request(db, rma_id, ctx.tenant_id)
@@ -445,31 +442,74 @@ def issue_return_awb(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="This request does not require return shipping",
         )
+    if req.return_shipping_awb:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Return AWB has already been issued for this request",
+        )
+    if req.order_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Return shipping is only supported for ecommerce orders, not POS sales",
+        )
 
-    # Determine shipping provider from channel
     channel = db.get(Channel, req.channel_id) if req.channel_id else None
     provider_name = (channel.config or {}).get("shipping_provider", "") if channel else ""
 
-    if provider_name == "shiprocket":
-        # TODO: Implement Shiprocket reverse-shipment API call
-        # Shiprocket reverse pickup API: POST /v1/external/orders/create/return
-        # This requires the original Shiprocket order_id and pickup address.
-        # Stubbed out — merchant should issue return shipping label out-of-band for now.
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Shiprocket reverse-shipment integration is not yet implemented. "
-                   "Please issue the return shipping label manually and update the AWB on the request.",
-        )
-    elif provider_name:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Shipping provider '{provider_name}' does not support automated return AWB issuance",
-        )
-    else:
+    if not provider_name:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="No shipping provider configured for this channel. Issue return shipping manually.",
         )
+
+    from app.services.shipping.base import ShippingProviderError
+    from app.services.shipping.registry import get_provider
+    try:
+        provider = get_provider(provider_name)
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown shipping provider '{provider_name}'",
+        )
+    if not hasattr(provider, "create_reverse_shipment"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Shipping provider '{provider_name}' does not support automated return AWB issuance",
+        )
+
+    order = db.get(Order, req.order_id)
+    tenant = db.get(Tenant, ctx.tenant_id)
+    lines_to_return = [ln for ln in req.lines if (ln.quantity_approved or ln.quantity_requested) > 0]
+
+    try:
+        result = provider.create_reverse_shipment(req, order, lines_to_return, tenant, channel.config or {})
+    except ShippingProviderError as exc:
+        svc._write_event(
+            db, request=req, event_type="awb_issue_failed",
+            metadata={"provider": provider_name, "error": str(exc)},
+            actor_kind="system",
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Shipping provider rejected the return shipment: {exc}",
+        )
+
+    req.return_shipping_awb = result.awb_code
+    svc._write_event(
+        db, request=req, event_type="awb_issued",
+        metadata={
+            "provider": provider_name,
+            "awb_code": result.awb_code,
+            "carrier": result.carrier_name,
+            "tracking_url": result.tracking_url,
+        },
+        actor_kind="merchant",
+        actor_user_id=ctx.user_id,
+    )
+    db.commit()
+    db.refresh(req)
+    return _to_detail(db, req)
 
 
 # ---------------------------------------------------------------------------
