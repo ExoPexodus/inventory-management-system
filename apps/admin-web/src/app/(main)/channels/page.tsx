@@ -842,6 +842,106 @@ function PaymentTab({ channels }: { channels: Channel[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// Security tab
+// ---------------------------------------------------------------------------
+
+function SecurityTab({ channels }: { channels: Channel[] }) {
+  const [selectedChannelId, setSelectedChannelId] = useState("");
+  const [originsText, setOriginsText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const channelOptions = channels.map((c) => ({ value: c.id, label: c.name }));
+
+  function selectChannel(id: string) {
+    setSelectedChannelId(id);
+    setMsg(null);
+    setErr(null);
+    const ch = channels.find((c) => c.id === id);
+    const existing = (ch?.config?.allowed_origins as string[] | undefined) ?? [];
+    setOriginsText(existing.join("\n"));
+  }
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMsg(null);
+    setErr(null);
+    const origins = originsText
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    try {
+      const r = await fetch(`/api/ims/v1/admin/channels/${selectedChannelId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ config: { allowed_origins: origins } }),
+      });
+      if (r.ok) {
+        setMsg(origins.length > 0 ? "Allowed origins saved." : "Origin restriction cleared.");
+      } else {
+        const d = await r.json().catch(() => ({})) as { detail?: string };
+        setErr(typeof d.detail === "string" ? d.detail : `Failed (${r.status})`);
+      }
+    } catch {
+      setErr("Network error. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Panel
+        title="Security"
+        subtitle="Restrict which browser origins can call this channel's storefront API."
+      >
+        <div className="max-w-sm">
+          <label className="block text-sm font-medium text-on-surface mb-1">Channel</label>
+          <SelectInput
+            options={channelOptions}
+            value={selectedChannelId}
+            onChange={selectChannel}
+            placeholder="Select channel"
+          />
+        </div>
+
+        {selectedChannelId && (
+          <form onSubmit={(e) => void handleSave(e)} className="mt-6 space-y-4">
+            <div>
+              <p className="mb-1 text-xs font-bold uppercase tracking-widest text-on-surface-variant">
+                Allowed origins
+              </p>
+              <label className="block text-sm font-medium text-on-surface mb-1">
+                One origin per line (e.g. https://stickerize.com)
+              </label>
+              <textarea
+                value={originsText}
+                onChange={(e) => setOriginsText(e.target.value)}
+                rows={5}
+                placeholder={"https://yourstore.com\nhttps://www.yourstore.com"}
+                className="w-full rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 font-mono text-sm text-on-surface outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+              />
+              <p className="mt-1 text-xs text-on-surface-variant">
+                Browser requests from origins not in this list will be rejected with 403.
+                Leave blank to allow all origins (current default). Server-to-server calls are
+                always allowed regardless of this setting. Max 20 entries.
+              </p>
+            </div>
+            {msg && <p className="text-sm font-semibold text-primary">{msg}</p>}
+            {err && <p className="text-sm text-error">{err}</p>}
+            <PrimaryButton type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save origins"}
+            </PrimaryButton>
+          </form>
+        )}
+      </Panel>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main page
 // ---------------------------------------------------------------------------
 
@@ -849,10 +949,11 @@ const TABS = [
   { id: "channels", label: "Channels" },
   { id: "payment", label: "Payment" },
   { id: "shipping", label: "Shipping" },
+  { id: "security", label: "Security" },
 ];
 
 function ChannelsPageInner() {
-  const [tab, setTab] = useState<"channels" | "payment" | "shipping">("channels");
+  const [tab, setTab] = useState<"channels" | "payment" | "shipping" | "security">("channels");
   const [channels, setChannels] = useState<Channel[]>([]);
 
   const loadChannels = useCallback(async () => {
@@ -870,11 +971,12 @@ function ChannelsPageInner() {
         subtitle="Manage your sales channels and configure payment providers."
       />
 
-      <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as "channels" | "payment" | "shipping")} />
+      <Tabs tabs={TABS} active={tab} onChange={(id) => setTab(id as "channels" | "payment" | "shipping" | "security")} />
 
       {tab === "channels" && <ChannelsTab />}
       {tab === "payment" && <PaymentTab channels={channels} />}
       {tab === "shipping" && <ShippingTab channels={channels} />}
+      {tab === "security" && <SecurityTab channels={channels} />}
     </div>
   );
 }

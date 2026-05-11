@@ -16,6 +16,7 @@ from app.db.session import get_db
 from app.models import Customer, StorefrontOTP, TenantEmailConfig
 from app.routers.storefront.auth import StorefrontChannelDep
 from app.services.customer_resolver import resolve_or_create_customer
+from app.services.otp_rate_limit import check_otp_rate_limit
 
 router = APIRouter(prefix="/v1/storefront/auth", tags=["Storefront Customer Auth"])
 
@@ -56,6 +57,7 @@ def request_otp(
     channel: StorefrontChannelDep,
     db: Annotated[Session, Depends(get_db)],
 ) -> OTPRequestOut:
+    check_otp_rate_limit(email=body.email, channel_id=channel.id)
     code = _generate_otp()
     expires_at = datetime.now(UTC) + timedelta(minutes=OTP_EXPIRY_MINUTES)
 
@@ -186,6 +188,7 @@ def request_magic_link(
     channel: StorefrontChannelDep,
     db: Annotated[Session, Depends(get_db)],
 ) -> MagicLinkRequestOut:
+    check_otp_rate_limit(email=body.email, channel_id=channel.id)
     from app.models import StorefrontMagicLink
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(UTC) + timedelta(minutes=MAGIC_LINK_EXPIRY_MINUTES)

@@ -10,6 +10,7 @@ role by the 20260507000001 migration.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from typing import Annotated, Any
 from uuid import UUID
@@ -23,6 +24,31 @@ from app.auth.admin_deps import AdminAuthDep, require_permission
 from app.billing.deps import EntitlementsDep
 from app.db.admin_deps_db import get_db_admin
 from app.models import Channel, InventoryPool
+
+_ORIGIN_RE = re.compile(r"^https?://[a-zA-Z0-9.\-]+(?::\d{1,5})?$")
+
+
+def _validate_allowed_origins(config: dict) -> None:
+    """Validate channel.config.allowed_origins if present."""
+    origins = config.get("allowed_origins")
+    if origins is None:
+        return
+    if not isinstance(origins, list):
+        raise HTTPException(
+            status_code=422,
+            detail="allowed_origins must be a list of URLs",
+        )
+    if len(origins) > 20:
+        raise HTTPException(
+            status_code=422,
+            detail="allowed_origins is limited to 20 entries",
+        )
+    for o in origins:
+        if not isinstance(o, str) or not _ORIGIN_RE.match(o):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid origin {o!r} — must be scheme://host[:port] with no path",
+            )
 
 router = APIRouter(
     prefix="/v1/admin/channels",
@@ -114,6 +140,8 @@ def create_channel(
             detail="inventory_pool_id does not exist or does not belong to this tenant",
         )
 
+    _validate_allowed_origins(body.config or {})
+
     current_count = db.execute(
         select(func.count(Channel.id)).where(Channel.tenant_id == tenant_id)
     ).scalar_one()
@@ -165,6 +193,9 @@ def update_channel(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Cannot change {forbidden} of a POS channel",
                 )
+
+    if body.config is not None:
+        _validate_allowed_origins(body.config)
 
     updates = body.model_dump(exclude_unset=True)
     for field, value in updates.items():

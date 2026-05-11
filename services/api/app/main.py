@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.middleware.storefront_rate_limit import StorefrontRateLimitMiddleware
+from app.middleware.storefront_origin_check import StorefrontOriginCheckMiddleware
 
 from app.routers.storefront import catalog as storefront_catalog
 from app.routers.storefront import cart as storefront_cart
@@ -86,10 +87,11 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "DELETE", "PUT", "PATCH", "OPTIONS"],
     allow_headers=["*"],
 )
+app.add_middleware(StorefrontOriginCheckMiddleware)
 app.add_middleware(StorefrontRateLimitMiddleware)
 
 app.include_router(health.router)

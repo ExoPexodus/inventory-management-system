@@ -127,6 +127,11 @@ POST /v1/storefront/auth/otp/verify    → verify → customer JWT
 GET  /v1/storefront/customers/me       → customer profile (auth required)
 ```
 
+**Security protections (opt-in per channel):**
+- Per-channel CORS Origin allowlist via `channel.config.allowed_origins` — configure in admin-web Channels → Security tab or via `PATCH /v1/admin/channels/{id}`. Requests from unlisted browser origins receive 403; server-to-server calls are always allowed.
+- OTP and magic-link per-email rate limit: 5 requests/hour, 30 requests/day per channel. Returns 429 when exceeded. Fails open on Redis errors.
+- See `docs/storefront-security.md` for full threat model, configuration recipes, and limits.
+
 ### Hosted Checkout
 The hosted checkout HTML page lives at `GET /checkout/{session_token}`. Templates in `services/api/templates/`. Payment providers (Stripe/Razorpay) are configured per channel — keys are stored encrypted in `channel.config`.
 
