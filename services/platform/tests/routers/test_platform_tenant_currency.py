@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 from sqlalchemy.orm import Session
 from uuid import uuid4
 
 from app.auth.deps import OperatorContext
-from app.models import PlatformOperator, PlatformTenant
+from app.models import Plan, PlatformOperator, PlatformTenant
 from app.routers.tenants import (
     PatchTenantCurrencyBody,
     TenantCreate,
@@ -15,10 +17,33 @@ from app.routers.tenants import (
     patch_tenant,
     patch_tenant_currency,
 )
+from app.services.tenant_provision import ProvisionResult
 
 
 def _ctx(operator: PlatformOperator) -> OperatorContext:
     return OperatorContext(operator_id=operator.id, email=operator.email)
+
+
+@pytest.fixture()
+def seeded_plan(db: Session) -> Plan:
+    """A starter plan, required by create_tenant for initial Subscription creation."""
+    existing = db.query(Plan).filter(Plan.codename == "starter").first()
+    if existing:
+        return existing
+    plan = Plan(
+        codename="starter",
+        display_name="Starter",
+        base_price_cents=0,
+        currency_code="INR",
+        max_shops=1,
+        max_employees=5,
+        storage_limit_mb=500,
+        is_active=True,
+    )
+    db.add(plan)
+    db.commit()
+    db.refresh(plan)
+    return plan
 
 
 def test_get_currency_returns_platform_values(db: Session, platform_tenant: PlatformTenant, platform_operator: PlatformOperator) -> None:
@@ -81,40 +106,52 @@ def test_patch_rejects_negative_exponent() -> None:
 
 
 def test_create_tenant_accepts_currency_and_deployment_mode(
-    db: Session, platform_operator,
+    db: Session, platform_operator, seeded_plan: Plan,
 ) -> None:
-    result = create_tenant(
-        body=TenantCreate(
-            name="New Tenant",
-            slug=f"new-{uuid4().hex[:8]}",
-            region="in",
-            api_base_url="http://new.local",
-            default_currency_code="INR",
-            currency_exponent=2,
-            currency_symbol_override="Rs",
-            deployment_mode="on_prem",
-        ),
-        ctx=_ctx(platform_operator),
-        db=db,
-    )
+    with patch(
+        "app.routers.tenants.provision_tenant",
+        return_value=ProvisionResult(ok=True, tenant_status="created", operator_status="created"),
+    ):
+        result = create_tenant(
+            body=TenantCreate(
+                name="New Tenant",
+                slug=f"new-{uuid4().hex[:8]}",
+                region="in",
+                api_base_url="http://new.local",
+                default_currency_code="INR",
+                currency_exponent=2,
+                currency_symbol_override="Rs",
+                deployment_mode="on_prem",
+                initial_admin_email="admin@test.local",
+                initial_admin_password="password123",
+            ),
+            ctx=_ctx(platform_operator),
+            db=db,
+        )
     tenant = db.get(PlatformTenant, result.id)
     assert tenant.default_currency_code == "INR"
     assert tenant.deployment_mode == "on_prem"
 
 
 def test_create_tenant_defaults_currency_to_usd_and_mode_to_cloud(
-    db: Session, platform_operator,
+    db: Session, platform_operator, seeded_plan: Plan,
 ) -> None:
-    result = create_tenant(
-        body=TenantCreate(
-            name="Defaulted",
-            slug=f"def-{uuid4().hex[:8]}",
-            region="in",
-            api_base_url="http://def.local",
-        ),
-        ctx=_ctx(platform_operator),
-        db=db,
-    )
+    with patch(
+        "app.routers.tenants.provision_tenant",
+        return_value=ProvisionResult(ok=True, tenant_status="created", operator_status="created"),
+    ):
+        result = create_tenant(
+            body=TenantCreate(
+                name="Defaulted",
+                slug=f"def-{uuid4().hex[:8]}",
+                region="in",
+                api_base_url="http://def.local",
+                initial_admin_email="admin@test.local",
+                initial_admin_password="password123",
+            ),
+            ctx=_ctx(platform_operator),
+            db=db,
+        )
     tenant = db.get(PlatformTenant, result.id)
     assert tenant.default_currency_code == "USD"
     assert tenant.currency_exponent == 2
