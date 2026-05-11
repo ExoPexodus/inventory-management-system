@@ -49,6 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Map<String, dynamic>? _shift;
   Map<String, dynamic>? _activeShift;
   bool _dashLoading = false;
+  bool _dashError = false;
 
   @override
   void initState() {
@@ -86,14 +87,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
     final api = InventoryApi(s.baseUrl);
-    final reachable = await api.ping(timeoutMs: 2500);
+    // 8s lets a slow 2G/3G/edge connection still report reachable — a 2.5s
+    // ceiling was producing "Server unreachable" false alarms on weak 4G even
+    // while authenticated data calls were succeeding in the background.
+    final reachable = await api.ping(timeoutMs: 8000);
     if (!mounted) return;
     setState(() => _connectivity = reachable ? 'Online' : 'Server unreachable');
   }
 
   Future<void> _loadDashData() async {
     if (!mounted) return;
-    setState(() => _dashLoading = true);
+    setState(() {
+      _dashLoading = true;
+      _dashError = false;
+    });
     final auth = context.read<AuthenticatedApi>();
     try {
       final page = await auth.run((api, s) => api.listTransactions(
@@ -113,11 +120,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _shift = shiftBody;
         _activeShift = activeShift;
         _dashLoading = false;
+        _dashError = false;
       });
       // Publish shift state so CartScreen can gate checkout.
       if (mounted) context.read<ShiftModel>().update(activeShift);
     } catch (_) {
-      if (mounted) setState(() => _dashLoading = false);
+      if (mounted) {
+        setState(() {
+          _dashLoading = false;
+          _dashError = true;
+        });
+      }
     }
   }
 
@@ -559,7 +572,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.all(CashierSpacing.gutter),
-                child: Center(child: CircularProgressIndicator()),
+                child: Column(
+                  children: [
+                    Center(child: CircularProgressIndicator()),
+                    SizedBox(height: CashierSpacing.sm),
+                    Text(
+                      'Loading recent activity…',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_recentTx.isEmpty && _dashError)
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(CashierSpacing.gutter),
+                child: Column(
+                  children: [
+                    const Text(
+                      "Couldn't load recent transactions.\nCheck your connection and try again.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: CashierSpacing.sm),
+                    TextButton.icon(
+                      onPressed: _loadDashData,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_recentTx.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(CashierSpacing.gutter),
+                child: Center(
+                  child: Text(
+                    'No transactions yet on this device.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                ),
               ),
             )
           else
