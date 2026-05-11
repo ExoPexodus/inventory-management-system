@@ -15,10 +15,12 @@ from app.auth.admin_deps import AdminAuthDep, AdminContext, require_permission
 from app.db.admin_deps_db import get_db_admin
 from app.models import (
     Category,
+    Order,
     PaymentAllocation,
     Product,
     ProductCategory,
     PurchaseOrder,
+    RefundRequest,
     Shop,
     StockMovement,
     Tenant,
@@ -199,6 +201,29 @@ class ShopRevenueOut(BaseModel):
     period_start: str
     period_end: str
     items: list[ShopRevenueItem]
+
+
+class RmaReasonBreakdown(BaseModel):
+    reason_code: str
+    count: int
+    total_refund_cents: int
+
+
+class RmaStatusBreakdown(BaseModel):
+    status: str
+    count: int
+
+
+class RmaAnalyticsOut(BaseModel):
+    period_start: str
+    period_end: str
+    total_requests: int
+    refunded_count: int
+    total_refunded_cents: int
+    gross_sales_cents: int
+    refund_rate_bps: int  # refunded_cents / gross_sales × 10000; 0 if no sales
+    by_reason: list[RmaReasonBreakdown]
+    by_status: list[RmaStatusBreakdown]
 
 
 # ---------------------------------------------------------------------------
@@ -516,3 +541,78 @@ def shop_revenue(
         for r in rows
     ]
     return ShopRevenueOut(period_start=period_start, period_end=period_end, items=items)
+
+
+@router.get("/rma", response_model=RmaAnalyticsOut, dependencies=[require_permission("analytics:read")])
+def rma_analytics(
+    ctx: AdminAuthDep,
+    db: Annotated[Session, Depends(get_db_admin)],
+    tenant_id: UUID | None = None,
+    days: int = Query(default=30, ge=1, le=366),
+) -> RmaAnalyticsOut:
+    """Refund/return analytics — totals, refund rate, breakdown by reason and status."""
+    tenant_id = _coerce_tenant_scope(ctx, tenant_id)
+    period_start, period_end = _period_meta(days)
+    start = datetime.now(UTC) - timedelta(days=days)
+
+    base = [RefundRequest.tenant_id == tenant_id, RefundRequest.created_at >= start]
+
+    total_requests = db.execute(
+        select(func.count(RefundRequest.id)).where(*base)
+    ).scalar_one() or 0
+
+    refunded_count = db.execute(
+        select(func.count(RefundRequest.id)).where(*base, RefundRequest.status == "refunded")
+    ).scalar_one() or 0
+
+    total_refunded_cents = db.execute(
+        select(func.coalesce(func.sum(RefundRequest.total_refund_cents), 0))
+        .where(*base, RefundRequest.status.in_(("refunded", "closed")))
+    ).scalar_one() or 0
+
+    # Gross sales = ecommerce orders + POS transactions in the same window
+    order_gross = db.execute(
+        select(func.coalesce(func.sum(Order.total_cents), 0))
+        .where(Order.tenant_id == tenant_id, Order.placed_at >= start,
+               Order.status.notin_(("cancelled", "draft")))
+    ).scalar_one() or 0
+    tx_filters, _ = _tx_filters(tenant_id, days, shop_id=None)
+    tx_gross = db.execute(
+        select(func.coalesce(func.sum(Transaction.total_cents), 0)).where(*tx_filters)
+    ).scalar_one() or 0
+    gross = int(order_gross) + int(tx_gross)
+
+    refund_rate_bps = int(round(int(total_refunded_cents) / gross * 10000)) if gross > 0 else 0
+
+    reason_rows = db.execute(
+        select(
+            RefundRequest.reason_code,
+            func.count(RefundRequest.id).label("cnt"),
+            func.coalesce(func.sum(RefundRequest.total_refund_cents), 0).label("total"),
+        )
+        .where(*base)
+        .group_by(RefundRequest.reason_code)
+        .order_by(func.count(RefundRequest.id).desc())
+    ).all()
+
+    status_rows = db.execute(
+        select(RefundRequest.status, func.count(RefundRequest.id).label("cnt"))
+        .where(*base)
+        .group_by(RefundRequest.status)
+        .order_by(func.count(RefundRequest.id).desc())
+    ).all()
+
+    return RmaAnalyticsOut(
+        period_start=period_start,
+        period_end=period_end,
+        total_requests=int(total_requests),
+        refunded_count=int(refunded_count),
+        total_refunded_cents=int(total_refunded_cents),
+        gross_sales_cents=gross,
+        refund_rate_bps=refund_rate_bps,
+        by_reason=[
+            RmaReasonBreakdown(reason_code=r.reason_code, count=int(r.cnt), total_refund_cents=int(r.total))
+            for r in reason_rows
+        ],
+        by_status=[RmaStatusBreakdown(status=r.status, count=int(r.cnt)) for r in status_rows],
+    )

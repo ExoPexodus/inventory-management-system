@@ -66,6 +66,16 @@ type ShopRevenueItem = {
   stock_alert_count: number;
 };
 
+type RmaAnalytics = {
+  total_requests: number;
+  refunded_count: number;
+  total_refunded_cents: number;
+  gross_sales_cents: number;
+  refund_rate_bps: number;
+  by_reason: { reason_code: string; count: number; total_refund_cents: number }[];
+  by_status: { status: string; count: number }[];
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -116,6 +126,7 @@ export function AnalyticsView() {
   const [hourly, setHourly] = useState<HourBucket[]>([]);
   const [payments, setPayments] = useState<PaymentMethodItem[]>([]);
   const [shopRevenue, setShopRevenue] = useState<ShopRevenueItem[]>([]);
+  const [rma, setRma] = useState<RmaAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
@@ -125,7 +136,7 @@ export function AnalyticsView() {
     setLoading(true);
     setErr(null);
     try {
-      const [sRes, dRes, catRes, topRes, hourRes, payRes, shopRes] = await Promise.all([
+      const [sRes, dRes, catRes, topRes, hourRes, payRes, shopRes, rmaRes] = await Promise.all([
         fetch(`/api/ims/v1/admin/analytics/sales-series?days=${days}`),
         fetch("/api/ims/v1/admin/dashboard-summary"),
         fetch(`/api/ims/v1/admin/analytics/category-revenue?days=${days}`),
@@ -133,6 +144,7 @@ export function AnalyticsView() {
         fetch(`/api/ims/v1/admin/analytics/hourly-heatmap?days=${Math.min(days, 14)}`),
         fetch(`/api/ims/v1/admin/analytics/payment-methods?days=${days}`),
         fetch(`/api/ims/v1/admin/analytics/shop-revenue?days=${days}`),
+        fetch(`/api/ims/v1/admin/analytics/rma?days=${days}`),
       ]);
 
       if (!sRes.ok) throw new Error(`Series ${sRes.status}`);
@@ -148,6 +160,7 @@ export function AnalyticsView() {
       if (hourRes.ok) setHourly(((await hourRes.json()) as { buckets: HourBucket[] }).buckets);
       if (payRes.ok) setPayments(((await payRes.json()) as { items: PaymentMethodItem[] }).items);
       if (shopRes.ok) setShopRevenue(((await shopRes.json()) as { items: ShopRevenueItem[] }).items);
+      if (rmaRes.ok) setRma((await rmaRes.json()) as RmaAnalytics);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Load failed");
       setSeries([]);
@@ -461,6 +474,57 @@ export function AnalyticsView() {
             ))}
           </div>
         </div>
+      ) : null}
+
+      {/* ------------------------------------------------------------------ Refunds / RMA */}
+      {rma && rma.total_requests > 0 ? (
+        <Panel title="Refunds & returns" subtitle={`Last ${days} days`}>
+          <div className="grid gap-4 sm:grid-cols-4">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Refund rate</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-on-surface">
+                {(rma.refund_rate_bps / 100).toFixed(2)}%
+              </p>
+              <p className="text-xs text-on-surface-variant">of gross sales</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Total refunded</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-on-surface">
+                {formatMoney(rma.total_refunded_cents, currency)}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Requests</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-on-surface">{rma.total_requests}</p>
+              <p className="text-xs text-on-surface-variant">{rma.refunded_count} refunded</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">By status</p>
+              <div className="mt-1 space-y-0.5 text-xs text-on-surface">
+                {rma.by_status.slice(0, 4).map((s) => (
+                  <div key={s.status} className="flex justify-between">
+                    <span className="capitalize text-on-surface-variant">{s.status.replace("_", " ")}</span>
+                    <span className="tabular-nums">{s.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {rma.by_reason.length > 0 ? (
+            <div className="mt-6 space-y-2">
+              <p className="text-xs font-bold uppercase tracking-widest text-on-surface-variant">Top reasons</p>
+              {rma.by_reason.slice(0, 5).map((r) => (
+                <ProgressBar
+                  key={r.reason_code}
+                  label={`${r.reason_code.replace("_", " ")} · ${r.count} requests · ${formatMoney(r.total_refund_cents, currency)}`}
+                  value={r.count}
+                  max={rma.total_requests || 1}
+                />
+              ))}
+            </div>
+          ) : null}
+        </Panel>
       ) : null}
 
       {/* ------------------------------------------------------------------ Daily breakdown table */}
