@@ -107,28 +107,38 @@ class _CustomerPickerWidgetState extends State<CustomerPickerWidget> {
     if (!_expanded) {
       final label = cart.customerDisplayLabel;
       if (label != null) {
+        final scheme = Theme.of(context).colorScheme;
+        // Use onPrimaryContainer for icon + text so they contrast properly
+        // against the (dark) primaryContainer background defined in the
+        // cashier theme. Without this they fall back to the default text
+        // color and become unreadable.
+        final fg = scheme.onPrimaryContainer;
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
+            color: scheme.primaryContainer,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.person, size: 16),
+              Icon(Icons.person, size: 16, color: fg),
               const SizedBox(width: 6),
               Flexible(
                 child: Text(
                   label,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: fg,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               const SizedBox(width: 6),
               GestureDetector(
                 onTap: () => cart.clearCustomer(),
-                child: const Icon(Icons.close, size: 14),
+                child: Icon(Icons.close, size: 14, color: fg),
               ),
             ],
           ),
