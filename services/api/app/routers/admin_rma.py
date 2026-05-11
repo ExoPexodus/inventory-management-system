@@ -544,7 +544,7 @@ def issue_return_awb(
     )
     db.commit()
     db.refresh(req)
-    return _to_detail(db, req)
+    return RefundRequestDetail.model_validate(req)
 
 
 # ---------------------------------------------------------------------------

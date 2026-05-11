@@ -434,7 +434,7 @@ def put_override(
     catalog = get_feature_catalog()
     if catalog and key not in catalog:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown feature key: {key!r}. Valid keys: {sorted(catalog.keys())}",
         )
 
@@ -524,7 +524,7 @@ def bulk_override(
     catalog = get_feature_catalog()
     if catalog and body.feature_key not in catalog:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Unknown feature key: {body.feature_key!r}",
         )
 
